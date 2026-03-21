@@ -1,56 +1,11 @@
 #include "Input.h"
 #include <windows.h>
 
-Input::Input(Application& app) : app(app), window(app.getWindow()), camera(app.getCamera()) {
-    app1 = (Application*)glfwGetWindowUserPointer(window);
-}
-
-void Input::processScroll(GLFWwindow* window, double xoffset, double yoffset) {
-    Application* app = (Application*)glfwGetWindowUserPointer(window);
-    if (!app) return;
-    app->getCamera().ProcessMouseScroll((float)yoffset);
-}
-
-void Input::processMouse(GLFWwindow* window, double xpos, double ypos) {
-    Application* app = (Application*)glfwGetWindowUserPointer(window);
-    if (!app) return;
-    
-    static bool firstMouse = true;
-    static float lastX = 400.0f;
-    static float lastY = 300.0f;
-    
-    if (firstMouse) {
-        lastX = (float)xpos;
-        lastY = (float)ypos;
-        firstMouse = false;
-    }
-    
-    float xoffset = (float)xpos - lastX;
-    float yoffset = lastY - (float)ypos;
-    
-    lastX = (float)xpos;
-    lastY = (float)ypos;
-    
-    app->getCamera().ProcessMouseMovement(xoffset, yoffset);
+Input::Input(Application& app) : app(app), camera(app.getCamera()) {
 }
 
 void Input::processInput(float deltaTime) {
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, GL_TRUE);
-    }
-    
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        camera.ProcessKeyboard(FORWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        camera.ProcessKeyboard(BACKWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        camera.ProcessKeyboard(LEFT, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        camera.ProcessKeyboard(RIGHT, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-        camera.ProcessKeyboard(UP, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
-        camera.ProcessKeyboard(DOWN, deltaTime);
+    // Заглушка: для Win32 используем processInputWin32
 }
 
 // WIN32 ВЕРСИЯ

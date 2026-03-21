@@ -1,6 +1,5 @@
 #include "core.h"
 #include "../Application/application.h"
-#include "Render/GLFW/renderer.h"
 #include "Render/Win32/rendererw.h"
 #include "Render/Win32/RenderUI.h"
 #include "../Interface/InterfaceManager.h"
@@ -9,7 +8,6 @@
 #include <iostream>
 #include <String>
 #include <GL/glew.h>
-#include <GLFW/glfw3.h>
 #include <conio.h>
 #include "../Application/WindowAPIsupport/Win32/InitialWin32.h"
 
@@ -60,137 +58,96 @@ void Core::GameLoop() {
         return;
     }
     
-    cout << "PIZDAAA TI DOSHEL";
-    string pizda = app.getModeWinApi();
-    
-    if(pizda == "glfw") {
-        Renderer renderer;
-        if (!renderer.initialize(app.getWindow())) {
-            std::cerr << "Renderer initialization failed!" << std::endl;
-            return;
-        }
-        
-        GLuint shaderProgram = initShaders();
-        if (shaderProgram == 0) {
-            std::cerr << "Shader initialization failed!" << std::endl;
-            return;
-        }
-        
-        ModelParser modelParser;
-        if (!modelParser.loadModel(model)) {
-            std::cerr << "Model loading failed!" << std::endl;
-            return;
-        }
-        
-        std::cout << "Model loaded with " << modelParser.getMeshes().size() << " meshes" << std::endl;
-        
-        Input input(app);
-        
-        while (!glfwWindowShouldClose(app.getWindow())) {
-            static float lastFrame = 0.0f;
-            float currentFrame = glfwGetTime();
-            float deltaTime = currentFrame - lastFrame;
-            lastFrame = currentFrame;
-            
-            renderer.setAnimateModel(false);
-            input.processInput(deltaTime);
-            renderer.beginFrame();
-            renderer.renderModel(modelParser, shaderProgram, app.getCamera());
-            renderer.endFrame();
-        }
-        
-        glDeleteProgram(shaderProgram);
-        renderer.cleanup();
+    cout << "PIZDAAA TI DOSHEL" << endl;
+
+    InitialWin32* win32Window = app.getWindow32();
+    if (!win32Window) {
+        std::cerr << "Error: Win32 window is null" << std::endl;
+        return;
     }
-    else if (pizda == "Win32") {  
-        InitialWin32* win32Window = app.getWindow32();
-        if (!win32Window) {
-            std::cerr << "Error: Win32 window is null" << std::endl;
-            return;
+
+    RendererW rendererw;
+    if (!rendererw.initialize(win32Window)) {
+        std::cerr << "Error: Failed to initialize RendererW" << std::endl;
+        return;
+    }
+
+    GLuint shaderProgram = rendererw.initShaders();
+    if (shaderProgram == 0) {
+        std::cerr << "Error: Failed to create shader program" << std::endl;
+        return;
+    }
+
+    ModelParser modelParser;
+    if (!modelParser.loadModel(model)) {
+        std::cerr << "Error: Failed to load model" << std::endl;
+        glDeleteProgram(shaderProgram);
+        return;
+    }
+
+    g_uiManager = new InterfaceManager(this);
+    g_uiManager->setWindow(win32Window);
+    SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
+
+    rendererw.optimize(modelParser, shaderProgram);
+
+    Input input(app);
+    POINT lastMousePos = {0, 0};
+    GetCursorPos(&lastMousePos);
+
+    int frameCount = 0;
+    float fpsTimer = 0.0f;
+
+    while (!win32Window->shouldClose()) {
+        static float lastFrame = 0.0f;
+        float currentFrame = GetTickCount() / 1000.0f;
+        float deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
+        // FPS счетчик
+        fpsTimer += deltaTime;
+        frameCount++;
+        if (fpsTimer >= 1.0f) {
+            char title[256];
+            sprintf_s(title, "FPS: %d", frameCount);
+            SetWindowTextA(win32Window->getHWND(), title);
+            frameCount = 0;
+            fpsTimer = 0.0f;
         }
-        
-        RendererW rendererw;
-        if (!rendererw.initialize(win32Window)) {
-            std::cerr << "Error: Failed to initialize RendererW" << std::endl;
-            return;
-        }
-        
-        GLuint shaderProgram = rendererw.initShaders();
-        if (shaderProgram == 0) {
-            std::cerr << "Error: Failed to create shader program" << std::endl;
-            return;
-        }
-        
-        ModelParser modelParser;
-        if (!modelParser.loadModel(model)) {
-            std::cerr << "Error: Failed to load model" << std::endl;
-            glDeleteProgram(shaderProgram);
-            return;
-        }
-        
-        g_uiManager = new InterfaceManager(this);
-        g_uiManager->setWindow(win32Window);
-        
-        SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
-        
-        rendererw.optimize(modelParser, shaderProgram);
-        
-        Input input(app);
-        POINT lastMousePos = {0, 0};
-        GetCursorPos(&lastMousePos);
-        
-        int frameCount = 0;
-        float fpsTimer = 0.0f;
-        
-        while (!win32Window->shouldClose()) {
-            static float lastFrame = 0.0f;
-            float currentFrame = GetTickCount() / 1000.0f;
-            float deltaTime = currentFrame - lastFrame;
-            lastFrame = currentFrame;
-            
-            // FPS счетчик
-            fpsTimer += deltaTime;
-            frameCount++;
-            if (fpsTimer >= 1.0f) {
-                char title[256];
-                sprintf_s(title, "FPS: %d", frameCount);
-                SetWindowTextA(win32Window->getHWND(), title);
-                frameCount = 0;
-                fpsTimer = 0.0f;
-            }
-            
-            win32Window->pollEvents();
-            
-            POINT currentMousePos;
-            GetCursorPos(&currentMousePos);
-            ScreenToClient(win32Window->getHWND(), &currentMousePos);
-            if(isStart == false) {             
+
+        win32Window->pollEvents();
+
+        POINT currentMousePos;
+        GetCursorPos(&currentMousePos);
+        ScreenToClient(win32Window->getHWND(), &currentMousePos);
+
+        if (!isStart) {
             input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
             input.processInputWin32(deltaTime, win32Window->getHWND());
-            
+
             rendererw.setAnimateModel(false);
-            
+
             glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             rendererw.renderModel(modelParser, shaderProgram, app.getCamera());
-            } else { 
-                std::cout << "cicl ostanovlen " << endl;
-            }
-            g_uiManager->renderStatic();
-            
-            HDC hdc = GetDC(win32Window->getHWND());
-            SwapBuffers(hdc);
-            ReleaseDC(win32Window->getHWND(), hdc);
-            
-            lastMousePos = currentMousePos;
-            Sleep(0);
+        } else {
+            std::cout << "cicl ostanovlen " << std::endl;
         }
-        
-        delete g_uiManager;
-        g_uiManager = nullptr;
-        
-        glDeleteProgram(shaderProgram);
-        rendererw.cleanup();
+
+        g_uiManager->renderStatic();
+
+        HDC hdc = GetDC(win32Window->getHWND());
+        SwapBuffers(hdc);
+        ReleaseDC(win32Window->getHWND(), hdc);
+
+        lastMousePos = currentMousePos;
+        Sleep(0);
     }
+
+    delete g_uiManager;
+    g_uiManager = nullptr;
+
+    glDeleteProgram(shaderProgram);
+    rendererw.cleanup();
 }
