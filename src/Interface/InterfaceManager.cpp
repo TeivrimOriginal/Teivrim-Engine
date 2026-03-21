@@ -2,31 +2,20 @@
 #include <iostream>
 
 InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePtr) {
-    // Создаем кнопки
-    objectUI.createButton("Button 1", 10, 10, 80, 25, []() {
-        std::cout << "Button 1 clicked!" << std::endl;
-    });
-    
-    objectUI.createButton("Button 2", 100, 10, 80, 25, [this]() {  // Захватываем this
-        std::cout << "Button 2 clicked!" << std::endl;
+    // Убираем старые кнопки, добавляем только кнопку загрузки модели
+    objectUI.createButton("Load Model", 20, 5, 160, 30, [this]() {
+        std::cout << "Load Model clicked" << std::endl;
         if (core) {
-            SwapFlag(*core);
-            std::cout << "Core.isStart = " << core->isStart << std::endl;
+            HWND hwnd = getHWND();
+            if (core->openFileDialogAndLoadModel(hwnd)) {
+                std::cout << "Model успешно загружена" << std::endl;
+            } else {
+                std::cout << "Model не загружена или операция отменена" << std::endl;
+            }
         }
     });
-    
-    objectUI.createButton("Left Button", 20, 50, 100, 30, []() {
-        std::cout << "Left panel button clicked!" << std::endl;
-    });
-    
-    objectUI.createButton("Right Button", 20, 100, 100, 30, []() {
-        std::cout << "Right panel button clicked!" << std::endl;
-    });
-    
-    objectUI.attachToPanel("Button 1", PanelType::Top);
-    objectUI.attachToPanel("Button 2", PanelType::Top);
-    objectUI.attachToPanel("Left Button", PanelType::Left);
-    objectUI.attachToPanel("Right Button", PanelType::Right);
+
+    objectUI.attachToPanel("Load Model", PanelType::Bottom);
 }
 Dimensions InterfaceManager::getDimensions() {
     Dimensions dims = {0, 0};
@@ -106,6 +95,11 @@ void InterfaceManager::handleClick(int x, int y) {
     
     objectUI.handleClick(x, y, dims.width, dims.height, panels);
 }
+
 void InterfaceManager::SwapFlag(Core &A) {
     A.isStart = !A.isStart;  // Упрощаем
+}
+
+HWND InterfaceManager::getHWND() const {
+    return window ? window->getHWND() : nullptr;
 }

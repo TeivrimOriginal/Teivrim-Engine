@@ -31,6 +31,7 @@ public:
     void renderDynamic();
     void handleClick(int x, int y);
     void SwapFlag(Core &A);
+    HWND getHWND() const;
 };
 
 #endif

@@ -3,17 +3,16 @@
 #include "Render/Win32/rendererw.h"
 #include "Render/Win32/RenderUI.h"
 #include "../Interface/InterfaceManager.h"
-#include "parser.h"
+#include "Render/Parser/parser.h"
 #include "../Control/Input.h"
 #include <iostream>
-#include <String>
+#include <string>
 #include <GL/glew.h>
 #include <conio.h>
+#include <commdlg.h>
 #include "../Application/WindowAPIsupport/Win32/InitialWin32.h"
 
 using namespace std;
-
-string model;
 
 // Глобальные переменные
 InterfaceManager* g_uiManager = nullptr;
@@ -42,23 +41,58 @@ void Core::settingUpRender() {
 void Core::ParserToRender() {
 }
 
+bool Core::loadModelFromPath(const std::string& path) {
+    if (path.empty()) {
+        std::cerr << "Путь к модели пустой" << std::endl;
+        return false;
+    }
+
+    if (!modelParser.loadModel(path)) {
+        std::cerr << "Ошибка загрузки модели: " << path << std::endl;
+        return false;
+    }
+
+    modelPath = path;
+    modelLoaded = true;
+
+    if (shaderProgram != 0) {
+        rendererw.optimize(modelParser, shaderProgram);
+    }
+
+    std::cout << "Модель успешно загружена: " << path << std::endl;
+    return true;
+}
+
+bool Core::openFileDialogAndLoadModel(HWND hwnd) {
+    OPENFILENAMEA ofn;
+    CHAR szFile[MAX_PATH] = "";
+
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = sizeof(szFile);
+    ofn.lpstrFilter = "3D Models (OBJ, FBX, DAE, GLTF, GLB)\0*.obj;*.fbx;*.dae;*.gltf;*.glb\0All Files\0*.*\0";
+    ofn.nFilterIndex = 1;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+    ofn.lpstrTitle = "Выберите 3D модель";
+
+    if (GetOpenFileNameA(&ofn)) {
+        if (loadModelFromPath(ofn.lpstrFile)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void Core::GameLoop() {
     Application app;
-    cout << "poiza";
-    
-    string model;
-    cout << "введите модель которую хотите импортировать" << endl;
-    cin >> model;
-    cout << endl;
-    
-    cout << "poiza";
-    
+
     if (!app.createApplication()) {
         std::cerr << "Application creation failed!" << std::endl;
         return;
     }
-    
-    cout << "PIZDAAA TI DOSHEL" << endl;
 
     InitialWin32* win32Window = app.getWindow32();
     if (!win32Window) {
@@ -66,22 +100,14 @@ void Core::GameLoop() {
         return;
     }
 
-    RendererW rendererw;
     if (!rendererw.initialize(win32Window)) {
         std::cerr << "Error: Failed to initialize RendererW" << std::endl;
         return;
     }
 
-    GLuint shaderProgram = rendererw.initShaders();
+    shaderProgram = rendererw.initShaders();
     if (shaderProgram == 0) {
         std::cerr << "Error: Failed to create shader program" << std::endl;
-        return;
-    }
-
-    ModelParser modelParser;
-    if (!modelParser.loadModel(model)) {
-        std::cerr << "Error: Failed to load model" << std::endl;
-        glDeleteProgram(shaderProgram);
         return;
     }
 
@@ -89,7 +115,6 @@ void Core::GameLoop() {
     g_uiManager->setWindow(win32Window);
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
 
-    rendererw.optimize(modelParser, shaderProgram);
 
     Input input(app);
     POINT lastMousePos = {0, 0};
@@ -130,7 +155,9 @@ void Core::GameLoop() {
             glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            rendererw.renderModel(modelParser, shaderProgram, app.getCamera());
+            if (modelLoaded) {
+                rendererw.renderModel(modelParser, shaderProgram, app.getCamera());
+            }
         } else {
             std::cout << "cicl ostanovlen " << std::endl;
         }
