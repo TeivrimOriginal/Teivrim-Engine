@@ -2,7 +2,28 @@
 #include <iostream>
 
 InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePtr) {
-    // Убираем старые кнопки, добавляем только кнопку загрузки модели
+    // Старые кнопки
+    objectUI.createButton("Button 1", 10, 10, 80, 25, []() {
+        std::cout << "Button 1 clicked!" << std::endl;
+    });
+    
+    objectUI.createButton("Button 2", 100, 10, 80, 25, [this]() {
+        std::cout << "Button 2 clicked!" << std::endl;
+        if (core) {
+            SwapFlag(*core);
+            std::cout << "Core.isStart = " << core->isStart << std::endl;
+        }
+    });
+    
+    objectUI.createButton("Left Button", 20, 50, 100, 30, []() {
+        std::cout << "Left panel button clicked!" << std::endl;
+    });
+    
+    objectUI.createButton("Right Button", 20, 100, 100, 30, []() {
+        std::cout << "Right panel button clicked!" << std::endl;
+    });
+    
+    // Новая кнопка загрузки модели
     objectUI.createButton("Load Model", 20, 5, 160, 30, [this]() {
         std::cout << "Load Model clicked" << std::endl;
         if (core) {
@@ -14,7 +35,11 @@ InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePt
             }
         }
     });
-
+    
+    objectUI.attachToPanel("Button 1", PanelType::Top);
+    objectUI.attachToPanel("Button 2", PanelType::Top);
+    objectUI.attachToPanel("Left Button", PanelType::Left);
+    objectUI.attachToPanel("Right Button", PanelType::Right);
     objectUI.attachToPanel("Load Model", PanelType::Bottom);
 }
 Dimensions InterfaceManager::getDimensions() {

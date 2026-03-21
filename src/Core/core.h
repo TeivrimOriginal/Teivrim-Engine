@@ -11,6 +11,7 @@ class Core {
 public:
     bool isStart = false;
     bool modelLoaded = false;
+    bool needsOptimize = false;
     std::string modelPath;
     GLuint shaderProgram = 0;
 

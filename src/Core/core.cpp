@@ -54,10 +54,7 @@ bool Core::loadModelFromPath(const std::string& path) {
 
     modelPath = path;
     modelLoaded = true;
-
-    if (shaderProgram != 0) {
-        rendererw.optimize(modelParser, shaderProgram);
-    }
+    needsOptimize = true;  // Флаг для оптимизации в GameLoop
 
     std::cout << "Модель успешно загружена: " << path << std::endl;
     return true;
@@ -145,6 +142,12 @@ void Core::GameLoop() {
         POINT currentMousePos;
         GetCursorPos(&currentMousePos);
         ScreenToClient(win32Window->getHWND(), &currentMousePos);
+
+        // Оптимизируем модель если она была загружена
+        if (needsOptimize && modelLoaded && shaderProgram != 0) {
+            rendererw.optimize(modelParser, shaderProgram);
+            needsOptimize = false;
+        }
 
         if (!isStart) {
             input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
