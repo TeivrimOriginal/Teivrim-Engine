@@ -1,7 +1,20 @@
 #include "RenderUI.h"
+#include <string>
+#include <vector>
+#include <cstring>
+#include <cstdio>
 
-RenderUI::RenderUI() {}
-RenderUI::~RenderUI() {}
+RenderUI::RenderUI() 
+    : fontTexture(0)
+    , fontInitialized(false) 
+{
+}
+
+RenderUI::~RenderUI() {
+    if (fontTexture) {
+        glDeleteTextures(1, &fontTexture);
+    }
+}
 
 void RenderUI::saveState(GLint& prog, GLint vp[4], GLboolean& dt) {
     glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
@@ -11,7 +24,8 @@ void RenderUI::saveState(GLint& prog, GLint vp[4], GLboolean& dt) {
 
 void RenderUI::restoreState(GLint prog, GLint vp[4], GLboolean dt) {
     glViewport(vp[0], vp[1], vp[2], vp[3]);
-    dt ? glEnable(GL_DEPTH_TEST) : glDisable(GL_DEPTH_TEST);
+    if (dt) glEnable(GL_DEPTH_TEST);
+    else glDisable(GL_DEPTH_TEST);
     glUseProgram(prog);
 }
 
@@ -90,4 +104,143 @@ void RenderUI::drawUI(HWND hwnd) {
     
     restoreMatrices();
     restoreState(prog, vp, dt);
+}
+
+void RenderUI::initFont() {
+    if (fontInitialized) return;
+    
+    // Пробуем несколько путей
+    const char* fontPaths[] = {
+        "fonts/arial.ttf",
+        "fonts/tahoma.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/tahoma.ttf"
+    };
+    
+    FILE* fontFile = nullptr;
+    
+    for (int i = 0; i < 4; i++) {
+        fontFile = fopen(fontPaths[i], "rb");
+        if (fontFile) {
+            printf("Font loaded: %s\n", fontPaths[i]);
+            break;
+        }
+    }
+    
+    if (!fontFile) {
+        printf("ERROR: Cannot load any font file\n");
+        printf("Please put arial.ttf in 'fonts/' folder\n");
+        return;
+    }
+    
+    fseek(fontFile, 0, SEEK_END);
+    long size = ftell(fontFile);
+    fseek(fontFile, 0, SEEK_SET);
+    
+    unsigned char* fontBuffer = new unsigned char[size];
+    fread(fontBuffer, 1, size, fontFile);
+    fclose(fontFile);
+    
+    // Создаем текстуру атласа шрифта
+    const int atlasWidth = 512;
+    const int atlasHeight = 512;
+    unsigned char* atlasBitmap = new unsigned char[atlasWidth * atlasHeight];
+    memset(atlasBitmap, 0, atlasWidth * atlasHeight);
+    
+    int result = stbtt_BakeFontBitmap(fontBuffer, 0, 16.0f, atlasBitmap, 
+                                       atlasWidth, atlasHeight, 32, 96, glyphs);
+    
+    if (result <= 0) {
+        printf("ERROR: Failed to bake font bitmap (result=%d)\n", result);
+        delete[] fontBuffer;
+        delete[] atlasBitmap;
+        return;
+    }
+    
+    printf("Font baked successfully, atlas size: %d bytes\n", result);
+    
+    // Создаем OpenGL текстуру
+    glGenTextures(1, &fontTexture);
+    glBindTexture(GL_TEXTURE_2D, fontTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, atlasWidth, atlasHeight, 0, 
+                 GL_RED, GL_UNSIGNED_BYTE, atlasBitmap);
+    
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    
+    delete[] fontBuffer;
+    delete[] atlasBitmap;
+    
+    fontInitialized = true;
+    printf("Font texture created successfully (ID: %d)\n", fontTexture);
+}
+
+void RenderUI::drawText(int x, int y, const std::string& text, float r, float g, float b) {
+    if (!fontInitialized) {
+        initFont();
+        if (!fontInitialized) return;
+    }
+    
+    // Включаем смешивание для прозрачности
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, fontTexture);
+    glColor3f(r, g, b);
+    
+    float curX = (float)x;
+    float curY = (float)y;
+    
+    glBegin(GL_QUADS);
+    for (char c : text) {
+        if (c < 32 || c > 127) continue;
+        
+        stbtt_bakedchar& ch = glyphs[c - 32];
+        
+        float x0 = curX + ch.xoff;
+        float y0 = curY + ch.yoff;
+        float x1 = x0 + ch.x1 - ch.x0;
+        float y1 = y0 + ch.y1 - ch.y0;
+        
+        float u0 = ch.x0 / 512.0f;
+        float v0 = ch.y0 / 512.0f;
+        float u1 = ch.x1 / 512.0f;
+        float v1 = ch.y1 / 512.0f;
+        
+        glTexCoord2f(u0, v0); glVertex2f(x0, y0);
+        glTexCoord2f(u1, v0); glVertex2f(x1, y0);
+        glTexCoord2f(u1, v1); glVertex2f(x1, y1);
+        glTexCoord2f(u0, v1); glVertex2f(x0, y1);
+        
+        curX += ch.xadvance;
+    }
+    glEnd();
+    
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_BLEND);
+}
+
+void RenderUI::drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b) {
+    if (!fontInitialized) {
+        initFont();
+        if (!fontInitialized) return;
+    }
+    
+    // Вычисляем ширину текста
+    float textWidth = 0;
+    for (char c : text) {
+        if (c >= 32 && c <= 127) {
+            textWidth += glyphs[c - 32].xadvance;
+        }
+    }
+    
+    float textHeight = 16.0f;
+    
+    int centerX = x + (int)((w - textWidth) / 2);
+    int centerY = y + (int)((h - textHeight) / 2);
+    
+    drawText(centerX, centerY, text, r, g, b);
 }

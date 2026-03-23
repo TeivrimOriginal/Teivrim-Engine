@@ -94,10 +94,18 @@ void ObjectUI::updatePositions(int sw, int sh, const Panels& panels) {
 void ObjectUI::render(RenderUI& r, int w, int h, const Panels& panels) {
     updatePositions(w, h, panels);
     
+    // Сначала рисуем все объекты
     for (auto obj : objects) {
         glBegin(GL_QUADS);
         obj->render(r);
         glEnd();
+    }
+    
+    // Потом рисуем текст поверх кнопок
+    for (auto obj : objects) {
+        int textX = obj->getAX() + (obj->getW() - (int)obj->getName().length() * 8) / 2;
+        int textY = obj->getAY() + (obj->getH() - 12) / 2;
+        r.drawText(textX, textY, obj->getName(), 0.0f, 0.0f, 0.0f);
     }
 }
 

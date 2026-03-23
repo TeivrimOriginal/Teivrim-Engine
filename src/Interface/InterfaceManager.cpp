@@ -42,6 +42,7 @@ InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePt
     objectUI.attachToPanel("Right Button", PanelType::Right);
     objectUI.attachToPanel("Load Model", PanelType::Bottom);
 }
+
 Dimensions InterfaceManager::getDimensions() {
     Dimensions dims = {0, 0};
     if (!window) return dims;
@@ -92,6 +93,18 @@ void InterfaceManager::renderStatic() {
     objectUI.render(renderer, dims.width, dims.height, panels);
     glEnd();
     
+    // Добавляем информационный текст поверх всего UI
+    renderer.drawText(10, dims.height - 25, "3D Viewer v1.0", 0.8f, 0.8f, 0.8f);
+    
+    if (core && core->modelLoaded) {
+        std::string status = "Model: " + core->modelPath.substr(core->modelPath.find_last_of("/\\") + 1);
+        renderer.drawText(10, dims.height - 40, status, 0.5f, 0.8f, 0.5f);
+    } else {
+        renderer.drawText(10, dims.height - 40, "No model loaded", 0.8f, 0.5f, 0.5f);
+    }
+    
+    renderer.drawText(dims.width - 150, dims.height - 25, "Press ESC to exit", 0.6f, 0.6f, 0.6f);
+    
     renderer.restoreMatrices();
     
     glViewport(currentViewport[0], currentViewport[1], currentViewport[2], currentViewport[3]);
@@ -122,7 +135,7 @@ void InterfaceManager::handleClick(int x, int y) {
 }
 
 void InterfaceManager::SwapFlag(Core &A) {
-    A.isStart = !A.isStart;  // Упрощаем
+    A.isStart = !A.isStart;
 }
 
 HWND InterfaceManager::getHWND() const {
