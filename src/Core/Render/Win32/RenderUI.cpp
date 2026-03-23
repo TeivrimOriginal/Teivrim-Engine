@@ -98,7 +98,6 @@ void RenderUI::drawUI(HWND hwnd) {
     restoreMatrices();
     restoreState(prog, vp, dt);
 }
-
 void RenderUI::initFont() {
     if (fontInitialized) return;
     
@@ -128,7 +127,6 @@ void RenderUI::initFont() {
     
     if (!fontFile) {
         printf("ERROR: Cannot load any font file\n");
-        printf("Please create 'fonts' folder and put arial.ttf there\n");
         return;
     }
     
@@ -157,10 +155,20 @@ void RenderUI::initFont() {
     
     printf("Font baked successfully, atlas size: %d bytes\n", result);
     
+    // Создаем RGBA текстуру с альфа-каналом
+    unsigned char* rgbaBitmap = new unsigned char[atlasWidth * atlasHeight * 4];
+    for (int i = 0; i < atlasWidth * atlasHeight; i++) {
+        unsigned char alpha = atlasBitmap[i];
+        rgbaBitmap[i * 4 + 0] = 255;  // R - белый
+        rgbaBitmap[i * 4 + 1] = 255;  // G - белый
+        rgbaBitmap[i * 4 + 2] = 255;  // B - белый
+        rgbaBitmap[i * 4 + 3] = alpha; // A - альфа из bitmap
+    }
+    
     glGenTextures(1, &fontTexture);
     glBindTexture(GL_TEXTURE_2D, fontTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, atlasWidth, atlasHeight, 0, 
-                 GL_RED, GL_UNSIGNED_BYTE, atlasBitmap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, atlasWidth, atlasHeight, 0, 
+                 GL_RGBA, GL_UNSIGNED_BYTE, rgbaBitmap);
     
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -169,12 +177,11 @@ void RenderUI::initFont() {
     
     delete[] fontBuffer;
     delete[] atlasBitmap;
+    delete[] rgbaBitmap;
     
     fontInitialized = true;
     printf("Font texture created successfully (ID: %d)\n", fontTexture);
-}
-
-void RenderUI::drawText(int x, int y, const std::string& text, float r, float g, float b) {
+}void RenderUI::drawText(int x, int y, const std::string& text, float r, float g, float b) {
     if (!fontInitialized) {
         initFont();
         if (!fontInitialized) return;
@@ -185,7 +192,6 @@ void RenderUI::drawText(int x, int y, const std::string& text, float r, float g,
     
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, fontTexture);
-    glColor4f(r, g, b, 1.0f);
     
     float curX = (float)x;
     float curY = (float)y;
@@ -211,6 +217,7 @@ void RenderUI::drawText(int x, int y, const std::string& text, float r, float g,
         float u1 = ch.x1 / 512.0f;
         float v1 = ch.y1 / 512.0f;
         
+        glColor4f(r, g, b, 1.0f);
         glTexCoord2f(u0, v0); glVertex2f(x0, y0);
         glTexCoord2f(u1, v0); glVertex2f(x1, y0);
         glTexCoord2f(u1, v1); glVertex2f(x1, y1);
@@ -223,7 +230,6 @@ void RenderUI::drawText(int x, int y, const std::string& text, float r, float g,
     glDisable(GL_TEXTURE_2D);
     glDisable(GL_BLEND);
 }
-
 void RenderUI::drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b) {
     if (!fontInitialized) {
         initFont();
