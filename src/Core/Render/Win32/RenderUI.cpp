@@ -88,16 +88,9 @@ void RenderUI::drawUI(HWND hwnd) {
     int panelW = (int)(w * 0.156f);
     int panelH = (int)(h * 0.046f);
     
-    // Левая панель
     drawPanel(0, 0, panelW, h, 0.2f, 0.2f, 0.2f);
-    
-    // Правая панель
     drawPanel(w - panelW, 0, w, h, 0.2f, 0.2f, 0.2f);
-    
-    // Верхняя панель
     drawPanel(panelW, 0, w - panelW, panelH, 0.3f, 0.3f, 0.3f);
-    
-    // Нижняя панель
     drawPanel(panelW, h - panelH, w - panelW, h, 0.3f, 0.3f, 0.3f);
     
     glEnd();
@@ -109,27 +102,33 @@ void RenderUI::drawUI(HWND hwnd) {
 void RenderUI::initFont() {
     if (fontInitialized) return;
     
-    // Пробуем несколько путей
     const char* fontPaths[] = {
         "fonts/arial.ttf",
         "fonts/tahoma.ttf",
+        "./fonts/arial.ttf",
+        "../fonts/arial.ttf",
         "C:/Windows/Fonts/arial.ttf",
-        "C:/Windows/Fonts/tahoma.ttf"
+        "C:/Windows/Fonts/tahoma.ttf",
+        "C:/Windows/Fonts/consola.ttf"
     };
     
     FILE* fontFile = nullptr;
+    char currentDir[1024];
+    GetCurrentDirectoryA(1024, currentDir);
+    printf("Current directory: %s\n", currentDir);
     
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 7; i++) {
+        printf("Trying: %s\n", fontPaths[i]);
         fontFile = fopen(fontPaths[i], "rb");
         if (fontFile) {
-            printf("Font loaded: %s\n", fontPaths[i]);
+            printf("SUCCESS: Font loaded from: %s\n", fontPaths[i]);
             break;
         }
     }
     
     if (!fontFile) {
         printf("ERROR: Cannot load any font file\n");
-        printf("Please put arial.ttf in 'fonts/' folder\n");
+        printf("Please create 'fonts' folder and put arial.ttf there\n");
         return;
     }
     
@@ -141,7 +140,6 @@ void RenderUI::initFont() {
     fread(fontBuffer, 1, size, fontFile);
     fclose(fontFile);
     
-    // Создаем текстуру атласа шрифта
     const int atlasWidth = 512;
     const int atlasHeight = 512;
     unsigned char* atlasBitmap = new unsigned char[atlasWidth * atlasHeight];
@@ -159,7 +157,6 @@ void RenderUI::initFont() {
     
     printf("Font baked successfully, atlas size: %d bytes\n", result);
     
-    // Создаем OpenGL текстуру
     glGenTextures(1, &fontTexture);
     glBindTexture(GL_TEXTURE_2D, fontTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, atlasWidth, atlasHeight, 0, 
@@ -183,13 +180,12 @@ void RenderUI::drawText(int x, int y, const std::string& text, float r, float g,
         if (!fontInitialized) return;
     }
     
-    // Включаем смешивание для прозрачности
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, fontTexture);
-    glColor3f(r, g, b);
+    glColor4f(r, g, b, 1.0f);
     
     float curX = (float)x;
     float curY = (float)y;
@@ -200,10 +196,15 @@ void RenderUI::drawText(int x, int y, const std::string& text, float r, float g,
         
         stbtt_bakedchar& ch = glyphs[c - 32];
         
+        if (ch.x0 == 0 && ch.x1 == 0 && ch.y0 == 0 && ch.y1 == 0) {
+            curX += ch.xadvance;
+            continue;
+        }
+        
         float x0 = curX + ch.xoff;
         float y0 = curY + ch.yoff;
-        float x1 = x0 + ch.x1 - ch.x0;
-        float y1 = y0 + ch.y1 - ch.y0;
+        float x1 = x0 + (ch.x1 - ch.x0);
+        float y1 = y0 + (ch.y1 - ch.y0);
         
         float u0 = ch.x0 / 512.0f;
         float v0 = ch.y0 / 512.0f;
@@ -229,7 +230,6 @@ void RenderUI::drawTextCentered(int x, int y, int w, int h, const std::string& t
         if (!fontInitialized) return;
     }
     
-    // Вычисляем ширину текста
     float textWidth = 0;
     for (char c : text) {
         if (c >= 32 && c <= 127) {

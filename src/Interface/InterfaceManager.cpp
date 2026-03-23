@@ -2,7 +2,6 @@
 #include <iostream>
 
 InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePtr) {
-    // Старые кнопки
     objectUI.createButton("Button 1", 10, 10, 80, 25, []() {
         std::cout << "Button 1 clicked!" << std::endl;
     });
@@ -23,15 +22,14 @@ InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePt
         std::cout << "Right panel button clicked!" << std::endl;
     });
     
-    // Новая кнопка загрузки модели
     objectUI.createButton("Load Model", 20, 5, 160, 30, [this]() {
         std::cout << "Load Model clicked" << std::endl;
         if (core) {
             HWND hwnd = getHWND();
             if (core->openFileDialogAndLoadModel(hwnd)) {
-                std::cout << "Model успешно загружена" << std::endl;
+                std::cout << "Model successfully loaded" << std::endl;
             } else {
-                std::cout << "Model не загружена или операция отменена" << std::endl;
+                std::cout << "Model not loaded or cancelled" << std::endl;
             }
         }
     });
@@ -81,10 +79,6 @@ void InterfaceManager::renderStatic() {
     GLint viewport[4];
     GLboolean depthTest;
     renderer.saveState(program, viewport, depthTest);
-    PanelDimensions panelDims = panels.getDimensions(dims.width, dims.height);
-    
-    GLint currentViewport[4];
-    glGetIntegerv(GL_VIEWPORT, currentViewport);
     
     renderer.setup2D(dims.width, dims.height);
     
@@ -93,22 +87,18 @@ void InterfaceManager::renderStatic() {
     objectUI.render(renderer, dims.width, dims.height, panels);
     glEnd();
     
-    // Добавляем информационный текст поверх всего UI
-    renderer.drawText(10, dims.height - 25, "3D Viewer v1.0", 0.8f, 0.8f, 0.8f);
+    renderer.drawText(10, dims.height - 25, "3D Viewer v1.0", 1.0f, 1.0f, 1.0f);
     
     if (core && core->modelLoaded) {
         std::string status = "Model: " + core->modelPath.substr(core->modelPath.find_last_of("/\\") + 1);
         renderer.drawText(10, dims.height - 40, status, 0.5f, 0.8f, 0.5f);
     } else {
-        renderer.drawText(10, dims.height - 40, "No model loaded", 0.8f, 0.5f, 0.5f);
+        renderer.drawText(10, dims.height - 40, "No model loaded", 1.0f, 0.8f, 0.3f);
     }
     
-    renderer.drawText(dims.width - 150, dims.height - 25, "Press ESC to exit", 0.6f, 0.6f, 0.6f);
+    renderer.drawText(dims.width - 150, dims.height - 25, "Press ESC to exit", 0.7f, 0.7f, 0.7f);
     
     renderer.restoreMatrices();
-    
-    glViewport(currentViewport[0], currentViewport[1], currentViewport[2], currentViewport[3]);
-    
     renderer.restoreState(program, viewport, depthTest);
 }
 

@@ -1,7 +1,6 @@
 #include "ObjectUI.h"
 #include <iostream>
 
-// ============ UIObject ============
 UIObject::UIObject(const std::string& n, int ix, int iy, int iw, int ih)
     : name(n), x(ix), y(iy), w(iw), h(ih), ax(ix), ay(iy), attachedPanel(PanelType::None) {}
 
@@ -14,38 +13,32 @@ void UIObject::updatePosition(int panelX, int panelY) {
     ay = panelY + y;
 }
 
-// ============ Button ============
 Button::Button(const std::string& n, int ix, int iy, int iw, int ih, std::function<void()> cb)
     : UIObject(n, ix, iy, iw, ih), callback(cb) {}
 
 void Button::render(RenderUI& r) const {
-    // Заливка кнопки
-    glColor3f(0.7f, 0.7f, 0.7f);
+    glColor3f(0.5f, 0.5f, 0.6f);
     glVertex2f(ax, ay);
     glVertex2f(ax + w, ay);
     glVertex2f(ax + w, ay + h);
     glVertex2f(ax, ay + h);
     
-    // Рамка сверху
     glColor3f(0.3f, 0.3f, 0.3f);
     glVertex2f(ax, ay);
     glVertex2f(ax + w, ay);
     glVertex2f(ax + w, ay + 2);
     glVertex2f(ax, ay + 2);
     
-    // Рамка снизу
     glVertex2f(ax, ay + h - 2);
     glVertex2f(ax + w, ay + h - 2);
     glVertex2f(ax + w, ay + h);
     glVertex2f(ax, ay + h);
     
-    // Рамка слева
     glVertex2f(ax, ay);
     glVertex2f(ax + 2, ay);
     glVertex2f(ax + 2, ay + h);
     glVertex2f(ax, ay + h);
     
-    // Рамка справа
     glVertex2f(ax + w - 2, ay);
     glVertex2f(ax + w, ay);
     glVertex2f(ax + w, ay + h);
@@ -59,7 +52,6 @@ void Button::onClick(int x, int y) {
     }
 }
 
-// ============ ObjectUI ============
 ObjectUI::ObjectUI() {}
 
 ObjectUI::~ObjectUI() {
@@ -94,18 +86,16 @@ void ObjectUI::updatePositions(int sw, int sh, const Panels& panels) {
 void ObjectUI::render(RenderUI& r, int w, int h, const Panels& panels) {
     updatePositions(w, h, panels);
     
-    // Сначала рисуем все объекты
     for (auto obj : objects) {
         glBegin(GL_QUADS);
         obj->render(r);
         glEnd();
     }
     
-    // Потом рисуем текст поверх кнопок
     for (auto obj : objects) {
         int textX = obj->getAX() + (obj->getW() - (int)obj->getName().length() * 8) / 2;
         int textY = obj->getAY() + (obj->getH() - 12) / 2;
-        r.drawText(textX, textY, obj->getName(), 0.0f, 0.0f, 0.0f);
+        r.drawText(textX, textY, obj->getName(), 1.0f, 1.0f, 1.0f);
     }
 }
 

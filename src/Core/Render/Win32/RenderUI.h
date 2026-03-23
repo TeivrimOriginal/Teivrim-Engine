@@ -5,7 +5,6 @@
 #include <windows.h>
 #include <string>
 
-// Без STB_TRUETYPE_IMPLEMENTATION здесь!
 #include "stb_truetype.h"
 
 class RenderUI {
@@ -31,7 +30,7 @@ private:
     
     GLuint fontTexture;
     bool fontInitialized;
-    stbtt_bakedchar glyphs[96]; // Для ASCII 32-127
+    stbtt_bakedchar glyphs[96];
 };
 
 #endif
