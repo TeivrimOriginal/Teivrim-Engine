@@ -1,0 +1,3 @@
+"G:\PROGRAMS FOR MADE ANYTHING\CMAKE\bin\cmake.exe" -E rm -f CMakeFiles\PolygonEditor.dir/objects.a
+C:\mingw64\bin\ar.exe qc CMakeFiles\PolygonEditor.dir/objects.a @CMakeFiles\PolygonEditor.dir\objects1.rsp
+C:\mingw64\bin\c++.exe  -Wall -O3 -Wl,--whole-archive CMakeFiles\PolygonEditor.dir/objects.a -Wl,--no-whole-archive -o PolygonEditor.exe -Wl,--out-implib,libPolygonEditor.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\PolygonEditor.dir\linkLibs.rsp

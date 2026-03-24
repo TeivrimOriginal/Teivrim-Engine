@@ -1,0 +1,3 @@
+E:/SOOBSHESTVA/Game_Engine/VERSION 3/3/build/CMakeFiles/PolygonEditor.dir
+E:/SOOBSHESTVA/Game_Engine/VERSION 3/3/build/CMakeFiles/edit_cache.dir
+E:/SOOBSHESTVA/Game_Engine/VERSION 3/3/build/CMakeFiles/rebuild_cache.dir

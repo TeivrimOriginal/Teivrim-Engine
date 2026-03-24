@@ -1,0 +1,1 @@
+  -L"E:/SOOBSHESTVA/Game_Engine/VERSION 3/3/lib"  -lassimp -lglfw3 -lglew32 -lopengl32 -lgdi32 -lws2_32 -lcomdlg32 -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32 

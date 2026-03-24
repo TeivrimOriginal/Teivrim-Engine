@@ -4,8 +4,9 @@
 #include <GL/glew.h>
 #include <windows.h>
 #include <string>
+#include <memory>
 
-#include "stb_truetype.h"
+#include "GraphicsApiSupport/RenderUI_OpenGL.h"
 
 class RenderUI {
 public:
@@ -26,11 +27,8 @@ public:
 
 private:
     void drawPanel(float x1, float y1, float x2, float y2, float r, float g, float b);
-    void initFont();
     
-    GLuint fontTexture;
-    bool fontInitialized;
-    stbtt_bakedchar glyphs[96];
+    std::unique_ptr<RenderUI_OpenGL> renderImpl;
 };
 
 #endif
