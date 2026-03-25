@@ -25,8 +25,7 @@ public:
     
     bool containsPoint(int px, int py) const;
     void updatePosition(int panelX, int panelY);
-    
-    // Геттеры
+    void updatePositions(int sw, int sh, const Panels& panels); // Уже есть, убедитесь что он публичный
     const std::string& getName() const { return name; }
     int getX() const { return x; }
     int getY() const { return y; }
@@ -36,7 +35,6 @@ public:
     int getAY() const { return ay; }
     PanelType getAttachedPanel() const { return attachedPanel; }
     
-    // Сеттеры
     void setPanel(PanelType p) { attachedPanel = p; }
 };
 

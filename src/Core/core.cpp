@@ -14,7 +14,7 @@
 
 using namespace std;
 
-// Глобальные переменные
+// В начале файла, после глобальных переменных
 InterfaceManager* g_uiManager = nullptr;
 
 // Обработчик кликов мыши для Win32
@@ -25,8 +25,29 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             int y = HIWORD(lParam);
             
             if (g_uiManager) {
+                // Сначала проверяем нажатие на грани
+                g_uiManager->handleMouseDown(x, y);
+                // Потом обычный клик по кнопкам
                 g_uiManager->handleClick(x, y);
                 std::cout << "Click handled at: " << x << ", " << y << std::endl;
+            }
+            break;
+        }
+        case WM_LBUTTONUP: {
+            int x = LOWORD(lParam);
+            int y = HIWORD(lParam);
+            
+            if (g_uiManager) {
+                g_uiManager->handleMouseUp(x, y);
+            }
+            break;
+        }
+        case WM_MOUSEMOVE: {
+            int x = LOWORD(lParam);
+            int y = HIWORD(lParam);
+            
+            if (g_uiManager) {
+                g_uiManager->handleMouseMove(x, y);
             }
             break;
         }

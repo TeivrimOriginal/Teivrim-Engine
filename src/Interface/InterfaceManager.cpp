@@ -124,6 +124,112 @@ void InterfaceManager::handleClick(int x, int y) {
     objectUI.handleClick(x, y, dims.width, dims.height, panels);
 }
 
+void InterfaceManager::handleMouseMove(int x, int y) {
+    Dimensions dims = getDimensions();
+    if (dims.width == 0 || dims.height == 0) return;
+    
+    // Если перетаскиваем грань
+    if (isDragging && draggingEdge != PanelType::None) {
+        int delta = 0;
+        
+        // Вычисляем дельту в зависимости от оси грани
+        switch (draggingEdge) {
+            case PanelType::Left:  // Вертикальная грань - двигаем по X
+                delta = x - dragStartX;
+                panels.setLeftWidth(dragStartValue + delta);
+                break;
+            case PanelType::Right: // Вертикальная грань - двигаем по X
+                delta = dragStartX - x;  // Инвертируем для правой грани
+                panels.setRightWidth(dragStartValue + delta);
+                break;
+            case PanelType::Top:   // Горизонтальная грань - двигаем по Y
+                delta = y - dragStartY;
+                panels.setTopHeight(dragStartValue + delta);
+                break;
+            case PanelType::Bottom: // Горизонтальная грань - двигаем по Y
+                delta = dragStartY - y;  // Инвертируем для нижней грани
+                panels.setBottomHeight(dragStartValue + delta);
+                break;
+            default:
+                break;
+        }
+        
+        // Обновляем позиции UI объектов после изменения размеров
+        objectUI.updatePositions(dims.width, dims.height, panels);
+        return;
+    }
+    
+    // Если не перетаскиваем, проверяем наведение на грани
+    PanelType edge = panels.getEdgeAt(x, y, dims.width, dims.height);
+    if (edge != PanelType::None) {
+        // Меняем курсор
+        HCURSOR cursor = getCursorForEdge(edge);
+        SetCursor(cursor);
+    }
+}
+
+void InterfaceManager::handleMouseDown(int x, int y) {
+    Dimensions dims = getDimensions();
+    if (dims.width == 0 || dims.height == 0) return;
+    
+    // Проверяем, нажали ли на грань
+    draggingEdge = panels.getEdgeAt(x, y, dims.width, dims.height);
+    
+    if (draggingEdge != PanelType::None) {
+        isDragging = true;
+        dragStartX = x;
+        dragStartY = y;
+        
+        // Запоминаем начальный размер панели
+        switch (draggingEdge) {
+            case PanelType::Left:
+                dragStartValue = panels.getLeftWidth();
+                break;
+            case PanelType::Right:
+                dragStartValue = panels.getRightWidth();
+                break;
+            case PanelType::Top:
+                dragStartValue = panels.getTopHeight();
+                break;
+            case PanelType::Bottom:
+                dragStartValue = panels.getBottomHeight();
+                break;
+            default:
+                break;
+        }
+        
+        // Захватываем мышь для отслеживания движения за пределами окна
+        if (window) {
+            SetCapture(window->getHWND());
+        }
+    }
+}
+
+void InterfaceManager::handleMouseUp(int x, int y) {
+    if (isDragging) {
+        isDragging = false;
+        draggingEdge = PanelType::None;
+        
+        // Отпускаем захват мыши
+        if (window) {
+            ReleaseCapture();
+        }
+    }
+}
+
+HCURSOR InterfaceManager::getCursorForEdge(PanelType edge) const {
+    switch (edge) {
+        case PanelType::Left:
+        case PanelType::Right:
+            return LoadCursor(NULL, IDC_SIZEWE);  // Горизонтальная стрелка
+        case PanelType::Top:
+        case PanelType::Bottom:
+            return LoadCursor(NULL, IDC_SIZENS);  // Вертикальная стрелка
+        default:
+            return LoadCursor(NULL, IDC_ARROW);
+    }
+}
+
 void InterfaceManager::SwapFlag(Core &A) {
     A.isStart = !A.isStart;
 }
