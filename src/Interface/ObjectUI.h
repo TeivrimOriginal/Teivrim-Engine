@@ -25,7 +25,8 @@ public:
     
     bool containsPoint(int px, int py) const;
     void updatePosition(int panelX, int panelY);
-    void updatePositions(int sw, int sh, const Panels& panels); // Уже есть, убедитесь что он публичный
+    
+    // Геттеры
     const std::string& getName() const { return name; }
     int getX() const { return x; }
     int getY() const { return y; }
@@ -35,6 +36,7 @@ public:
     int getAY() const { return ay; }
     PanelType getAttachedPanel() const { return attachedPanel; }
     
+    // Сеттеры
     void setPanel(PanelType p) { attachedPanel = p; }
 };
 
@@ -62,6 +64,13 @@ public:
     void updatePositions(int sw, int sh, const Panels& panels);
     void render(RenderUI& r, int w, int h, const Panels& panels);
     void handleClick(int x, int y, int w, int h, const Panels& panels);
+    
+    // Новые методы для расчета минимальных размеров панелей
+    int getMinWidthForPanel(PanelType panel) const;
+    int getMinHeightForPanel(PanelType panel) const;
+    
+    // Получить все объекты на панели
+    std::vector<UIObject*> getObjectsOnPanel(PanelType panel) const;
 };
 
 #endif

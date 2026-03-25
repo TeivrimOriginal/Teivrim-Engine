@@ -1,5 +1,6 @@
 #include "ObjectUI.h"
 #include <iostream>
+#include <algorithm>
 
 UIObject::UIObject(const std::string& n, int ix, int iy, int iw, int ih)
     : name(n), x(ix), y(iy), w(iw), h(ih), ax(ix), ay(iy), attachedPanel(PanelType::None) {}
@@ -108,4 +109,99 @@ void ObjectUI::handleClick(int x, int y, int w, int h, const Panels& panels) {
             return;
         }
     }
+}
+
+std::vector<UIObject*> ObjectUI::getObjectsOnPanel(PanelType panel) const {
+    std::vector<UIObject*> result;
+    for (auto obj : objects) {
+        if (obj->getAttachedPanel() == panel) {
+            result.push_back(obj);
+        }
+    }
+    return result;
+}
+
+int ObjectUI::getMinWidthForPanel(PanelType panel) const {
+    auto panelObjects = getObjectsOnPanel(panel);
+    if (panelObjects.empty()) {
+        // Если объектов нет, возвращаем минимальный базовый размер
+        switch (panel) {
+            case PanelType::Left:
+            case PanelType::Right:
+                return 50;
+            case PanelType::Top:
+            case PanelType::Bottom:
+                return 100;
+            default:
+                return 50;
+        }
+    }
+    
+    int maxWidth = 0;
+    int maxXPlusWidth = 0;
+    
+    for (auto obj : panelObjects) {
+        // Находим максимальную ширину среди объектов
+        if (obj->getW() > maxWidth) {
+            maxWidth = obj->getW();
+        }
+        // Находим максимальную позицию X + ширину (самый правый объект)
+        int rightEdge = obj->getX() + obj->getW();
+        if (rightEdge > maxXPlusWidth) {
+            maxXPlusWidth = rightEdge;
+        }
+    }
+    
+    // Добавляем отступы (10 пикселей с каждой стороны)
+    int requiredWidth = maxXPlusWidth + 20;
+    
+    // Для горизонтальных панелей (верхняя/нижняя) также учитываем расположение объектов
+    if (panel == PanelType::Top || panel == PanelType::Bottom) {
+        // Добавляем немного запаса для комфортного отображения
+        requiredWidth = std::max(requiredWidth, maxWidth + 20);
+    }
+    
+    return requiredWidth;
+}
+
+int ObjectUI::getMinHeightForPanel(PanelType panel) const {
+    auto panelObjects = getObjectsOnPanel(panel);
+    if (panelObjects.empty()) {
+        // Если объектов нет, возвращаем минимальный базовый размер
+        switch (panel) {
+            case PanelType::Left:
+            case PanelType::Right:
+                return 100;
+            case PanelType::Top:
+            case PanelType::Bottom:
+                return 30;
+            default:
+                return 50;
+        }
+    }
+    
+    int maxHeight = 0;
+    int maxYPlusHeight = 0;
+    
+    for (auto obj : panelObjects) {
+        // Находим максимальную высоту среди объектов
+        if (obj->getH() > maxHeight) {
+            maxHeight = obj->getH();
+        }
+        // Находим максимальную позицию Y + высоту (самый нижний объект)
+        int bottomEdge = obj->getY() + obj->getH();
+        if (bottomEdge > maxYPlusHeight) {
+            maxYPlusHeight = bottomEdge;
+        }
+    }
+    
+    // Добавляем отступы (10 пикселей сверху и снизу)
+    int requiredHeight = maxYPlusHeight + 20;
+    
+    // Для вертикальных панелей (левая/правая) учитываем расположение объектов
+    if (panel == PanelType::Left || panel == PanelType::Right) {
+        requiredHeight = std::max(requiredHeight, maxHeight + 20);
+    }
+    
+    return requiredHeight;
 }

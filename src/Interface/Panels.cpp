@@ -8,13 +8,11 @@ Panels::Panels() {
 PanelDimensions Panels::getDimensions(int screenWidth, int screenHeight) const {
     PanelDimensions dims;
     
-    // Используем текущие размеры панелей
     dims.leftPanelWidth = sizes.leftWidth;
     dims.rightPanelWidth = sizes.rightWidth;
     dims.topPanelHeight = sizes.topHeight;
     dims.bottomPanelHeight = sizes.bottomHeight;
     
-    // Центральная область
     dims.centerX = dims.leftPanelWidth;
     dims.centerY = dims.topPanelHeight;
     dims.centerWidth = screenWidth - (dims.leftPanelWidth + dims.rightPanelWidth);
@@ -26,16 +24,9 @@ PanelDimensions Panels::getDimensions(int screenWidth, int screenHeight) const {
 void Panels::render(RenderUI& renderer, int screenWidth, int screenHeight) const {
     PanelDimensions dims = getDimensions(screenWidth, screenHeight);
     
-    // Левая панель
     renderer.drawQuad(0, 0, dims.leftPanelWidth, screenHeight, 0.2f, 0.2f, 0.2f);
-    
-    // Правая панель
     renderer.drawQuad(screenWidth - dims.rightPanelWidth, 0, screenWidth, screenHeight, 0.2f, 0.2f, 0.2f);
-    
-    // Верхняя панель
     renderer.drawQuad(dims.leftPanelWidth, 0, screenWidth - dims.rightPanelWidth, dims.topPanelHeight, 0.3f, 0.3f, 0.3f);
-    
-    // Нижняя панель
     renderer.drawQuad(dims.leftPanelWidth, screenHeight - dims.bottomPanelHeight, 
                       screenWidth - dims.rightPanelWidth, screenHeight, 0.3f, 0.3f, 0.3f);
 }
@@ -91,22 +82,29 @@ void Panels::setBottomHeight(int height) {
     sizes.bottomHeight = std::max(sizes.minBottomHeight, std::min(sizes.maxBottomHeight, height));
 }
 
+void Panels::updateMinSizes(int minLeft, int minRight, int minTop, int minBottom) {
+    sizes.minLeftWidth = minLeft;
+    sizes.minRightWidth = minRight;
+    sizes.minTopHeight = minTop;
+    sizes.minBottomHeight = minBottom;
+    
+    // Применяем новые минимумы к текущим размерам, если они меньше минимума
+    if (sizes.leftWidth < sizes.minLeftWidth) setLeftWidth(sizes.minLeftWidth);
+    if (sizes.rightWidth < sizes.minRightWidth) setRightWidth(sizes.minRightWidth);
+    if (sizes.topHeight < sizes.minTopHeight) setTopHeight(sizes.minTopHeight);
+    if (sizes.bottomHeight < sizes.minBottomHeight) setBottomHeight(sizes.minBottomHeight);
+}
+
 bool Panels::isOnLeftEdge(int x, int y, int screenWidth, int screenHeight) const {
-    // Вертикальная грань между левой панелью и центром
     int edgeX = sizes.leftWidth;
-    // Зона захвата: 3 пикселя влево, 3 вправо от грани
     int zoneMin = edgeX - 3;
     int zoneMax = edgeX + 3;
     
-    // Проверка по X
     if (x < zoneMin || x > zoneMax) return false;
-    
-    // Проверка по Y - вся высота экрана
     return y >= 0 && y <= screenHeight;
 }
 
 bool Panels::isOnRightEdge(int x, int y, int screenWidth, int screenHeight) const {
-    // Вертикальная грань между правой панелью и центром
     int edgeX = screenWidth - sizes.rightWidth;
     int zoneMin = edgeX - 3;
     int zoneMax = edgeX + 3;
@@ -116,18 +114,15 @@ bool Panels::isOnRightEdge(int x, int y, int screenWidth, int screenHeight) cons
 }
 
 bool Panels::isOnTopEdge(int x, int y, int screenWidth, int screenHeight) const {
-    // Горизонтальная грань между верхней панелью и центром
     int edgeY = sizes.topHeight;
     int zoneMin = edgeY - 3;
     int zoneMax = edgeY + 3;
     
     if (y < zoneMin || y > zoneMax) return false;
-    // Проверка по X - только в области между левой и правой панелями
     return x >= sizes.leftWidth && x <= (screenWidth - sizes.rightWidth);
 }
 
 bool Panels::isOnBottomEdge(int x, int y, int screenWidth, int screenHeight) const {
-    // Горизонтальная грань между нижней панелью и центром
     int edgeY = screenHeight - sizes.bottomHeight;
     int zoneMin = edgeY - 3;
     int zoneMax = edgeY + 3;
@@ -137,7 +132,6 @@ bool Panels::isOnBottomEdge(int x, int y, int screenWidth, int screenHeight) con
 }
 
 PanelType Panels::getEdgeAt(int x, int y, int screenWidth, int screenHeight) const {
-    // Приоритет: сначала вертикальные грани, потом горизонтальные
     if (isOnLeftEdge(x, y, screenWidth, screenHeight)) return PanelType::Left;
     if (isOnRightEdge(x, y, screenWidth, screenHeight)) return PanelType::Right;
     if (isOnTopEdge(x, y, screenWidth, screenHeight)) return PanelType::Top;

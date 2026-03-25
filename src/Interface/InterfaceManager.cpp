@@ -39,6 +39,7 @@ InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePt
     objectUI.attachToPanel("Left Button", PanelType::Left);
     objectUI.attachToPanel("Right Button", PanelType::Right);
     objectUI.attachToPanel("Load Model", PanelType::Bottom);
+    updatePanelMinSizes();
 }
 
 Dimensions InterfaceManager::getDimensions() {
@@ -124,6 +125,45 @@ void InterfaceManager::handleClick(int x, int y) {
     objectUI.handleClick(x, y, dims.width, dims.height, panels);
 }
 
+void InterfaceManager::handleMouseDown(int x, int y) {
+    Dimensions dims = getDimensions();
+    if (dims.width == 0 || dims.height == 0) return;
+    
+    // Проверяем, нажали ли на грань
+    draggingEdge = panels.getEdgeAt(x, y, dims.width, dims.height);
+    
+    if (draggingEdge != PanelType::None) {
+        isDragging = true;
+        dragStartX = x;
+        dragStartY = y;
+        
+        // Запоминаем начальный размер панели
+        switch (draggingEdge) {
+            case PanelType::Left:
+                dragStartValue = panels.getLeftWidth();
+                break;
+            case PanelType::Right:
+                dragStartValue = panels.getRightWidth();
+                break;
+            case PanelType::Top:
+                dragStartValue = panels.getTopHeight();
+                break;
+            case PanelType::Bottom:
+                dragStartValue = panels.getBottomHeight();
+                break;
+            default:
+                break;
+        }
+        
+        // Захватываем мышь для отслеживания движения за пределами окна
+        if (window) {
+            SetCapture(window->getHWND());
+        }
+        
+        std::cout << "Started dragging edge" << std::endl;
+    }
+}
+
 void InterfaceManager::handleMouseMove(int x, int y) {
     Dimensions dims = getDimensions();
     if (dims.width == 0 || dims.height == 0) return;
@@ -168,43 +208,6 @@ void InterfaceManager::handleMouseMove(int x, int y) {
     }
 }
 
-void InterfaceManager::handleMouseDown(int x, int y) {
-    Dimensions dims = getDimensions();
-    if (dims.width == 0 || dims.height == 0) return;
-    
-    // Проверяем, нажали ли на грань
-    draggingEdge = panels.getEdgeAt(x, y, dims.width, dims.height);
-    
-    if (draggingEdge != PanelType::None) {
-        isDragging = true;
-        dragStartX = x;
-        dragStartY = y;
-        
-        // Запоминаем начальный размер панели
-        switch (draggingEdge) {
-            case PanelType::Left:
-                dragStartValue = panels.getLeftWidth();
-                break;
-            case PanelType::Right:
-                dragStartValue = panels.getRightWidth();
-                break;
-            case PanelType::Top:
-                dragStartValue = panels.getTopHeight();
-                break;
-            case PanelType::Bottom:
-                dragStartValue = panels.getBottomHeight();
-                break;
-            default:
-                break;
-        }
-        
-        // Захватываем мышь для отслеживания движения за пределами окна
-        if (window) {
-            SetCapture(window->getHWND());
-        }
-    }
-}
-
 void InterfaceManager::handleMouseUp(int x, int y) {
     if (isDragging) {
         isDragging = false;
@@ -214,6 +217,8 @@ void InterfaceManager::handleMouseUp(int x, int y) {
         if (window) {
             ReleaseCapture();
         }
+        
+        std::cout << "Stopped dragging" << std::endl;
     }
 }
 
@@ -236,4 +241,19 @@ void InterfaceManager::SwapFlag(Core &A) {
 
 HWND InterfaceManager::getHWND() const {
     return window ? window->getHWND() : nullptr;
+}
+
+void InterfaceManager::updatePanelMinSizes() {
+    int minLeftWidth = objectUI.getMinWidthForPanel(PanelType::Left);
+    int minRightWidth = objectUI.getMinWidthForPanel(PanelType::Right);
+    int minTopHeight = objectUI.getMinHeightForPanel(PanelType::Top);
+    int minBottomHeight = objectUI.getMinHeightForPanel(PanelType::Bottom);
+    
+    panels.updateMinSizes(minLeftWidth, minRightWidth, minTopHeight, minBottomHeight);
+    
+    std::cout << "Panel min sizes updated:" << std::endl;
+    std::cout << "  Left: " << minLeftWidth << std::endl;
+    std::cout << "  Right: " << minRightWidth << std::endl;
+    std::cout << "  Top: " << minTopHeight << std::endl;
+    std::cout << "  Bottom: " << minBottomHeight << std::endl;
 }

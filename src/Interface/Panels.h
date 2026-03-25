@@ -13,20 +13,21 @@ enum class PanelType {
 
 // Структура для хранения размеров панелей
 struct PanelSizes {
-    int leftWidth = 200;      // Ширина левой панели
-    int rightWidth = 200;     // Ширина правой панели
-    int topHeight = 50;       // Высота верхней панели
-    int bottomHeight = 50;    // Высота нижней панели
+    int leftWidth = 200;
+    int rightWidth = 200;
+    int topHeight = 50;
+    int bottomHeight = 50;
     
-    int minLeftWidth = 50;    // Минимальная ширина левой
-    int minRightWidth = 50;   // Минимальная ширина правой
-    int minTopHeight = 30;    // Минимальная высота верхней
-    int minBottomHeight = 30; // Минимальная высота нижней
+    // Базовые минимальные размеры (будут обновляться из содержимого)
+    int minLeftWidth = 50;
+    int minRightWidth = 50;
+    int minTopHeight = 30;
+    int minBottomHeight = 30;
     
-    int maxLeftWidth = 400;   // Максимальная ширина левой
-    int maxRightWidth = 400;  // Максимальная ширина правой
-    int maxTopHeight = 200;   // Максимальная высота верхней
-    int maxBottomHeight = 200; // Максимальная высота нижней
+    int maxLeftWidth = 400;
+    int maxRightWidth = 400;
+    int maxTopHeight = 200;
+    int maxBottomHeight = 200;
 };
 
 struct PanelDimensions {
@@ -47,35 +48,36 @@ private:
 public:
     Panels();
     
-    // Получить размеры с учетом текущих настроек
     PanelDimensions getDimensions(int screenWidth, int screenHeight) const;
-    
-    // Отрисовать панели
     void render(RenderUI& renderer, int screenWidth, int screenHeight) const;
-    
-    // Получить границы панели
     void getPanelBounds(PanelType panel, int screenWidth, int screenHeight, 
                         int& outX, int& outY, int& outW, int& outH) const;
     
-    // Методы для изменения размеров
+    // Методы для изменения размеров с проверкой на минимальные значения
     void setLeftWidth(int width);
     void setRightWidth(int width);
     void setTopHeight(int height);
     void setBottomHeight(int height);
     
-    // Геттеры для размеров
+    // Обновление минимальных размеров на основе содержимого
+    void updateMinSizes(int minLeft, int minRight, int minTop, int minBottom);
+    
+    // Геттеры
     int getLeftWidth() const { return sizes.leftWidth; }
     int getRightWidth() const { return sizes.rightWidth; }
     int getTopHeight() const { return sizes.topHeight; }
     int getBottomHeight() const { return sizes.bottomHeight; }
+    int getMinLeftWidth() const { return sizes.minLeftWidth; }
+    int getMinRightWidth() const { return sizes.minRightWidth; }
+    int getMinTopHeight() const { return sizes.minTopHeight; }
+    int getMinBottomHeight() const { return sizes.minBottomHeight; }
     
-    // Проверка нахождения в зоне захвата грани
+    // Проверка нахождения в зоне захвата
     bool isOnLeftEdge(int x, int y, int screenWidth, int screenHeight) const;
     bool isOnRightEdge(int x, int y, int screenWidth, int screenHeight) const;
     bool isOnTopEdge(int x, int y, int screenWidth, int screenHeight) const;
     bool isOnBottomEdge(int x, int y, int screenWidth, int screenHeight) const;
     
-    // Получить тип грани по координатам
     PanelType getEdgeAt(int x, int y, int screenWidth, int screenHeight) const;
 };
 
