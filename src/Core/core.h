@@ -17,7 +17,10 @@ public:
 
     RendererW rendererw;
     ModelParser modelParser;
-
+    bool CanClick = true;
+    void swapcanclick() {
+        CanClick = !CanClick;
+    }
     void settingUpRender();
     void ParserToRender();
     void GameLoop();

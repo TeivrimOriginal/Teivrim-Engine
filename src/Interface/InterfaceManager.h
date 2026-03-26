@@ -41,8 +41,8 @@ public:
     void renderDynamic();
     void handleClick(int x, int y);
     void handleMouseMove(int x, int y);
-    void handleMouseDown(int x, int y);     // ДОЛЖЕН БЫТЬ ЗДЕСЬ
-    void handleMouseUp(int x, int y);       // ДОЛЖЕН БЫТЬ ЗДЕСЬ
+    void handleMouseDown(int x, int y); 
+    void handleMouseUp(int x, int y);
     void SwapFlag(Core &A);
     HWND getHWND() const;
     

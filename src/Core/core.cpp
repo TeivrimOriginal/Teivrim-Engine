@@ -16,14 +16,13 @@ using namespace std;
 
 // В начале файла, после глобальных переменных
 InterfaceManager* g_uiManager = nullptr;
-
+Core* g_core = nullptr;
 // Обработчик кликов мыши для Win32
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_LBUTTONDOWN: {
             int x = LOWORD(lParam);
             int y = HIWORD(lParam);
-            
             if (g_uiManager) {
                 // Сначала проверяем нажатие на грани
                 g_uiManager->handleMouseDown(x, y);

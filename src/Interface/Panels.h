@@ -1,8 +1,9 @@
 #ifndef PANELS_H
 #define PANELS_H
-
+#include <string>
 #include "../Core/Render/Win32/RenderUI.h"
 
+using namespace std;
 enum class PanelType {
     None,
     Left,
@@ -44,7 +45,7 @@ struct PanelDimensions {
 class Panels {
 private:
     PanelSizes sizes;
-    
+    string TypePanel = "None";
 public:
     Panels();
     

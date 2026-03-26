@@ -159,8 +159,6 @@ void InterfaceManager::handleMouseDown(int x, int y) {
         if (window) {
             SetCapture(window->getHWND());
         }
-        
-        std::cout << "Started dragging edge" << std::endl;
     }
 }
 
@@ -250,10 +248,4 @@ void InterfaceManager::updatePanelMinSizes() {
     int minBottomHeight = objectUI.getMinHeightForPanel(PanelType::Bottom);
     
     panels.updateMinSizes(minLeftWidth, minRightWidth, minTopHeight, minBottomHeight);
-    
-    std::cout << "Panel min sizes updated:" << std::endl;
-    std::cout << "  Left: " << minLeftWidth << std::endl;
-    std::cout << "  Right: " << minRightWidth << std::endl;
-    std::cout << "  Top: " << minTopHeight << std::endl;
-    std::cout << "  Bottom: " << minBottomHeight << std::endl;
 }
