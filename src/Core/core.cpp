@@ -16,7 +16,6 @@ using namespace std;
 
 // В начале файла, после глобальных переменных
 InterfaceManager* g_uiManager = nullptr;
-Core* g_core = nullptr;
 // Обработчик кликов мыши для Win32
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -28,7 +27,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 g_uiManager->handleMouseDown(x, y);
                 // Потом обычный клик по кнопкам
                 g_uiManager->handleClick(x, y);
-                std::cout << "Click handled at: " << x << ", " << y << std::endl;
+                g_uiManager->BlockMoveToMainWindow(x, y);
+
             }
             break;
         }
@@ -131,9 +131,9 @@ void Core::GameLoop() {
     g_uiManager = new InterfaceManager(this);
     g_uiManager->setWindow(win32Window);
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
+    InterfaceManager pizda(this);
 
-
-    Input input(app);
+    Input input(app, g_uiManager);
     POINT lastMousePos = {0, 0};
     GetCursorPos(&lastMousePos);
 
@@ -170,6 +170,8 @@ void Core::GameLoop() {
         }
 
         if (!isStart) {
+
+
             input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
             input.processInputWin32(deltaTime, win32Window->getHWND());
 

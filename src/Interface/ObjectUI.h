@@ -58,7 +58,7 @@ private:
 public:
     ObjectUI();
     ~ObjectUI();
-    
+    std::vector<UIObject*> getObjects() { return objects; };
     void createButton(const std::string& n, int x, int y, int w, int h, std::function<void()> cb);
     void attachToPanel(const std::string& n, PanelType p);
     void updatePositions(int sw, int sh, const Panels& panels);

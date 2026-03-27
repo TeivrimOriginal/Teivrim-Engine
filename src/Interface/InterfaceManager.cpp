@@ -62,6 +62,45 @@ void InterfaceManager::clearScreen(int width, int height) {
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
+void InterfaceManager::BlockMoveToMainWindow(int x, int y) {
+    bool isClick = CheckerClickToPanel( x, y);
+    if (isClick && isStopMove == false){
+        swapclick();
+        std::cout << "CLICK: Panel " << std::endl;
+            
+        isStopMove = true;
+    } else if (isStopMove && !isClick){
+        swapclick();
+                    
+        std::cout << "CLICK: Render " << std::endl;
+
+        
+        isStopMove = false;
+    }
+}
+bool InterfaceManager::CheckerClickToPanel(int x, int y) {
+    Dimensions dims = getDimensions();
+    if (dims.width == 0 || dims.height == 0) return false;
+    
+    std::vector<PanelType> panelsToCheck = {
+        PanelType::Left,
+        PanelType::Right,
+        PanelType::Top,
+        PanelType::Bottom
+    };
+    
+    for (PanelType panel : panelsToCheck) {
+        int outX, outY, outW, outH;
+        panels.getPanelBounds(panel, dims.width, dims.height, outX, outY, outW, outH);
+        
+        if (x >= outX && x <= outX + outW && y >= outY && y <= outY + outH) {
+            std::cout << "Clicked on panel: " << static_cast<int>(panel) << std::endl;
+            return true;
+        }
+    }
+    
+    return false;
+}
 
 void InterfaceManager::setup3DViewport(const Dimensions& dims) {
     PanelDimensions panelDims = panels.getDimensions(dims.width, dims.height);
@@ -120,8 +159,6 @@ void InterfaceManager::renderDynamic() {
 
 void InterfaceManager::handleClick(int x, int y) {
     Dimensions dims = getDimensions();
-    if (dims.width == 0 || dims.height == 0) return;
-    
     objectUI.handleClick(x, y, dims.width, dims.height, panels);
 }
 

@@ -19,7 +19,7 @@ private:
     ObjectUI objectUI;
     Panels panels;
     Core* core;
-    
+    bool isStopMove;
     bool isDragging = false;
     PanelType draggingEdge = PanelType::None;
     int dragStartX = 0;
@@ -29,11 +29,13 @@ private:
     void updatePanelMinSizes();
     
 public:
+    void BlockMoveToMainWindow(int x, int y);
+    bool CheckerClickToPanel(int x, int y);
     InterfaceManager(Core* corePtr);
     ~InterfaceManager() = default;
-    
+    void swapclick() { isClick = !isClick; };
     void setWindow(InitialWin32* w) { window = w; }
-    
+    bool isClick = true;
     Dimensions getDimensions();
     void clearScreen(int width, int height);
     void setup3DViewport(const Dimensions& dims);
