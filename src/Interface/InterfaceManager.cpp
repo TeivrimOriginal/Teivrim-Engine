@@ -2,6 +2,11 @@
 #include <iostream>
 
 InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePtr) {
+    panels.setLeftPanelType("Hierarchy");
+    panels.setRightPanelType("Inspector");
+    panels.setTopPanelType("Scene Control");
+    panels.setBottomPanelType("Asset Manager");
+    
     objectUI.createButton("Button 1", 10, 10, 80, 25, []() {
         std::cout << "Button 1 clicked!" << std::endl;
     });
@@ -62,41 +67,29 @@ void InterfaceManager::clearScreen(int width, int height) {
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
+
 void InterfaceManager::BlockMoveToMainWindow(int x, int y) {
-    bool isClick = CheckerClickToPanel( x, y);
-    if (isClick && isStopMove == false){
+    bool isClick = CheckerClickToPanel(x, y);
+    if (isClick && isStopMove == false) {
         swapclick();
         std::cout << "CLICK: Panel " << std::endl;
-            
         isStopMove = true;
-    } else if (isStopMove && !isClick){
+    } else if (isStopMove && !isClick) {
         swapclick();
-                    
         std::cout << "CLICK: Render " << std::endl;
-
-        
         isStopMove = false;
     }
 }
+
 bool InterfaceManager::CheckerClickToPanel(int x, int y) {
     Dimensions dims = getDimensions();
     if (dims.width == 0 || dims.height == 0) return false;
     
-    std::vector<PanelType> panelsToCheck = {
-        PanelType::Left,
-        PanelType::Right,
-        PanelType::Top,
-        PanelType::Bottom
-    };
-    
-    for (PanelType panel : panelsToCheck) {
-        int outX, outY, outW, outH;
-        panels.getPanelBounds(panel, dims.width, dims.height, outX, outY, outW, outH);
-        
-        if (x >= outX && x <= outX + outW && y >= outY && y <= outY + outH) {
-            std::cout << "Clicked on panel: " << static_cast<int>(panel) << std::endl;
-            return true;
-        }
+    PanelType panel = panels.getPanelAt(x, y, dims.width, dims.height);
+    if (panel != PanelType::None) {
+        panels.setActivePanel(panel);
+        std::cout << "Clicked on panel" << std::endl;
+        return true;
     }
     
     return false;
@@ -126,6 +119,15 @@ void InterfaceManager::renderStatic() {
     panels.render(renderer, dims.width, dims.height);
     objectUI.render(renderer, dims.width, dims.height, panels);
     glEnd();
+    
+    renderer.drawText(10, panels.getTopHeight() - 20, panels.getLeftPanelType(), 0.8f, 0.8f, 0.8f);
+    renderer.drawText(panels.getLeftWidth() + 10, panels.getTopHeight() - 20, panels.getTopPanelType(), 0.8f, 0.8f, 0.8f);
+    renderer.drawText(dims.width - panels.getRightWidth() + 10, panels.getTopHeight() - 20, panels.getRightPanelType(), 0.8f, 0.8f, 0.8f);
+    renderer.drawText(panels.getLeftWidth() + 10, dims.height - panels.getBottomHeight() + 10, panels.getBottomPanelType(), 0.8f, 0.8f, 0.8f);
+    
+    if (panels.getFloatingVisible()) {
+        renderer.drawText(panels.getFloatingX() + 10, panels.getFloatingY() + 10, panels.getFloatingPanelType(), 0.8f, 0.8f, 0.8f);
+    }
     
     renderer.drawText(10, dims.height - 25, "3D Viewer v1.0", 1.0f, 1.0f, 1.0f);
     
@@ -159,6 +161,39 @@ void InterfaceManager::renderDynamic() {
 
 void InterfaceManager::handleClick(int x, int y) {
     Dimensions dims = getDimensions();
+    
+    PanelType threeDotsPanel = panels.getThreeDotsAt(x, y, dims.width, dims.height);
+    if (threeDotsPanel != PanelType::None) {
+        int panelX, panelY, panelW, panelH;
+        panels.getPanelBounds(threeDotsPanel, dims.width, dims.height, panelX, panelY, panelW, panelH);
+        int menuX = panelX + panelW - 120;
+        int menuY = panelY + 25;
+        
+        std::vector<std::string> items = {"Split Panel", "Change Type", "Reset Size"};
+        objectUI.showDropdown(menuX, menuY, items, [this, threeDotsPanel, menuX, menuY](int index) {
+            if (index == 0) {
+                panels.splitPanel(threeDotsPanel);
+            } else if (index == 1) {
+                std::vector<std::string> types = {"Hierarchy", "Inspector", "Console", "Profiler", "Scene"};
+                objectUI.showDropdown(menuX, menuY, types, [this, threeDotsPanel](int typeIndex) {
+                    std::string newType;
+                    switch(typeIndex) {
+                        case 0: newType = "Hierarchy"; break;
+                        case 1: newType = "Inspector"; break;
+                        case 2: newType = "Console"; break;
+                        case 3: newType = "Profiler"; break;
+                        case 4: newType = "Scene"; break;
+                        default: newType = "Panel";
+                    }
+                    panels.changePanelType(threeDotsPanel, newType);
+                });
+            } else if (index == 2) {
+                panels.resetPanelSize(threeDotsPanel);
+            }
+        });
+        return;
+    }
+    
     objectUI.handleClick(x, y, dims.width, dims.height, panels);
 }
 
@@ -166,7 +201,6 @@ void InterfaceManager::handleMouseDown(int x, int y) {
     Dimensions dims = getDimensions();
     if (dims.width == 0 || dims.height == 0) return;
     
-    // Проверяем, нажали ли на грань
     draggingEdge = panels.getEdgeAt(x, y, dims.width, dims.height);
     
     if (draggingEdge != PanelType::None) {
@@ -174,7 +208,6 @@ void InterfaceManager::handleMouseDown(int x, int y) {
         dragStartX = x;
         dragStartY = y;
         
-        // Запоминаем начальный размер панели
         switch (draggingEdge) {
             case PanelType::Left:
                 dragStartValue = panels.getLeftWidth();
@@ -192,7 +225,6 @@ void InterfaceManager::handleMouseDown(int x, int y) {
                 break;
         }
         
-        // Захватываем мышь для отслеживания движения за пределами окна
         if (window) {
             SetCapture(window->getHWND());
         }
@@ -203,41 +235,36 @@ void InterfaceManager::handleMouseMove(int x, int y) {
     Dimensions dims = getDimensions();
     if (dims.width == 0 || dims.height == 0) return;
     
-    // Если перетаскиваем грань
     if (isDragging && draggingEdge != PanelType::None) {
         int delta = 0;
         
-        // Вычисляем дельту в зависимости от оси грани
         switch (draggingEdge) {
-            case PanelType::Left:  // Вертикальная грань - двигаем по X
+            case PanelType::Left:
                 delta = x - dragStartX;
                 panels.setLeftWidth(dragStartValue + delta);
                 break;
-            case PanelType::Right: // Вертикальная грань - двигаем по X
-                delta = dragStartX - x;  // Инвертируем для правой грани
+            case PanelType::Right:
+                delta = dragStartX - x;
                 panels.setRightWidth(dragStartValue + delta);
                 break;
-            case PanelType::Top:   // Горизонтальная грань - двигаем по Y
+            case PanelType::Top:
                 delta = y - dragStartY;
                 panels.setTopHeight(dragStartValue + delta);
                 break;
-            case PanelType::Bottom: // Горизонтальная грань - двигаем по Y
-                delta = dragStartY - y;  // Инвертируем для нижней грани
+            case PanelType::Bottom:
+                delta = dragStartY - y;
                 panels.setBottomHeight(dragStartValue + delta);
                 break;
             default:
                 break;
         }
         
-        // Обновляем позиции UI объектов после изменения размеров
         objectUI.updatePositions(dims.width, dims.height, panels);
         return;
     }
     
-    // Если не перетаскиваем, проверяем наведение на грани
     PanelType edge = panels.getEdgeAt(x, y, dims.width, dims.height);
     if (edge != PanelType::None) {
-        // Меняем курсор
         HCURSOR cursor = getCursorForEdge(edge);
         SetCursor(cursor);
     }
@@ -248,7 +275,6 @@ void InterfaceManager::handleMouseUp(int x, int y) {
         isDragging = false;
         draggingEdge = PanelType::None;
         
-        // Отпускаем захват мыши
         if (window) {
             ReleaseCapture();
         }
@@ -261,10 +287,10 @@ HCURSOR InterfaceManager::getCursorForEdge(PanelType edge) const {
     switch (edge) {
         case PanelType::Left:
         case PanelType::Right:
-            return LoadCursor(NULL, IDC_SIZEWE);  // Горизонтальная стрелка
+            return LoadCursor(NULL, IDC_SIZEWE);
         case PanelType::Top:
         case PanelType::Bottom:
-            return LoadCursor(NULL, IDC_SIZENS);  // Вертикальная стрелка
+            return LoadCursor(NULL, IDC_SIZENS);
         default:
             return LoadCursor(NULL, IDC_ARROW);
     }

@@ -53,6 +53,67 @@ void Button::onClick(int x, int y) {
     }
 }
 
+DropdownMenu::DropdownMenu() {}
+
+void DropdownMenu::show(int px, int py, const std::vector<std::string>& menuItems, std::function<void(int)> cb) {
+    x = px;
+    y = py;
+    items = menuItems;
+    callback = cb;
+    visible = true;
+}
+
+void DropdownMenu::hide() {
+    visible = false;
+    items.clear();
+    callback = nullptr;
+}
+
+void DropdownMenu::render(RenderUI& renderer) const {
+    if (!visible) return;
+    
+    int itemHeight = 20;
+    int width = 120;
+    int height = items.size() * itemHeight;
+    
+    glColor3f(0.15f, 0.15f, 0.15f);
+    glVertex2f(x, y);
+    glVertex2f(x + width, y);
+    glVertex2f(x + width, y + height);
+    glVertex2f(x, y + height);
+    
+    glColor3f(0.3f, 0.3f, 0.3f);
+    for (size_t i = 0; i < items.size(); i++) {
+        int itemY = y + i * itemHeight;
+        glVertex2f(x, itemY);
+        glVertex2f(x + width, itemY);
+        glVertex2f(x + width, itemY + itemHeight);
+        glVertex2f(x, itemY + itemHeight);
+        
+        renderer.drawText(x + 5, itemY + 5, items[i], 1.0f, 1.0f, 1.0f);
+    }
+}
+
+bool DropdownMenu::handleClick(int clickX, int clickY) {
+    if (!visible) return false;
+    
+    int itemHeight = 20;
+    int width = 120;
+    int height = items.size() * itemHeight;
+    
+    if (clickX >= x && clickX <= x + width && clickY >= y && clickY <= y + height) {
+        int index = (clickY - y) / itemHeight;
+        if (index >= 0 && index < (int)items.size() && callback) {
+            callback(index);
+        }
+        hide();
+        return true;
+    }
+    
+    hide();
+    return false;
+}
+
 ObjectUI::ObjectUI() {}
 
 ObjectUI::~ObjectUI() {
@@ -98,9 +159,17 @@ void ObjectUI::render(RenderUI& r, int w, int h, const Panels& panels) {
         int textY = obj->getAY() + (obj->getH() - 12) / 2;
         r.drawText(textX, textY, obj->getName(), 1.0f, 1.0f, 1.0f);
     }
+    
+    activeMenu.render(r);
 }
 
 void ObjectUI::handleClick(int x, int y, int w, int h, const Panels& panels) {
+    if (activeMenu.isVisible()) {
+        if (activeMenu.handleClick(x, y)) {
+            return;
+        }
+    }
+    
     updatePositions(w, h, panels);
     
     for (auto obj : objects) {
@@ -109,6 +178,10 @@ void ObjectUI::handleClick(int x, int y, int w, int h, const Panels& panels) {
             return;
         }
     }
+}
+
+void ObjectUI::showDropdown(int x, int y, const std::vector<std::string>& items, std::function<void(int)> callback) {
+    activeMenu.show(x, y, items, callback);
 }
 
 std::vector<UIObject*> ObjectUI::getObjectsOnPanel(PanelType panel) const {
@@ -124,7 +197,6 @@ std::vector<UIObject*> ObjectUI::getObjectsOnPanel(PanelType panel) const {
 int ObjectUI::getMinWidthForPanel(PanelType panel) const {
     auto panelObjects = getObjectsOnPanel(panel);
     if (panelObjects.empty()) {
-        // Если объектов нет, возвращаем минимальный базовый размер
         switch (panel) {
             case PanelType::Left:
             case PanelType::Right:
@@ -132,6 +204,8 @@ int ObjectUI::getMinWidthForPanel(PanelType panel) const {
             case PanelType::Top:
             case PanelType::Bottom:
                 return 100;
+            case PanelType::Floating:
+                return 150;
             default:
                 return 50;
         }
@@ -141,23 +215,18 @@ int ObjectUI::getMinWidthForPanel(PanelType panel) const {
     int maxXPlusWidth = 0;
     
     for (auto obj : panelObjects) {
-        // Находим максимальную ширину среди объектов
         if (obj->getW() > maxWidth) {
             maxWidth = obj->getW();
         }
-        // Находим максимальную позицию X + ширину (самый правый объект)
         int rightEdge = obj->getX() + obj->getW();
         if (rightEdge > maxXPlusWidth) {
             maxXPlusWidth = rightEdge;
         }
     }
     
-    // Добавляем отступы (10 пикселей с каждой стороны)
     int requiredWidth = maxXPlusWidth + 20;
     
-    // Для горизонтальных панелей (верхняя/нижняя) также учитываем расположение объектов
     if (panel == PanelType::Top || panel == PanelType::Bottom) {
-        // Добавляем немного запаса для комфортного отображения
         requiredWidth = std::max(requiredWidth, maxWidth + 20);
     }
     
@@ -167,7 +236,6 @@ int ObjectUI::getMinWidthForPanel(PanelType panel) const {
 int ObjectUI::getMinHeightForPanel(PanelType panel) const {
     auto panelObjects = getObjectsOnPanel(panel);
     if (panelObjects.empty()) {
-        // Если объектов нет, возвращаем минимальный базовый размер
         switch (panel) {
             case PanelType::Left:
             case PanelType::Right:
@@ -175,6 +243,8 @@ int ObjectUI::getMinHeightForPanel(PanelType panel) const {
             case PanelType::Top:
             case PanelType::Bottom:
                 return 30;
+            case PanelType::Floating:
+                return 100;
             default:
                 return 50;
         }
@@ -184,21 +254,17 @@ int ObjectUI::getMinHeightForPanel(PanelType panel) const {
     int maxYPlusHeight = 0;
     
     for (auto obj : panelObjects) {
-        // Находим максимальную высоту среди объектов
         if (obj->getH() > maxHeight) {
             maxHeight = obj->getH();
         }
-        // Находим максимальную позицию Y + высоту (самый нижний объект)
         int bottomEdge = obj->getY() + obj->getH();
         if (bottomEdge > maxYPlusHeight) {
             maxYPlusHeight = bottomEdge;
         }
     }
     
-    // Добавляем отступы (10 пикселей сверху и снизу)
     int requiredHeight = maxYPlusHeight + 20;
     
-    // Для вертикальных панелей (левая/правая) учитываем расположение объектов
     if (panel == PanelType::Left || panel == PanelType::Right) {
         requiredHeight = std::max(requiredHeight, maxHeight + 20);
     }

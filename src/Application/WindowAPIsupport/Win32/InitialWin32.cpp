@@ -1,15 +1,33 @@
 #include "InitialWin32.h"
 
-// УБИРАЕМ отдельную WindowProc - используем ту, что в классе
-
 InitialWin32* InitialWin32::createWindow(int width, int height, const char* title) {
     InitialWin32* win = new InitialWin32();
     
     HINSTANCE hInst = GetModuleHandle(NULL);
     
+    win->hMenu = CreateMenu();
+    HMENU hFileMenu = CreatePopupMenu();
+    HMENU hEditMenu = CreatePopupMenu();
+    HMENU hWindowMenu = CreatePopupMenu();
+    
+    AppendMenuA(hFileMenu, MF_STRING, 1, "New");
+    AppendMenuA(hFileMenu, MF_STRING, 2, "Open");
+    AppendMenuA(hFileMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenuA(hFileMenu, MF_STRING, 3, "Exit");
+    
+    AppendMenuA(hEditMenu, MF_STRING, 4, "Undo");
+    AppendMenuA(hEditMenu, MF_STRING, 5, "Redo");
+    
+    AppendMenuA(hWindowMenu, MF_STRING, 6, "Add New Panel");
+    AppendMenuA(hWindowMenu, MF_STRING, 7, "Floating Panel");
+    
+    AppendMenuA(win->hMenu, MF_POPUP, (UINT_PTR)hFileMenu, "File");
+    AppendMenuA(win->hMenu, MF_POPUP, (UINT_PTR)hEditMenu, "Edit");
+    AppendMenuA(win->hMenu, MF_POPUP, (UINT_PTR)hWindowMenu, "Window");
+    
     WNDCLASSA wc = {};
     wc.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
-    wc.lpfnWndProc = InitialWin32::WindowProc; // ЯВНО УКАЗЫВАЕМ WindowProc ИЗ КЛАССА
+    wc.lpfnWndProc = InitialWin32::WindowProc;
     wc.hInstance = hInst;
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     wc.lpszClassName = "GLWin32Class";
@@ -23,7 +41,7 @@ InitialWin32* InitialWin32::createWindow(int width, int height, const char* titl
         WS_OVERLAPPEDWINDOW | WS_VISIBLE,
         CW_USEDEFAULT, CW_USEDEFAULT,
         width, height,
-        NULL, NULL, hInst, NULL
+        NULL, win->hMenu, hInst, win
     );
     
     if (!win->hwnd) {
@@ -42,8 +60,8 @@ InitialWin32* InitialWin32::createWindow(int width, int height, const char* titl
         0, 0, 0, 0, 0, 0,
         0, 0,
         0, 0, 0, 0, 0,
-        24,                 // ГЛУБИНА 24 БИТА - ЭТО РЕШИТ ПРОБЛЕМУ
-        8,                  // СТЕНСИЛ 8 БИТ
+        24,
+        8,
         0,
         PFD_MAIN_PLANE,
         0, 0, 0, 0

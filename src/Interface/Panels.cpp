@@ -1,9 +1,7 @@
 #include "Panels.h"
 #include <algorithm>
 
-Panels::Panels() {
-    // Инициализация по умолчанию
-}
+Panels::Panels() {}
 
 PanelDimensions Panels::getDimensions(int screenWidth, int screenHeight) const {
     PanelDimensions dims;
@@ -29,6 +27,28 @@ void Panels::render(RenderUI& renderer, int screenWidth, int screenHeight) const
     renderer.drawQuad(dims.leftPanelWidth, 0, screenWidth - dims.rightPanelWidth, dims.topPanelHeight, 0.3f, 0.3f, 0.3f);
     renderer.drawQuad(dims.leftPanelWidth, screenHeight - dims.bottomPanelHeight, 
                       screenWidth - dims.rightPanelWidth, screenHeight, 0.3f, 0.3f, 0.3f);
+    
+    if (sizes.floatingVisible) {
+        renderer.drawQuad(sizes.floatingX, sizes.floatingY, 
+                          sizes.floatingX + sizes.floatingWidth, 
+                          sizes.floatingY + sizes.floatingHeight, 0.25f, 0.25f, 0.3f);
+    }
+    
+    vector<PanelType> allPanels = {PanelType::Left, PanelType::Right, PanelType::Top, PanelType::Bottom};
+    if (sizes.floatingVisible) allPanels.push_back(PanelType::Floating);
+    
+    for (PanelType panel : allPanels) {
+        int panelX, panelY, panelW, panelH;
+        getPanelBounds(panel, screenWidth, screenHeight, panelX, panelY, panelW, panelH);
+        
+        int dotX = panelX + panelW - 25;
+        int dotY = panelY + 5;
+        renderThreeDots(renderer, dotX, dotY);
+        
+        int activeDotX = panelX + panelW - 45;
+        int activeDotY = panelY + 5;
+        renderActiveDot(renderer, activeDotX, activeDotY, activePanel == panel);
+    }
 }
 
 void Panels::getPanelBounds(PanelType panel, int screenWidth, int screenHeight, 
@@ -60,6 +80,12 @@ void Panels::getPanelBounds(PanelType panel, int screenWidth, int screenHeight,
             outW = screenWidth - dims.leftPanelWidth - dims.rightPanelWidth;
             outH = dims.bottomPanelHeight;
             break;
+        case PanelType::Floating:
+            outX = sizes.floatingX;
+            outY = sizes.floatingY;
+            outW = sizes.floatingWidth;
+            outH = sizes.floatingHeight;
+            break;
         default:
             outX = outY = outW = outH = 0;
             break;
@@ -82,13 +108,29 @@ void Panels::setBottomHeight(int height) {
     sizes.bottomHeight = std::max(sizes.minBottomHeight, std::min(sizes.maxBottomHeight, height));
 }
 
+void Panels::setFloatingWidth(int width) {
+    sizes.floatingWidth = std::max(sizes.minFloatingWidth, std::min(sizes.maxFloatingWidth, width));
+}
+
+void Panels::setFloatingHeight(int height) {
+    sizes.floatingHeight = std::max(sizes.minFloatingHeight, std::min(sizes.maxFloatingHeight, height));
+}
+
+void Panels::setFloatingPosition(int x, int y) {
+    sizes.floatingX = x;
+    sizes.floatingY = y;
+}
+
+void Panels::setFloatingVisible(bool visible) {
+    sizes.floatingVisible = visible;
+}
+
 void Panels::updateMinSizes(int minLeft, int minRight, int minTop, int minBottom) {
     sizes.minLeftWidth = minLeft;
     sizes.minRightWidth = minRight;
     sizes.minTopHeight = minTop;
     sizes.minBottomHeight = minBottom;
     
-    // Применяем новые минимумы к текущим размерам, если они меньше минимума
     if (sizes.leftWidth < sizes.minLeftWidth) setLeftWidth(sizes.minLeftWidth);
     if (sizes.rightWidth < sizes.minRightWidth) setRightWidth(sizes.minRightWidth);
     if (sizes.topHeight < sizes.minTopHeight) setTopHeight(sizes.minTopHeight);
@@ -131,10 +173,159 @@ bool Panels::isOnBottomEdge(int x, int y, int screenWidth, int screenHeight) con
     return x >= sizes.leftWidth && x <= (screenWidth - sizes.rightWidth);
 }
 
+bool Panels::isOnThreeDots(int x, int y, PanelType panel, int screenWidth, int screenHeight) const {
+    int panelX, panelY, panelW, panelH;
+    getPanelBounds(panel, screenWidth, screenHeight, panelX, panelY, panelW, panelH);
+    
+    int dotX = panelX + panelW - 25;
+    int dotY = panelY + 5;
+    
+    return x >= dotX && x <= dotX + 15 && y >= dotY && y <= dotY + 15;
+}
+
+bool Panels::isOnActiveDot(int x, int y, PanelType panel, int screenWidth, int screenHeight) const {
+    int panelX, panelY, panelW, panelH;
+    getPanelBounds(panel, screenWidth, screenHeight, panelX, panelY, panelW, panelH);
+    
+    int dotX = panelX + panelW - 45;
+    int dotY = panelY + 5;
+    
+    return x >= dotX && x <= dotX + 15 && y >= dotY && y <= dotY + 15;
+}
+
 PanelType Panels::getEdgeAt(int x, int y, int screenWidth, int screenHeight) const {
     if (isOnLeftEdge(x, y, screenWidth, screenHeight)) return PanelType::Left;
     if (isOnRightEdge(x, y, screenWidth, screenHeight)) return PanelType::Right;
     if (isOnTopEdge(x, y, screenWidth, screenHeight)) return PanelType::Top;
     if (isOnBottomEdge(x, y, screenWidth, screenHeight)) return PanelType::Bottom;
     return PanelType::None;
+}
+
+PanelType Panels::getPanelAt(int x, int y, int screenWidth, int screenHeight) const {
+    int outX, outY, outW, outH;
+    
+    getPanelBounds(PanelType::Left, screenWidth, screenHeight, outX, outY, outW, outH);
+    if (x >= outX && x <= outX + outW && y >= outY && y <= outY + outH) return PanelType::Left;
+    
+    getPanelBounds(PanelType::Right, screenWidth, screenHeight, outX, outY, outW, outH);
+    if (x >= outX && x <= outX + outW && y >= outY && y <= outY + outH) return PanelType::Right;
+    
+    getPanelBounds(PanelType::Top, screenWidth, screenHeight, outX, outY, outW, outH);
+    if (x >= outX && x <= outX + outW && y >= outY && y <= outY + outH) return PanelType::Top;
+    
+    getPanelBounds(PanelType::Bottom, screenWidth, screenHeight, outX, outY, outW, outH);
+    if (x >= outX && x <= outX + outW && y >= outY && y <= outY + outH) return PanelType::Bottom;
+    
+    if (sizes.floatingVisible) {
+        getPanelBounds(PanelType::Floating, screenWidth, screenHeight, outX, outY, outW, outH);
+        if (x >= outX && x <= outX + outW && y >= outY && y <= outY + outH) return PanelType::Floating;
+    }
+    
+    return PanelType::None;
+}
+
+PanelType Panels::getThreeDotsAt(int x, int y, int screenWidth, int screenHeight) const {
+    vector<PanelType> panels = {PanelType::Left, PanelType::Right, PanelType::Top, PanelType::Bottom};
+    if (sizes.floatingVisible) panels.push_back(PanelType::Floating);
+    
+    for (PanelType panel : panels) {
+        if (isOnThreeDots(x, y, panel, screenWidth, screenHeight)) {
+            return panel;
+        }
+    }
+    return PanelType::None;
+}
+
+void Panels::resetPanelSize(PanelType panel) {
+    switch (panel) {
+        case PanelType::Left:
+            setLeftWidth(200);
+            break;
+        case PanelType::Right:
+            setRightWidth(200);
+            break;
+        case PanelType::Top:
+            setTopHeight(50);
+            break;
+        case PanelType::Bottom:
+            setBottomHeight(50);
+            break;
+        case PanelType::Floating:
+            setFloatingWidth(300);
+            setFloatingHeight(200);
+            break;
+        default:
+            break;
+    }
+}
+
+void Panels::splitPanel(PanelType panel) {
+    switch (panel) {
+        case PanelType::Left:
+            setLeftWidth(getLeftWidth() / 2);
+            break;
+        case PanelType::Right:
+            setRightWidth(getRightWidth() / 2);
+            break;
+        case PanelType::Top:
+            setTopHeight(getTopHeight() / 2);
+            break;
+        case PanelType::Bottom:
+            setBottomHeight(getBottomHeight() / 2);
+            break;
+        default:
+            break;
+    }
+}
+
+void Panels::changePanelType(PanelType panel, const string& newType) {
+    switch (panel) {
+        case PanelType::Left:
+            sizes.leftPanelType = newType;
+            break;
+        case PanelType::Right:
+            sizes.rightPanelType = newType;
+            break;
+        case PanelType::Top:
+            sizes.topPanelType = newType;
+            break;
+        case PanelType::Bottom:
+            sizes.bottomPanelType = newType;
+            break;
+        case PanelType::Floating:
+            sizes.floatingPanelType = newType;
+            break;
+        default:
+            break;
+    }
+}
+
+void Panels::renderThreeDots(RenderUI& renderer, int x, int y) const {
+    glColor3f(0.6f, 0.6f, 0.6f);
+    glVertex2f(x, y);
+    glVertex2f(x + 3, y);
+    glVertex2f(x + 3, y + 3);
+    glVertex2f(x, y + 3);
+    
+    glVertex2f(x + 6, y);
+    glVertex2f(x + 9, y);
+    glVertex2f(x + 9, y + 3);
+    glVertex2f(x + 6, y + 3);
+    
+    glVertex2f(x + 12, y);
+    glVertex2f(x + 15, y);
+    glVertex2f(x + 15, y + 3);
+    glVertex2f(x + 12, y + 3);
+}
+
+void Panels::renderActiveDot(RenderUI& renderer, int x, int y, bool isActive) const {
+    if (isActive) {
+        glColor3f(0.5f, 0.5f, 0.5f);
+    } else {
+        glColor3f(0.3f, 0.3f, 0.3f);
+    }
+    glVertex2f(x, y);
+    glVertex2f(x + 8, y);
+    glVertex2f(x + 8, y + 8);
+    glVertex2f(x, y + 8);
 }

@@ -20,5 +20,5 @@ bool Application::createApplication() {
 }
 
 void Application::processInput(float deltaTime) {
-    // заготовка
+
 }

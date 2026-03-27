@@ -19,14 +19,17 @@ private:
     ObjectUI objectUI;
     Panels panels;
     Core* core;
-    bool isStopMove;
+    bool isStopMove = false;
     bool isDragging = false;
     PanelType draggingEdge = PanelType::None;
     int dragStartX = 0;
     int dragStartY = 0;
     int dragStartValue = 0;
+    bool menuBarVisible = true;
     
     void updatePanelMinSizes();
+    void renderMenuBar();
+    void handleMenuClick(int x, int y);
     
 public:
     void BlockMoveToMainWindow(int x, int y);

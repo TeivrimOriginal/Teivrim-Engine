@@ -11,9 +11,9 @@
 class UIObject {
 protected:
     std::string name;
-    int x, y;        // Исходные координаты относительно панели
-    int w, h;        // Ширина и высота
-    int ax, ay;      // Актуальные координаты на экране
+    int x, y;
+    int w, h;
+    int ax, ay;
     PanelType attachedPanel;
 
 public:
@@ -26,7 +26,6 @@ public:
     bool containsPoint(int px, int py) const;
     void updatePosition(int panelX, int panelY);
     
-    // Геттеры
     const std::string& getName() const { return name; }
     int getX() const { return x; }
     int getY() const { return y; }
@@ -36,7 +35,6 @@ public:
     int getAY() const { return ay; }
     PanelType getAttachedPanel() const { return attachedPanel; }
     
-    // Сеттеры
     void setPanel(PanelType p) { attachedPanel = p; }
 };
 
@@ -50,10 +48,27 @@ public:
     void onClick(int x, int y) override;
 };
 
+class DropdownMenu {
+private:
+    bool visible = false;
+    int x, y;
+    std::vector<std::string> items;
+    std::function<void(int)> callback;
+    
+public:
+    DropdownMenu();
+    void show(int px, int py, const std::vector<std::string>& menuItems, std::function<void(int)> cb);
+    void hide();
+    bool isVisible() const { return visible; }
+    void render(RenderUI& renderer) const;
+    bool handleClick(int clickX, int clickY);
+};
+
 class ObjectUI {
 private:
     std::vector<UIObject*> objects;
     std::map<std::string, UIObject*> objectMap;
+    DropdownMenu activeMenu;
 
 public:
     ObjectUI();
@@ -64,12 +79,11 @@ public:
     void updatePositions(int sw, int sh, const Panels& panels);
     void render(RenderUI& r, int w, int h, const Panels& panels);
     void handleClick(int x, int y, int w, int h, const Panels& panels);
+    void showDropdown(int x, int y, const std::vector<std::string>& items, std::function<void(int)> callback);
+    bool isDropdownVisible() const { return activeMenu.isVisible(); }
     
-    // Новые методы для расчета минимальных размеров панелей
     int getMinWidthForPanel(PanelType panel) const;
     int getMinHeightForPanel(PanelType panel) const;
-    
-    // Получить все объекты на панели
     std::vector<UIObject*> getObjectsOnPanel(PanelType panel) const;
 };
 
