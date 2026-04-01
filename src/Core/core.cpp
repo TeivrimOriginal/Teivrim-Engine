@@ -131,7 +131,6 @@ void Core::GameLoop() {
     g_uiManager = new InterfaceManager(this);
     g_uiManager->setWindow(win32Window);
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
-    InterfaceManager pizda(this);
 
     Input input(app, g_uiManager);
     POINT lastMousePos = {0, 0};
@@ -146,7 +145,6 @@ void Core::GameLoop() {
         float deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        // FPS счетчик
         fpsTimer += deltaTime;
         frameCount++;
         if (fpsTimer >= 1.0f) {
@@ -163,15 +161,12 @@ void Core::GameLoop() {
         GetCursorPos(&currentMousePos);
         ScreenToClient(win32Window->getHWND(), &currentMousePos);
 
-        // Оптимизируем модель если она была загружена
         if (needsOptimize && modelLoaded && shaderProgram != 0) {
             rendererw.optimize(modelParser, shaderProgram);
             needsOptimize = false;
         }
 
         if (!isStart) {
-
-
             input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
             input.processInputWin32(deltaTime, win32Window->getHWND());
 
@@ -180,11 +175,38 @@ void Core::GameLoop() {
             glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            if (modelLoaded) {
-                rendererw.renderModel(modelParser, shaderProgram, app.getCamera());
+            if (modelLoaded && g_uiManager) {
+                FlexiblePanel* view3D = g_uiManager->getPanelManager()->get3DPanel();
+                
+                // Всегда рендерим модель, если она загружена
+                if (view3D && view3D->isVisible()) {
+                    const PanelBounds& b = view3D->getBounds();
+                    
+                    RECT rect;
+                    GetClientRect(win32Window->getHWND(), &rect);
+                    int winH = rect.bottom - rect.top;
+                    
+                    int viewY = winH - (b.y + b.height);
+                    
+                    glViewport(b.x, viewY, b.width, b.height);
+                    glScissor(b.x, viewY, b.width, b.height);
+                    glEnable(GL_SCISSOR_TEST);
+                    if (view3D) {
+    std::cout << "3D Panel visible: " << view3D->isVisible() << " | bounds: " 
+              << view3D->getX() << "," << view3D->getY() << " " 
+              << view3D->getWidth() << "x" << view3D->getHeight() << std::endl;
+}
+                    rendererw.renderModel(modelParser, shaderProgram, app.getCamera());
+                    
+                    glDisable(GL_SCISSOR_TEST);
+                } else {
+                    // Если 3D панель не существует или скрыта, рендерим на весь экран
+                    RECT rect;
+                    GetClientRect(win32Window->getHWND(), &rect);
+                    glViewport(0, 0, rect.right - rect.left, rect.bottom - rect.top);
+                    rendererw.renderModel(modelParser, shaderProgram, app.getCamera());
+                }
             }
-        } else {
-            std::cout << "cicl ostanovlen " << std::endl;
         }
 
         g_uiManager->renderStatic();

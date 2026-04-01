@@ -6,6 +6,7 @@
 #include "Panels.h"
 #include "../Application/WindowAPIsupport/Win32/InitialWin32.h"
 #include "../Core/core.h"
+#include "TestNewUISystem.h"
 
 struct Dimensions {
     int width;
@@ -18,6 +19,7 @@ private:
     RenderUI renderer;
     ObjectUI objectUI;
     Panels panels;
+    PanelManager* panelManager;
     Core* core;
     bool isStopMove = false;
     bool isDragging = false;
@@ -35,7 +37,7 @@ public:
     void BlockMoveToMainWindow(int x, int y);
     bool CheckerClickToPanel(int x, int y);
     InterfaceManager(Core* corePtr);
-    ~InterfaceManager() = default;
+    ~InterfaceManager();
     void swapclick() { isClick = !isClick; };
     void setWindow(InitialWin32* w) { window = w; }
     bool isClick = true;
@@ -50,8 +52,10 @@ public:
     void handleMouseUp(int x, int y);
     void SwapFlag(Core &A);
     HWND getHWND() const;
-    
     HCURSOR getCursorForEdge(PanelType edge) const;
+    
+    PanelManager* getPanelManager() { return panelManager; }
+    void setupNewPanels();
 };
 
 #endif
