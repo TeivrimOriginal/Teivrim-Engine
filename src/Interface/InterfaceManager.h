@@ -19,12 +19,6 @@ private:
     ObjectUI objectUI;
     PanelManager* panels;
     Core* core;
-    bool isStopMove = false;
-    bool isDragging = false;
-    int dragStartX = 0;
-    int dragStartY = 0;
-    int dragStartValue = 0;
-    bool menuBarVisible = true;
     
 public:
     InterfaceManager(Core* corePtr);

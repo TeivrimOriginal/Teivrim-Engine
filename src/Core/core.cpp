@@ -160,7 +160,6 @@ void Core::GameLoop() {
         }
 
         if (!isStart) {
-            // Блокировка движения камеры при перетаскивании панели
             if (g_uiManager && g_uiManager->isBlockingRender()) {
                 input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
             } else {
@@ -175,7 +174,7 @@ void Core::GameLoop() {
 
             if (modelLoaded && g_uiManager) {
                 Panel* view3D = g_uiManager->getPanelManager()->get3D();
-                if (view3D && view3D->isVisible()) {
+                if (view3D && view3D->visible) {
                     RECT rect;
                     GetClientRect(win32Window->getHWND(), &rect);
                     int winH = rect.bottom - rect.top;

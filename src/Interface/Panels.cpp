@@ -1,28 +1,10 @@
 #include "Panels.h"
 #include <iostream>
 
-Panel::Panel(const std::string& n, int _x, int _y, int _w, int _h, bool is3D)
-    : name(n), visible(true), dragging(false), dockSide(-1), is3DView(is3D) {
-    b.x = _x; b.y = _y; b.width = _w; b.height = _h;
-    minW = is3D ? 200 : 150;
-    minH = is3D ? 150 : 100;
-    b.update();
-}
-
-void Panel::setDock(int side, int sw, int sh) {
-    dockSide = side;
-    if (side == 0) { b.x = 0; b.y = 0; b.width = 250; b.height = sh; }
-    else if (side == 1) { b.x = sw - 250; b.y = 0; b.width = 250; b.height = sh; }
-    else if (side == 2) { b.x = 0; b.y = 0; b.width = sw; b.height = 50; }
-    else if (side == 3) { b.x = 0; b.y = sh - 100; b.width = sw; b.height = 100; }
-    b.update();
-}
-
-void Panel::updateDock(int sw, int sh) {
-    if (dockSide == 0) { b.height = sh; b.update(); }
-    else if (dockSide == 1) { b.x = sw - b.width; b.height = sh; b.update(); }
-    else if (dockSide == 2) { b.width = sw; b.update(); }
-    else if (dockSide == 3) { b.x = 0; b.width = sw; b.y = sh - b.height; b.update(); }
+Panel::Panel(const std::string& n, int _x, int _y, int _w, int _h, bool _3D)
+    : name(n), visible(true), collapsed(false), is3D(_3D) {
+    r.x = _x; r.y = _y; r.w = _w; r.h = _h;
+    r.update();
 }
 
 void Panel::addButton(const std::string& text, std::function<void()> cb) {
@@ -33,31 +15,45 @@ void Panel::addLabel(const std::string& text) {
     labels.push_back(text);
 }
 
-bool Panel::contains(int px, int py) const {
-    return visible && b.contains(px, py);
+void Panel::setPos(int x, int y) { r.x = x; r.y = y; r.update(); }
+void Panel::setSize(int w, int h) { r.w = w; r.h = h; r.update(); }
+void Panel::setVisible(bool v) { visible = v; }
+void Panel::setCollapsed(bool c) { collapsed = c; }
+
+bool Panel::contains(int px, int py) const { return visible && r.contains(px, py); }
+bool Panel::onHeader(int px, int py) const { return visible && r.onTitle(px, py, 25); }
+bool Panel::onCollapseBtn(int px, int py) const {
+    if (!visible) return false;
+    int cx = r.right - 60, cy = r.y + 5;
+    return px >= cx && px <= cx + 12 && py >= cy && py <= cy + 12;
+}
+bool Panel::onCloseBtn(int px, int py) const {
+    if (!visible) return false;
+    int cx = r.right - 20, cy = r.y + 5;
+    return px >= cx && px <= cx + 12 && py >= cy && py <= cy + 12;
+}
+bool Panel::onMenuBtn(int px, int py) const {
+    if (!visible) return false;
+    int cx = r.right - 80, cy = r.y + 5;
+    return px >= cx && px <= cx + 12 && py >= cy && py <= cy + 12;
 }
 
 int Panel::getEdge(int px, int py, int s) const {
     if (!visible) return -1;
-    if (b.onLeft(px, py, s)) return 0;
-    if (b.onRight(px, py, s)) return 1;
-    if (b.onTop(px, py, s)) return 2;
-    if (b.onBottom(px, py, s)) return 3;
-    if (b.onTitle(px, py, 25)) return 4;
+    if (r.onLeft(px, py, s)) return 0;
+    if (r.onRight(px, py, s)) return 1;
+    if (r.onTop(px, py, s)) return 2;
+    if (r.onBottom(px, py, s)) return 3;
+    if (r.onTitle(px, py, 25)) return 4;
     return -1;
 }
 
-bool Panel::closeClicked(int px, int py) const {
-    if (!visible) return false;
-    int cx = b.right - 20, cy = b.y + 5;
-    return px >= cx && px <= cx + 12 && py >= cy && py <= cy + 12;
-}
-
-bool Panel::handleClick(int px, int py) {
-    int by = b.y + 35;
+bool Panel::onClickButton(int px, int py) {
+    if (collapsed) return false;
+    int by = r.y + 35;
     for (auto& btn : buttons) {
         int bw = btn.first.length() * 8 + 20;
-        int bx = b.x + 10;
+        int bx = r.x + 10;
         if (px >= bx && px <= bx + bw && py >= by && py <= by + 25) {
             btn.second();
             return true;
@@ -67,96 +63,71 @@ bool Panel::handleClick(int px, int py) {
     return false;
 }
 
-void Panel::startDrag(int mx, int my, int edge) {
-    dragging = true;
-    dragType = edge;
-    dragX = mx; dragY = my;
-    dragW = b.width; dragH = b.height;
-    dragX0 = b.x; dragY0 = b.y;
-}
-
-void Panel::drag(int mx, int my) {
-    if (!dragging) return;
-    int dx = mx - dragX, dy = my - dragY;
-    int nw = dragW, nh = dragH, nx = dragX0, ny = dragY0;
-    
-    if (dragType == 0) { nw = dragW - dx; nx = dragX0 + dx; }
-    else if (dragType == 1) { nw = dragW + dx; }
-    else if (dragType == 2) { nh = dragH - dy; ny = dragY0 + dy; }
-    else if (dragType == 3) { nh = dragH + dy; }
-    else if (dragType == 4) { nx = dragX0 + dx; ny = dragY0 + dy; }
-    
-    if (dragType != 4) {
-        nw = std::max(minW, nw);
-        nh = std::max(minH, nh);
-        if (dragType == 0) nx = dragX0 + (dragW - nw);
-        if (dragType == 2) ny = dragY0 + (dragH - nh);
-    }
-    
-    b.x = nx; b.y = ny; b.width = nw; b.height = nh;
-    b.update();
-}
-
-void Panel::stopDrag() { dragging = false; }
-bool Panel::isDragging() const { return dragging; }
-void Panel::setVisible(bool v) { visible = v; }
-bool Panel::isVisible() const { return visible; }
-bool Panel::is3D() const { return is3DView; }
-void Panel::setMinSize(int mw, int mh) { minW = mw; minH = mh; if (b.width < minW) b.width = minW; if (b.height < minH) b.height = minH; b.update(); }
-
-void Panel::render(RenderUI& r) {
+void Panel::render(RenderUI& render) {
     if (!visible) return;
     
-    glColor3f(0.2f, 0.2f, 0.25f);
-    glVertex2f(b.x, b.y); glVertex2f(b.right, b.y);
-    glVertex2f(b.right, b.bottom); glVertex2f(b.x, b.bottom);
+    if (!is3D) {
+        glColor3f(0.18f, 0.18f, 0.22f);
+        glVertex2f(r.x, r.y); glVertex2f(r.right, r.y);
+        glVertex2f(r.right, r.bottom); glVertex2f(r.x, r.bottom);
+    }
     
-    glColor3f(0.3f, 0.3f, 0.4f);
-    glVertex2f(b.x, b.y); glVertex2f(b.right, b.y);
-    glVertex2f(b.right, b.y + 25); glVertex2f(b.x, b.y + 25);
+    glColor3f(0.28f, 0.28f, 0.35f);
+    glVertex2f(r.x, r.y); glVertex2f(r.right, r.y);
+    glVertex2f(r.right, r.y + 25); glVertex2f(r.x, r.y + 25);
     
-    glColor3f(0.5f, 0.5f, 0.5f);
-    glVertex2f(b.x, b.y); glVertex2f(b.right, b.y);
-    glVertex2f(b.right, b.y + 2); glVertex2f(b.x, b.y + 2);
-    glVertex2f(b.x, b.bottom - 2); glVertex2f(b.right, b.bottom - 2);
-    glVertex2f(b.right, b.bottom); glVertex2f(b.x, b.bottom);
-    glVertex2f(b.x, b.y); glVertex2f(b.x + 2, b.y);
-    glVertex2f(b.x + 2, b.bottom); glVertex2f(b.x, b.bottom);
-    glVertex2f(b.right - 2, b.y); glVertex2f(b.right, b.y);
-    glVertex2f(b.right, b.bottom); glVertex2f(b.right - 2, b.bottom);
+    glColor3f(0.4f, 0.4f, 0.45f);
+    glVertex2f(r.x, r.y); glVertex2f(r.right, r.y);
+    glVertex2f(r.right, r.y + 1); glVertex2f(r.x, r.y + 1);
+    glVertex2f(r.x, r.bottom - 1); glVertex2f(r.right, r.bottom - 1);
+    glVertex2f(r.right, r.bottom); glVertex2f(r.x, r.bottom);
+    glVertex2f(r.x, r.y); glVertex2f(r.x + 1, r.y);
+    glVertex2f(r.x + 1, r.bottom); glVertex2f(r.x, r.bottom);
+    glVertex2f(r.right - 1, r.y); glVertex2f(r.right, r.y);
+    glVertex2f(r.right, r.bottom); glVertex2f(r.right - 1, r.bottom);
     
-    int cx = b.right - 20, cy = b.y + 5;
-    glColor3f(0.6f, 0.2f, 0.2f);
-    glVertex2f(cx, cy); glVertex2f(cx + 12, cy);
-    glVertex2f(cx + 12, cy + 12); glVertex2f(cx, cy + 12);
+    int menuX = r.right - 80, collapseX = r.right - 60, closeX = r.right - 20, cy = r.y + 5;
+    
+    glColor3f(0.35f, 0.35f, 0.45f);
+    glVertex2f(menuX, cy); glVertex2f(menuX + 12, cy);
+    glVertex2f(menuX + 12, cy + 12); glVertex2f(menuX, cy + 12);
+    glVertex2f(collapseX, cy); glVertex2f(collapseX + 12, cy);
+    glVertex2f(collapseX + 12, cy + 12); glVertex2f(collapseX, cy + 12);
+    
+    glColor3f(0.55f, 0.2f, 0.2f);
+    glVertex2f(closeX, cy); glVertex2f(closeX + 12, cy);
+    glVertex2f(closeX + 12, cy + 12); glVertex2f(closeX, cy + 12);
     
     glEnd();
     
-    r.drawText(b.x + 10, b.y + 8, name, 0.9f, 0.9f, 0.9f);
-    r.drawText(cx + 3, cy + 2, "X", 1.0f, 1.0f, 1.0f);
+    render.drawText(r.x + 10, r.y + 8, name, 0.9f, 0.9f, 0.9f);
+    render.drawText(menuX + 3, cy + 2, "☰", 0.9f, 0.9f, 0.9f);
+    render.drawText(collapseX + 3, cy + 2, collapsed ? "▶" : "▼", 0.9f, 0.9f, 0.9f);
+    render.drawText(closeX + 3, cy + 2, "✕", 1.0f, 1.0f, 1.0f);
     
-    int by = b.y + 35;
-    for (auto& btn : buttons) {
-        int bw = btn.first.length() * 8 + 20;
-        int bx = b.x + 10;
-        glBegin(GL_QUADS);
-        glColor3f(0.4f, 0.4f, 0.5f);
-        glVertex2f(bx, by); glVertex2f(bx + bw, by);
-        glVertex2f(bx + bw, by + 25); glVertex2f(bx, by + 25);
-        glEnd();
-        r.drawText(bx + 10, by + 8, btn.first, 1.0f, 1.0f, 1.0f);
-        by += 30;
-    }
-    
-    for (auto& lbl : labels) {
-        r.drawText(b.x + 10, by, lbl, 0.8f, 0.8f, 0.8f);
-        by += 20;
+    if (!collapsed) {
+        int by = r.y + 35;
+        for (auto& btn : buttons) {
+            int bw = btn.first.length() * 8 + 20;
+            int bx = r.x + 10;
+            glBegin(GL_QUADS);
+            glColor3f(0.35f, 0.35f, 0.45f);
+            glVertex2f(bx, by); glVertex2f(bx + bw, by);
+            glVertex2f(bx + bw, by + 24); glVertex2f(bx, by + 24);
+            glEnd();
+            render.drawText(bx + 8, by + 7, btn.first, 1.0f, 1.0f, 1.0f);
+            by += 28;
+        }
+        for (auto& lbl : labels) {
+            render.drawText(r.x + 10, by, lbl, 0.7f, 0.7f, 0.7f);
+            by += 18;
+        }
     }
     
     glBegin(GL_QUADS);
 }
 
-PanelManager::PanelManager() : active(nullptr), activeEdge(-1), dragging(false), blockInput(false) {}
+PanelManager::PanelManager() : dragging(nullptr), dragX(0), dragY(0), isDrag(false), isResizing(false), menuOpen(false) {}
 PanelManager::~PanelManager() { for (auto p : panels) delete p; }
 
 Panel* PanelManager::add(const std::string& name, int x, int y, int w, int h, bool is3D) {
@@ -166,58 +137,169 @@ Panel* PanelManager::add(const std::string& name, int x, int y, int w, int h, bo
 }
 
 Panel* PanelManager::get3D() {
-    for (auto p : panels) if (p->is3D()) return p;
+    for (auto p : panels) if (p->is3D && p->visible) return p;
     return nullptr;
 }
 
 Panel* PanelManager::at(int px, int py) {
-    for (auto p : panels) if (p->isVisible() && p->contains(px, py)) return p;
+    for (auto p : panels) if (p->visible && p->contains(px, py)) return p;
     return nullptr;
 }
 
-void PanelManager::updateDocks(int sw, int sh) {
-    for (auto p : panels) p->updateDock(sw, sh);
-}
-
-void PanelManager::onMouseDown(int x, int y) {
+void PanelManager::update(int sw, int sh) {
     for (auto p : panels) {
-        if (!p->isVisible()) continue;
-        if (p->closeClicked(x, y)) { p->setVisible(false); return; }
-        if (p->handleClick(x, y)) return;
-        int edge = p->getEdge(x, y);
-        if (edge != -1) {
-            active = p;
-            activeEdge = edge;
-            dragging = true;
-            blockInput = true;
-            p->startDrag(x, y, edge);
-            return;
+        if (p->name == "TopBar") {
+            p->setSize(sw, 30);
+            p->setPos(0, 0);
+        } else if (p->name == "Hierarchy") {
+            p->setSize(220, sh - 30);
+            p->setPos(0, 30);
+        } else if (p->name == "Inspector") {
+            p->setSize(260, sh - 30);
+            p->setPos(sw - 260, 30);
+        } else if (p->name == "3D Viewport") {
+            p->setSize(sw - 480, sh - 30);
+            p->setPos(220, 30);
+        } else if (p->name == "Console") {
+            p->setSize(sw - 220, 150);
+            p->setPos(220, sh - 150);
         }
     }
 }
 
-void PanelManager::onMouseMove(int x, int y) {
-    if (dragging && active) active->drag(x, y);
+void PanelManager::closeMenu() {
+    menuOpen = false;
+    menuItems.clear();
+    menuCallback = nullptr;
 }
 
-void PanelManager::onMouseUp(int x, int y) {
-    if (dragging && active) {
-        active->stopDrag();
-        dragging = false;
-        active = nullptr;
-        blockInput = false;
+void PanelManager::onMouseDown(int x, int y) {
+    closeMenu();
+    
+    for (auto p : panels) {
+        if (!p->visible) continue;
+        
+        int edge = p->getEdge(x, y);
+        if (edge != -1 && edge != 4) {
+            dragging = p;
+            dragX = x;
+            dragY = y;
+            dragW = p->getW();
+            dragH = p->getH();
+            dragEdge = edge;
+            isDrag = true;
+            isResizing = true;
+            return;
+        }
+        
+        if (p->onCloseBtn(x, y)) {
+            p->visible = false;
+            return;
+        }
+        if (p->onCollapseBtn(x, y)) {
+            p->collapsed = !p->collapsed;
+            return;
+        }
+        if (p->onMenuBtn(x, y)) {
+            menuOpen = true;
+            menuX = x;
+            menuY = y + 15;
+            menuItems = {"Close", "Collapse", "Reset"};
+            menuCallback = [this, p](int idx) {
+                if (idx == 0) p->visible = false;
+                else if (idx == 1) p->collapsed = !p->collapsed;
+                else if (idx == 2) { p->setPos(220, 30); p->setSize(400, 300); }
+                closeMenu();
+            };
+            return;
+        }
+        if (p->onClickButton(x, y)) return;
+        if (p->onHeader(x, y)) {
+            dragging = p;
+            dragX = x - p->getX();
+            dragY = y - p->getY();
+            isDrag = true;
+            isResizing = false;
+            return;
+        }
+    }
+    
+    if (menuOpen) {
+        int itemH = 20;
+        int idx = (y - menuY) / itemH;
+        if (idx >= 0 && idx < (int)menuItems.size() && menuCallback) {
+            menuCallback(idx);
+        }
+        closeMenu();
     }
 }
 
-bool PanelManager::isBlockingInput() const { return blockInput; }
-bool PanelManager::isDragging() const { return dragging; }
+void PanelManager::onMouseMove(int x, int y) {
+    if (!isDrag || !dragging) return;
+    
+    if (isResizing) {
+        int dx = x - dragX;
+        int dy = y - dragY;
+        int nx = dragging->getX();
+        int ny = dragging->getY();
+        int nw = dragW;
+        int nh = dragH;
+        
+        if (dragEdge == 0) { nw = dragW - dx; nx = dragging->getX() + dx; }
+        else if (dragEdge == 1) { nw = dragW + dx; }
+        else if (dragEdge == 2) { nh = dragH - dy; ny = dragging->getY() + dy; }
+        else if (dragEdge == 3) { nh = dragH + dy; }
+        
+        if (nw < 100) nw = 100;
+        if (nh < 50) nh = 50;
+        if (dragEdge == 0) nx = dragging->getX() + (dragW - nw);
+        if (dragEdge == 2) ny = dragging->getY() + (dragH - nh);
+        
+        dragging->setPos(nx, ny);
+        dragging->setSize(nw, nh);
+        dragX = x;
+        dragY = y;
+        dragW = nw;
+        dragH = nh;
+    } else {
+        dragging->setPos(x - dragX, y - dragY);
+    }
+}
 
-void PanelManager::render(RenderUI& r) {
+void PanelManager::onMouseUp(int x, int y) {
+    isDrag = false;
+    dragging = nullptr;
+    isResizing = false;
+}
+
+bool PanelManager::isDragging() const { return isDrag; }
+
+void PanelManager::render(RenderUI& render) {
     for (auto p : panels) {
-        if (p->isVisible()) {
+        if (p->visible) {
             glBegin(GL_QUADS);
-            p->render(r);
+            p->render(render);
             glEnd();
+        }
+    }
+    
+    if (menuOpen) {
+        int itemH = 20;
+        int w = 100;
+        int h = menuItems.size() * itemH;
+        glBegin(GL_QUADS);
+        glColor3f(0.15f, 0.15f, 0.18f);
+        glVertex2f(menuX, menuY); glVertex2f(menuX + w, menuY);
+        glVertex2f(menuX + w, menuY + h); glVertex2f(menuX, menuY + h);
+        glColor3f(0.25f, 0.25f, 0.3f);
+        for (size_t i = 0; i < menuItems.size(); i++) {
+            int yy = menuY + i * itemH;
+            glVertex2f(menuX, yy); glVertex2f(menuX + w, yy);
+            glVertex2f(menuX + w, yy + itemH); glVertex2f(menuX, yy + itemH);
+        }
+        glEnd();
+        for (size_t i = 0; i < menuItems.size(); i++) {
+            render.drawText(menuX + 5, menuY + i * itemH + 5, menuItems[i], 0.9f, 0.9f, 0.9f);
         }
     }
 }

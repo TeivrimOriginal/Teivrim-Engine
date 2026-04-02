@@ -7,10 +7,10 @@
 #include <windows.h>
 #include "../Core/Render/Win32/RenderUI.h"
 
-struct PanelBounds {
-    int x, y, width, height, right, bottom;
-    PanelBounds() : x(0), y(0), width(0), height(0), right(0), bottom(0) {}
-    void update() { right = x + width; bottom = y + height; }
+struct Rect {
+    int x, y, w, h, right, bottom;
+    Rect() : x(0), y(0), w(0), h(0), right(0), bottom(0) {}
+    void update() { right = x + w; bottom = y + h; }
     bool contains(int px, int py) const { return px >= x && px <= right && py >= y && py <= bottom; }
     bool onLeft(int px, int py, int s=5) const { return px >= x-s && px <= x+s && py >= y && py <= bottom; }
     bool onRight(int px, int py, int s=5) const { return px >= right-s && px <= right+s && py >= y && py <= bottom; }
@@ -20,54 +20,50 @@ struct PanelBounds {
 };
 
 class Panel {
-private:
+public:
     std::string name;
-    PanelBounds b;
-    int minW, minH;
-    bool visible, dragging;
-    int dragType, dragX, dragY, dragW, dragH, dragX0, dragY0;
-    int dockSide;
-    bool is3DView;
+    Rect r;
+    bool visible, collapsed;
+    bool is3D;
     std::vector<std::pair<std::string, std::function<void()>>> buttons;
     std::vector<std::string> labels;
     
-public:
-    Panel(const std::string& n, int _x, int _y, int _w, int _h, bool is3D = false);
-    
-    void setDock(int side, int sw, int sh);
-    void updateDock(int sw, int sh);
+    Panel(const std::string& n, int x, int y, int w, int h, bool _3D = false);
     void addButton(const std::string& text, std::function<void()> cb);
     void addLabel(const std::string& text);
+    void setPos(int x, int y);
+    void setSize(int w, int h);
+    void setVisible(bool v);
+    void setCollapsed(bool c);
     
     bool contains(int px, int py) const;
+    bool onHeader(int px, int py) const;
+    bool onCollapseBtn(int px, int py) const;
+    bool onCloseBtn(int px, int py) const;
+    bool onMenuBtn(int px, int py) const;
+    bool onClickButton(int px, int py);
     int getEdge(int px, int py, int s=5) const;
-    bool closeClicked(int px, int py) const;
-    bool handleClick(int px, int py);
     
-    void startDrag(int mx, int my, int edge);
-    void drag(int mx, int my);
-    void stopDrag();
-    bool isDragging() const;
+    int getX() const { return r.x; }
+    int getY() const { return r.y; }
+    int getW() const { return r.w; }
+    int getH() const { return r.h; }
     
-    void setVisible(bool v);
-    bool isVisible() const;
-    bool is3D() const;
-    void setMinSize(int mw, int mh);
-    int getX() const { return b.x; }
-    int getY() const { return b.y; }
-    int getW() const { return b.width; }
-    int getH() const { return b.height; }
-    
-    void render(RenderUI& r);
+    void render(RenderUI& render);
 };
 
 class PanelManager {
 private:
     std::vector<Panel*> panels;
-    Panel* active;
-    int activeEdge;
-    bool dragging;
-    bool blockInput;
+    Panel* dragging;
+    int dragX, dragY, dragW, dragH, dragEdge;
+    bool isDrag, isResizing;
+    bool menuOpen;
+    int menuX, menuY;
+    std::vector<std::string> menuItems;
+    std::function<void(int)> menuCallback;
+    
+    void closeMenu();
     
 public:
     PanelManager();
@@ -76,15 +72,15 @@ public:
     Panel* add(const std::string& name, int x, int y, int w, int h, bool is3D = false);
     Panel* get3D();
     Panel* at(int px, int py);
-    void updateDocks(int sw, int sh);
+    void update(int sw, int sh);
     
     void onMouseDown(int x, int y);
     void onMouseMove(int x, int y);
     void onMouseUp(int x, int y);
     
-    bool isBlockingInput() const;
     bool isDragging() const;
-    void render(RenderUI& r);
+    bool isBlockingInput() const { return isDrag; }
+    void render(RenderUI& render);
 };
 
 #endif
