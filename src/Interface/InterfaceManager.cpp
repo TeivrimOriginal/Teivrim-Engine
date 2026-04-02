@@ -6,7 +6,7 @@ InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePt
     
     int sw = 1280, sh = 720;
     
-    auto top = panels->add("TopBar", 0, 0, sw, 30);
+    auto top = panels->add("TopBar", 0, 0, sw, 40);
     top->addButton("File", []() { std::cout << "File" << std::endl; });
     top->addButton("Edit", []() { std::cout << "Edit" << std::endl; });
     top->addButton("View", []() { std::cout << "View" << std::endl; });
@@ -14,20 +14,20 @@ InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePt
     top->addButton("Start", [this]() { if (core) SwapFlag(*core); });
     top->addButton("Stop", [this]() { if (core) SwapFlag(*core); });
     
-    auto left = panels->add("Hierarchy", 0, 30, 220, sh - 30);
+    auto left = panels->add("Hierarchy", 0, 40, 220, sh - 40);
     left->addButton("Create Empty", []() { std::cout << "Create Empty" << std::endl; });
     left->addButton("Create Cube", []() { std::cout << "Create Cube" << std::endl; });
     left->addButton("Create Sphere", []() { std::cout << "Create Sphere" << std::endl; });
     left->addLabel("Objects: 0");
     
-    auto right = panels->add("Inspector", sw - 260, 30, 260, sh - 30);
+    auto right = panels->add("Inspector", sw - 260, 40, 260, sh - 40);
     right->addButton("Apply", []() { std::cout << "Apply" << std::endl; });
     right->addButton("Reset", []() { std::cout << "Reset" << std::endl; });
     right->addLabel("Position: 0,0,0");
     right->addLabel("Rotation: 0,0,0");
     right->addLabel("Scale: 1,1,1");
     
-    auto view3D = panels->add("3D Viewport", 220, 30, sw - 480, sh - 30, true);
+    auto view3D = panels->add("3D Viewport", 220, 40, sw - 480, sh - 40, true);
     view3D->addButton("Wireframe", []() { std::cout << "Wireframe" << std::endl; });
     view3D->addButton("Solid", []() { std::cout << "Solid" << std::endl; });
     
@@ -104,9 +104,33 @@ void InterfaceManager::renderDynamic() {
 }
 
 void InterfaceManager::handleClick(int x, int y) {}
-void InterfaceManager::handleMouseDown(int x, int y) { panels->onMouseDown(x, y); if (panels->isDragging() && window) SetCapture(window->getHWND()); }
-void InterfaceManager::handleMouseMove(int x, int y) { panels->onMouseMove(x, y); }
-void InterfaceManager::handleMouseUp(int x, int y) { panels->onMouseUp(x, y); if (window) ReleaseCapture(); }
+
+void InterfaceManager::handleMouseDown(int x, int y) { 
+    std::cout << "InterfaceManager::handleMouseDown " << x << "," << y << std::endl;
+    panels->onMouseDown(x, y); 
+}
+
+void InterfaceManager::handleMouseMove(int x, int y) { 
+    panels->onMouseMove(x, y);
+    
+    Panel* p = panels->at(x, y);
+    if (p) {
+        int edge = p->getEdge(x, y, 8);
+        if (edge == 0 || edge == 1) {
+            SetCursor(LoadCursor(NULL, IDC_SIZEWE));
+            return;
+        } else if (edge == 2 || edge == 3) {
+            SetCursor(LoadCursor(NULL, IDC_SIZENS));
+            return;
+        }
+    }
+    SetCursor(LoadCursor(NULL, IDC_ARROW));
+}
+
+void InterfaceManager::handleMouseUp(int x, int y) { 
+    panels->onMouseUp(x, y); 
+}
+
 void InterfaceManager::SwapFlag(Core &A) { A.isStart = !A.isStart; }
 HWND InterfaceManager::getHWND() const { return window ? window->getHWND() : nullptr; }
 void InterfaceManager::BlockMoveToMainWindow(int x, int y) {}

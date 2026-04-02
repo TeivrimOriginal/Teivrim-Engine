@@ -5,6 +5,7 @@
 #include <vector>
 #include <functional>
 #include <windows.h>
+#include <iostream>
 #include "../Core/Render/Win32/RenderUI.h"
 
 struct Rect {
@@ -42,7 +43,7 @@ public:
     bool onCloseBtn(int px, int py) const;
     bool onMenuBtn(int px, int py) const;
     bool onClickButton(int px, int py);
-    int getEdge(int px, int py, int s=5) const;
+    int getEdge(int px, int py, int s=8) const;
     
     int getX() const { return r.x; }
     int getY() const { return r.y; }
@@ -64,6 +65,7 @@ private:
     std::function<void(int)> menuCallback;
     
     void closeMenu();
+    void resizeNeighbors(Panel* p, int edge, int delta);
     
 public:
     PanelManager();

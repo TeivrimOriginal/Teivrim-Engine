@@ -1,5 +1,6 @@
 #include "Panels.h"
 #include <iostream>
+#include <sstream>
 
 Panel::Panel(const std::string& n, int _x, int _y, int _w, int _h, bool _3D)
     : name(n), visible(true), collapsed(false), is3D(_3D) {
@@ -147,22 +148,30 @@ Panel* PanelManager::at(int px, int py) {
 }
 
 void PanelManager::update(int sw, int sh) {
+    // Убираем перезапись размеров. Панели теперь сами хранят свои размеры.
+    // Просто обновляем позиции привязанных панелей при изменении окна
     for (auto p : panels) {
         if (p->name == "TopBar") {
-            p->setSize(sw, 30);
             p->setPos(0, 0);
+            p->setSize(sw, p->getH()); // сохраняем высоту
         } else if (p->name == "Hierarchy") {
-            p->setSize(220, sh - 30);
-            p->setPos(0, 30);
+            p->setPos(0, 40);
+            p->setSize(p->getW(), sh - 40); // сохраняем ширину
         } else if (p->name == "Inspector") {
-            p->setSize(260, sh - 30);
-            p->setPos(sw - 260, 30);
+            p->setPos(sw - p->getW(), 40);
+            p->setSize(p->getW(), sh - 40);
         } else if (p->name == "3D Viewport") {
-            p->setSize(sw - 480, sh - 30);
-            p->setPos(220, 30);
+            // Находим соседей чтобы вычислить ширину
+            int leftW = 0, rightW = 0;
+            for (auto other : panels) {
+                if (other->name == "Hierarchy") leftW = other->getW();
+                if (other->name == "Inspector") rightW = other->getW();
+            }
+            p->setPos(leftW, 40);
+            p->setSize(sw - leftW - rightW, sh - 40);
         } else if (p->name == "Console") {
-            p->setSize(sw - 220, 150);
-            p->setPos(220, sh - 150);
+            p->setPos(220, sh - p->getH());
+            p->setSize(sw - 220, p->getH());
         }
     }
 }
@@ -174,13 +183,16 @@ void PanelManager::closeMenu() {
 }
 
 void PanelManager::onMouseDown(int x, int y) {
+    std::cout << "\n========== MOUSE DOWN ==========" << std::endl;
+    std::cout << "Position: " << x << "," << y << std::endl;
     closeMenu();
     
     for (auto p : panels) {
         if (!p->visible) continue;
         
-        int edge = p->getEdge(x, y);
+        int edge = p->getEdge(x, y, 8);
         if (edge != -1 && edge != 4) {
+            std::cout << ">>> EDGE DETECTED! Panel: " << p->name << " Edge: " << edge << std::endl;
             dragging = p;
             dragX = x;
             dragY = y;
@@ -189,18 +201,22 @@ void PanelManager::onMouseDown(int x, int y) {
             dragEdge = edge;
             isDrag = true;
             isResizing = true;
+            SetCapture(GetForegroundWindow());
             return;
         }
         
         if (p->onCloseBtn(x, y)) {
+            std::cout << "Close button on: " << p->name << std::endl;
             p->visible = false;
             return;
         }
         if (p->onCollapseBtn(x, y)) {
+            std::cout << "Collapse button on: " << p->name << std::endl;
             p->collapsed = !p->collapsed;
             return;
         }
         if (p->onMenuBtn(x, y)) {
+            std::cout << "Menu button on: " << p->name << std::endl;
             menuOpen = true;
             menuX = x;
             menuY = y + 15;
@@ -208,18 +224,20 @@ void PanelManager::onMouseDown(int x, int y) {
             menuCallback = [this, p](int idx) {
                 if (idx == 0) p->visible = false;
                 else if (idx == 1) p->collapsed = !p->collapsed;
-                else if (idx == 2) { p->setPos(220, 30); p->setSize(400, 300); }
+                else if (idx == 2) { p->setPos(220, 40); p->setSize(400, 300); }
                 closeMenu();
             };
             return;
         }
         if (p->onClickButton(x, y)) return;
         if (p->onHeader(x, y)) {
+            std::cout << "Header drag on: " << p->name << std::endl;
             dragging = p;
             dragX = x - p->getX();
             dragY = y - p->getY();
             isDrag = true;
             isResizing = false;
+            SetCapture(GetForegroundWindow());
             return;
         }
     }
@@ -245,31 +263,112 @@ void PanelManager::onMouseMove(int x, int y) {
         int nw = dragW;
         int nh = dragH;
         
-        if (dragEdge == 0) { nw = dragW - dx; nx = dragging->getX() + dx; }
-        else if (dragEdge == 1) { nw = dragW + dx; }
-        else if (dragEdge == 2) { nh = dragH - dy; ny = dragging->getY() + dy; }
-        else if (dragEdge == 3) { nh = dragH + dy; }
+        std::cout << "\n--- RESIZING ---" << std::endl;
+        std::cout << "Delta: dx=" << dx << " dy=" << dy << std::endl;
+        
+        if (dragEdge == 0) {
+            nw = dragW - dx;
+            nx = dragging->getX() + dx;
+            std::cout << "Left edge: newW=" << nw << " newX=" << nx << std::endl;
+        } else if (dragEdge == 1) {
+            nw = dragW + dx;
+            std::cout << "Right edge: newW=" << nw << std::endl;
+        } else if (dragEdge == 2) {
+            nh = dragH - dy;
+            ny = dragging->getY() + dy;
+            std::cout << "Top edge: newH=" << nh << " newY=" << ny << std::endl;
+        } else if (dragEdge == 3) {
+            nh = dragH + dy;
+            std::cout << "Bottom edge: newH=" << nh << std::endl;
+        }
         
         if (nw < 100) nw = 100;
         if (nh < 50) nh = 50;
-        if (dragEdge == 0) nx = dragging->getX() + (dragW - nw);
-        if (dragEdge == 2) ny = dragging->getY() + (dragH - nh);
         
         dragging->setPos(nx, ny);
         dragging->setSize(nw, nh);
+        
+        std::cout << "AFTER RESIZE: " << dragging->name << " x=" << dragging->getX() 
+                  << " y=" << dragging->getY() << " w=" << dragging->getW() 
+                  << " h=" << dragging->getH() << std::endl;
+        
+        // Ищем и двигаем соседей
+        for (auto other : panels) {
+            if (other == dragging || !other->visible) continue;
+            
+            // Проверяем соседа справа
+            if (dragEdge == 1 && other->r.x == dragging->r.right) {
+                int newW = other->getW() - dx;
+                int newX = other->getX() + dx;
+                std::cout << "Found RIGHT neighbor: " << other->name << " oldX=" << other->getX() 
+                          << " oldW=" << other->getW() << " newX=" << newX << " newW=" << newW << std::endl;
+                if (newW >= 100) {
+                    other->setPos(newX, other->getY());
+                    other->setSize(newW, other->getH());
+                    std::cout << "  -> MOVED " << other->name << " to x=" << other->getX() 
+                              << " w=" << other->getW() << std::endl;
+                }
+            }
+            // Проверяем соседа слева
+            else if (dragEdge == 0 && other->r.right == dragging->r.x) {
+                int newW = other->getW() + dx;
+                std::cout << "Found LEFT neighbor: " << other->name << " oldW=" << other->getW() 
+                          << " newW=" << newW << std::endl;
+                if (newW >= 100) {
+                    other->setSize(newW, other->getH());
+                    std::cout << "  -> RESIZED " << other->name << " to w=" << other->getW() << std::endl;
+                }
+            }
+            // Проверяем соседа снизу
+            else if (dragEdge == 3 && other->r.y == dragging->r.bottom) {
+                int newH = other->getH() - dy;
+                int newY = other->getY() + dy;
+                std::cout << "Found BOTTOM neighbor: " << other->name << " oldY=" << other->getY() 
+                          << " oldH=" << other->getH() << " newY=" << newY << " newH=" << newH << std::endl;
+                if (newH >= 50) {
+                    other->setPos(other->getX(), newY);
+                    other->setSize(other->getW(), newH);
+                    std::cout << "  -> MOVED " << other->name << " to y=" << other->getY() 
+                              << " h=" << other->getH() << std::endl;
+                }
+            }
+            // Проверяем соседа сверху
+            else if (dragEdge == 2 && other->r.bottom == dragging->r.y) {
+                int newH = other->getH() + dy;
+                std::cout << "Found TOP neighbor: " << other->name << " oldH=" << other->getH() 
+                          << " newH=" << newH << std::endl;
+                if (newH >= 50) {
+                    other->setSize(other->getW(), newH);
+                    std::cout << "  -> RESIZED " << other->name << " to h=" << other->getH() << std::endl;
+                }
+            }
+        }
+        
+        // Выводим ВСЕ панели после изменений
+        std::cout << "\n--- AFTER RESIZE ALL PANELS ---" << std::endl;
+        for (auto p : panels) {
+            if (p->visible) {
+                std::cout << p->name << ": x=" << p->getX() << " y=" << p->getY() 
+                          << " w=" << p->getW() << " h=" << p->getH() << std::endl;
+            }
+        }
+        
         dragX = x;
         dragY = y;
         dragW = nw;
         dragH = nh;
     } else {
         dragging->setPos(x - dragX, y - dragY);
+        std::cout << "Moving " << dragging->name << " to " << dragging->getX() << "," << dragging->getY() << std::endl;
     }
 }
 
 void PanelManager::onMouseUp(int x, int y) {
+    std::cout << "\n========== MOUSE UP ==========\n" << std::endl;
     isDrag = false;
     dragging = nullptr;
     isResizing = false;
+    ReleaseCapture();
 }
 
 bool PanelManager::isDragging() const { return isDrag; }
