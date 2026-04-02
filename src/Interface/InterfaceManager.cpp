@@ -1,62 +1,50 @@
 #include "InterfaceManager.h"
 #include <iostream>
 
-InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePtr), panelManager(nullptr) {
-    panelManager = new PanelManager();
-    setupNewPanels();
-    
-    objectUI.createButton("Load Model", 20, 5, 160, 30, [this]() {
-        if (core) {
-            HWND hwnd = getHWND();
-            core->openFileDialogAndLoadModel(hwnd);
-        }
-    });
-    objectUI.attachToPanel("Load Model", PanelType::Bottom);
-}
-
-InterfaceManager::~InterfaceManager() { 
-    delete panelManager; 
-}
-
-void InterfaceManager::setupNewPanels() {
-    if (!panelManager) return;
+InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePtr) {
+    panels = new PanelManager();
     
     Dimensions dims = getDimensions();
     int sw = dims.width > 0 ? dims.width : 1280;
     int sh = dims.height > 0 ? dims.height : 720;
     
-    int topHeight = 50;
-    int bottomHeight = 100;
-    int leftWidth = 250;
-    int rightWidth = 250;
+    auto top = panels->add("Scene Control", 0, 0, sw, 50);
+    top->setDock(2, sw, sh);
+    top->addButton("Load Model", [this]() { if (core) core->openFileDialogAndLoadModel(getHWND()); });
+    top->addButton("Start", [this]() { if (core) SwapFlag(*core); });
+    top->addButton("Stop", [this]() { if (core) SwapFlag(*core); });
+    top->addLabel("FPS: 0");
     
-    auto top = panelManager->create("Scene Control", 0, 0, sw, topHeight);
-    top->setDockSide(2, sw, sh);
-    top->setMinSize(400, 40);
-    top->setMaxSize(2000, 80);
+    auto bottom = panels->add("Asset Manager", 0, sh - 100, sw, 100);
+    bottom->setDock(3, sw, sh);
+    bottom->addButton("Import", []() { std::cout << "Import" << std::endl; });
+    bottom->addButton("Export", []() { std::cout << "Export" << std::endl; });
+    bottom->addLabel("Ready");
     
-    auto bottom = panelManager->create("Asset Manager", 0, sh - bottomHeight, sw, bottomHeight);
-    bottom->setDockSide(3, sw, sh);
-    bottom->setMinSize(300, 80);
-    bottom->setMaxSize(2000, 200);
+    auto left = panels->add("Hierarchy", 0, 50, 250, sh - 150);
+    left->setDock(0, sw, sh);
+    left->addButton("Create Empty", []() { std::cout << "Create Empty" << std::endl; });
+    left->addButton("Create Cube", []() { std::cout << "Create Cube" << std::endl; });
+    left->addButton("Create Sphere", []() { std::cout << "Create Sphere" << std::endl; });
+    left->addLabel("Objects: 0");
+    left->addLabel("Selected: None");
     
-    auto left = panelManager->create("Hierarchy", 0, topHeight, leftWidth, sh - topHeight - bottomHeight);
-    left->setDockSide(0, sw, sh);
-    left->setMinSize(150, 200);
-    left->setMaxSize(400, 2000);
+    auto right = panels->add("Inspector", sw - 260, 50, 260, sh - 150);
+    right->setDock(1, sw, sh);
+    right->addButton("Apply", []() { std::cout << "Apply" << std::endl; });
+    right->addButton("Reset", []() { std::cout << "Reset" << std::endl; });
+    right->addLabel("Position: 0,0,0");
+    right->addLabel("Rotation: 0,0,0");
+    right->addLabel("Scale: 1,1,1");
     
-    auto right = panelManager->create("Inspector", sw - rightWidth, topHeight, rightWidth, sh - topHeight - bottomHeight);
-    right->setDockSide(1, sw, sh);
-    right->setMinSize(180, 200);
-    right->setMaxSize(500, 2000);
-    
-    auto view3D = panelManager->create("3D Viewport", leftWidth, topHeight, sw - leftWidth - rightWidth, sh - topHeight - bottomHeight, true);
+    auto view3D = panels->add("3D Viewport", 250, 50, sw - 510, sh - 150, true);
     view3D->setMinSize(300, 200);
-    view3D->setMaxSize(2000, 2000);
-    
-    auto console = panelManager->create("Console", 400, 300, 500, 200, false);
-    console->setMinSize(200, 100);
-    console->setMaxSize(800, 400);
+    view3D->addButton("Wireframe", []() { std::cout << "Wireframe" << std::endl; });
+    view3D->addButton("Solid", []() { std::cout << "Solid" << std::endl; });
+}
+
+InterfaceManager::~InterfaceManager() { 
+    delete panels; 
 }
 
 Dimensions InterfaceManager::getDimensions() {
@@ -71,97 +59,110 @@ Dimensions InterfaceManager::getDimensions() {
     return dims;
 }
 
-void InterfaceManager::clearScreen(int w, int h) {
-    glViewport(0, 0, w, h);
+void InterfaceManager::clearScreen(int width, int height) {
+    glViewport(0, 0, width, height);
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
-void InterfaceManager::setup3DViewport(const Dimensions& d) {
-    int l=0, r=0, t=0, b=0;
-    for (auto p : panelManager->getAll()) {
-        if (!p->isVisible()) continue;
-        int side = p->getDockSide();
-        if (side == 0) l = p->getWidth();
-        else if (side == 1) r = p->getWidth();
-        else if (side == 2) t = p->getHeight();
-        else if (side == 3) b = p->getHeight();
+void InterfaceManager::setup3DViewport(const Dimensions& dims) {
+    Panel* view3D = panels ? panels->get3D() : nullptr;
+    if (view3D && view3D->isVisible()) {
+        glViewport(view3D->getX(), dims.height - (view3D->getY() + view3D->getH()), 
+                   view3D->getW(), view3D->getH());
+    } else {
+        glViewport(0, 0, dims.width, dims.height);
     }
-    int vx = l, vy = t, vw = d.width - l - r, vh = d.height - t - b;
-    if (vw > 0 && vh > 0) glViewport(vx, vy, vw, vh);
-    else glViewport(0, 0, d.width, d.height);
     glEnable(GL_DEPTH_TEST);
 }
 
 void InterfaceManager::renderStatic() {
-    Dimensions d = getDimensions();
-    if (d.width == 0 || d.height == 0) return;
+    Dimensions dims = getDimensions();
+    if (dims.width == 0 || dims.height == 0) return;
     
-    GLint prog, vp[4];
-    GLboolean dt;
-    renderer.saveState(prog, vp, dt);
-    renderer.setup2D(d.width, d.height);
+    GLint program;
+    GLint viewport[4];
+    GLboolean depthTest;
+    renderer.saveState(program, viewport, depthTest);
     
-    for (auto p : panelManager->getAll()) {
-        if (p->getDockSide() != -1) p->updateDock(d.width, d.height);
+    renderer.setup2D(dims.width, dims.height);
+    
+    if (panels) {
+        panels->updateDocks(dims.width, dims.height);
+        panels->render(renderer);
     }
     
-    panelManager->render(renderer);
+    objectUI.render(renderer, dims.width, dims.height, *panels);
     
-    glBegin(GL_QUADS);
-    objectUI.render(renderer, d.width, d.height, panels);
-    glEnd();
+    renderer.drawText(10, dims.height - 25, "3D Viewer", 1.0f, 1.0f, 1.0f);
     
-    renderer.drawText(10, d.height - 25, "3D Viewer - New Panel System", 1.0f, 1.0f, 1.0f);
     if (core && core->modelLoaded) {
-        std::string s = "Model: " + core->modelPath.substr(core->modelPath.find_last_of("/\\") + 1);
-        renderer.drawText(10, d.height - 40, s, 0.5f, 0.8f, 0.5f);
+        std::string status = "Model: " + core->modelPath.substr(core->modelPath.find_last_of("/\\") + 1);
+        renderer.drawText(10, dims.height - 40, status, 0.5f, 0.8f, 0.5f);
     } else {
-        renderer.drawText(10, d.height - 40, "No model loaded", 1.0f, 0.8f, 0.3f);
+        renderer.drawText(10, dims.height - 40, "No model loaded", 1.0f, 0.8f, 0.3f);
     }
-    renderer.drawText(d.width - 150, d.height - 25, "ESC to exit", 0.7f, 0.7f, 0.7f);
-    renderer.drawText(10, d.height - 55, "Drag title to move | Drag edges to resize", 0.7f, 0.7f, 0.7f);
+    
+    renderer.drawText(dims.width - 150, dims.height - 25, "ESC to exit", 0.7f, 0.7f, 0.7f);
     
     renderer.restoreMatrices();
-    renderer.restoreState(prog, vp, dt);
+    renderer.restoreState(program, viewport, depthTest);
 }
 
 void InterfaceManager::renderDynamic() {
-    Dimensions d = getDimensions();
-    if (d.width == 0 || d.height == 0) return;
-    GLint prog, vp[4];
-    GLboolean dt;
-    renderer.saveState(prog, vp, dt);
-    renderer.setup2D(d.width, d.height);
+    Dimensions dims = getDimensions();
+    if (dims.width == 0 || dims.height == 0) return;
+    
+    GLint program;
+    GLint viewport[4];
+    GLboolean depthTest;
+    renderer.saveState(program, viewport, depthTest);
+    
+    renderer.setup2D(dims.width, dims.height);
+    
     renderer.restoreMatrices();
-    renderer.restoreState(prog, vp, dt);
+    renderer.restoreState(program, viewport, depthTest);
 }
 
 void InterfaceManager::handleClick(int x, int y) {
-    Dimensions d = getDimensions();
-    auto p = panelManager->getAt(x, y);
-    if (p && p->closeClicked(x, y)) { p->setVisible(false); return; }
-    objectUI.handleClick(x, y, d.width, d.height, panels);
+    if (panels) {
+        Panel* p = panels->at(x, y);
+        if (p && p->closeClicked(x, y)) {
+            p->setVisible(false);
+            return;
+        }
+        if (p) p->handleClick(x, y);
+    }
 }
 
 void InterfaceManager::handleMouseDown(int x, int y) {
-    Dimensions d = getDimensions();
-    if (d.width == 0 || d.height == 0) return;
-    panelManager->onMouseDown(x, y);
-    if (panelManager->isDragging() && window) SetCapture(window->getHWND());
+    Dimensions dims = getDimensions();
+    if (dims.width == 0 || dims.height == 0) return;
+    
+    if (panels) {
+        panels->onMouseDown(x, y);
+        if (panels->isDragging() && window) {
+            SetCapture(window->getHWND());
+        }
+    }
 }
 
 void InterfaceManager::handleMouseMove(int x, int y) {
-    Dimensions d = getDimensions();
-    if (d.width == 0 || d.height == 0) return;
-    panelManager->onMouseMove(x, y);
-    if (panelManager->isDragging()) return;
+    Dimensions dims = getDimensions();
+    if (dims.width == 0 || dims.height == 0) return;
     
-    for (auto p : panelManager->getAll()) {
-        if (!p->isVisible()) continue;
-        int e = p->getEdge(x, y);
-        if (e != -1) {
-            SetCursor(LoadCursor(NULL, (e == 0 || e == 1) ? IDC_SIZEWE : IDC_SIZENS));
+    if (panels) {
+        panels->onMouseMove(x, y);
+        if (panels->isDragging()) return;
+        
+        Panel* p = panels->at(x, y);
+        if (p && p->getEdge(x, y) != -1) {
+            int e = p->getEdge(x, y);
+            HCURSOR cursor;
+            if (e == 0 || e == 1) cursor = LoadCursor(NULL, IDC_SIZEWE);
+            else if (e == 2 || e == 3) cursor = LoadCursor(NULL, IDC_SIZENS);
+            else cursor = LoadCursor(NULL, IDC_ARROW);
+            SetCursor(cursor);
             return;
         }
     }
@@ -169,15 +170,24 @@ void InterfaceManager::handleMouseMove(int x, int y) {
 }
 
 void InterfaceManager::handleMouseUp(int x, int y) {
-    panelManager->onMouseUp(x, y);
-    if (window) ReleaseCapture();
+    if (panels) {
+        panels->onMouseUp(x, y);
+    }
+    if (window) {
+        ReleaseCapture();
+    }
 }
 
-void InterfaceManager::SwapFlag(Core &A) { A.isStart = !A.isStart; }
-HWND InterfaceManager::getHWND() const { return window ? window->getHWND() : nullptr; }
-bool InterfaceManager::CheckerClickToPanel(int x, int y) { return panelManager->getAt(x, y) != nullptr; }
+void InterfaceManager::SwapFlag(Core &A) {
+    A.isStart = !A.isStart;
+}
+
+HWND InterfaceManager::getHWND() const {
+    return window ? window->getHWND() : nullptr;
+}
+
 void InterfaceManager::BlockMoveToMainWindow(int x, int y) {}
-HCURSOR InterfaceManager::getCursorForEdge(PanelType e) const { return LoadCursor(NULL, IDC_ARROW); }
-void InterfaceManager::updatePanelMinSizes() {}
-void InterfaceManager::renderMenuBar() {}
-void InterfaceManager::handleMenuClick(int x, int y) {}
+
+bool InterfaceManager::CheckerClickToPanel(int x, int y) {
+    return panels ? panels->at(x, y) != nullptr : false;
+}

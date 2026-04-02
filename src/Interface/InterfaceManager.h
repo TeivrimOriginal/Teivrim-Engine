@@ -6,7 +6,6 @@
 #include "Panels.h"
 #include "../Application/WindowAPIsupport/Win32/InitialWin32.h"
 #include "../Core/core.h"
-#include "TestNewUISystem.h"
 
 struct Dimensions {
     int width;
@@ -18,29 +17,20 @@ private:
     InitialWin32* window;
     RenderUI renderer;
     ObjectUI objectUI;
-    Panels panels;
-    PanelManager* panelManager;
+    PanelManager* panels;
     Core* core;
     bool isStopMove = false;
     bool isDragging = false;
-    PanelType draggingEdge = PanelType::None;
     int dragStartX = 0;
     int dragStartY = 0;
     int dragStartValue = 0;
     bool menuBarVisible = true;
     
-    void updatePanelMinSizes();
-    void renderMenuBar();
-    void handleMenuClick(int x, int y);
-    
 public:
-    void BlockMoveToMainWindow(int x, int y);
-    bool CheckerClickToPanel(int x, int y);
     InterfaceManager(Core* corePtr);
     ~InterfaceManager();
-    void swapclick() { isClick = !isClick; };
+    
     void setWindow(InitialWin32* w) { window = w; }
-    bool isClick = true;
     Dimensions getDimensions();
     void clearScreen(int width, int height);
     void setup3DViewport(const Dimensions& dims);
@@ -52,10 +42,14 @@ public:
     void handleMouseUp(int x, int y);
     void SwapFlag(Core &A);
     HWND getHWND() const;
-    HCURSOR getCursorForEdge(PanelType edge) const;
     
-    PanelManager* getPanelManager() { return panelManager; }
-    void setupNewPanels();
+    bool isClick = true;
+    void swapclick() { isClick = !isClick; }
+    void BlockMoveToMainWindow(int x, int y);
+    bool CheckerClickToPanel(int x, int y);
+    
+    bool isBlockingRender() { return panels ? panels->isBlockingInput() : false; }
+    PanelManager* getPanelManager() { return panels; }
 };
 
 #endif

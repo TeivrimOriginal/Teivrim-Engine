@@ -1,331 +1,223 @@
 #include "Panels.h"
-#include <algorithm>
+#include <iostream>
 
-Panels::Panels() {}
-
-PanelDimensions Panels::getDimensions(int screenWidth, int screenHeight) const {
-    PanelDimensions dims;
-    
-    dims.leftPanelWidth = sizes.leftWidth;
-    dims.rightPanelWidth = sizes.rightWidth;
-    dims.topPanelHeight = sizes.topHeight;
-    dims.bottomPanelHeight = sizes.bottomHeight;
-    
-    dims.centerX = dims.leftPanelWidth;
-    dims.centerY = dims.topPanelHeight;
-    dims.centerWidth = screenWidth - (dims.leftPanelWidth + dims.rightPanelWidth);
-    dims.centerHeight = screenHeight - (dims.topPanelHeight + dims.bottomPanelHeight);
-    
-    return dims;
+Panel::Panel(const std::string& n, int _x, int _y, int _w, int _h, bool is3D)
+    : name(n), visible(true), dragging(false), dockSide(-1), is3DView(is3D) {
+    b.x = _x; b.y = _y; b.width = _w; b.height = _h;
+    minW = is3D ? 200 : 150;
+    minH = is3D ? 150 : 100;
+    b.update();
 }
 
-void Panels::render(RenderUI& renderer, int screenWidth, int screenHeight) const {
-    PanelDimensions dims = getDimensions(screenWidth, screenHeight);
+void Panel::setDock(int side, int sw, int sh) {
+    dockSide = side;
+    if (side == 0) { b.x = 0; b.y = 0; b.width = 250; b.height = sh; }
+    else if (side == 1) { b.x = sw - 250; b.y = 0; b.width = 250; b.height = sh; }
+    else if (side == 2) { b.x = 0; b.y = 0; b.width = sw; b.height = 50; }
+    else if (side == 3) { b.x = 0; b.y = sh - 100; b.width = sw; b.height = 100; }
+    b.update();
+}
+
+void Panel::updateDock(int sw, int sh) {
+    if (dockSide == 0) { b.height = sh; b.update(); }
+    else if (dockSide == 1) { b.x = sw - b.width; b.height = sh; b.update(); }
+    else if (dockSide == 2) { b.width = sw; b.update(); }
+    else if (dockSide == 3) { b.x = 0; b.width = sw; b.y = sh - b.height; b.update(); }
+}
+
+void Panel::addButton(const std::string& text, std::function<void()> cb) {
+    buttons.push_back({text, cb});
+}
+
+void Panel::addLabel(const std::string& text) {
+    labels.push_back(text);
+}
+
+bool Panel::contains(int px, int py) const {
+    return visible && b.contains(px, py);
+}
+
+int Panel::getEdge(int px, int py, int s) const {
+    if (!visible) return -1;
+    if (b.onLeft(px, py, s)) return 0;
+    if (b.onRight(px, py, s)) return 1;
+    if (b.onTop(px, py, s)) return 2;
+    if (b.onBottom(px, py, s)) return 3;
+    if (b.onTitle(px, py, 25)) return 4;
+    return -1;
+}
+
+bool Panel::closeClicked(int px, int py) const {
+    if (!visible) return false;
+    int cx = b.right - 20, cy = b.y + 5;
+    return px >= cx && px <= cx + 12 && py >= cy && py <= cy + 12;
+}
+
+bool Panel::handleClick(int px, int py) {
+    int by = b.y + 35;
+    for (auto& btn : buttons) {
+        int bw = btn.first.length() * 8 + 20;
+        int bx = b.x + 10;
+        if (px >= bx && px <= bx + bw && py >= by && py <= by + 25) {
+            btn.second();
+            return true;
+        }
+        by += 30;
+    }
+    return false;
+}
+
+void Panel::startDrag(int mx, int my, int edge) {
+    dragging = true;
+    dragType = edge;
+    dragX = mx; dragY = my;
+    dragW = b.width; dragH = b.height;
+    dragX0 = b.x; dragY0 = b.y;
+}
+
+void Panel::drag(int mx, int my) {
+    if (!dragging) return;
+    int dx = mx - dragX, dy = my - dragY;
+    int nw = dragW, nh = dragH, nx = dragX0, ny = dragY0;
     
-    renderer.drawQuad(0, 0, dims.leftPanelWidth, screenHeight, 0.2f, 0.2f, 0.2f);
-    renderer.drawQuad(screenWidth - dims.rightPanelWidth, 0, screenWidth, screenHeight, 0.2f, 0.2f, 0.2f);
-    renderer.drawQuad(dims.leftPanelWidth, 0, screenWidth - dims.rightPanelWidth, dims.topPanelHeight, 0.3f, 0.3f, 0.3f);
-    renderer.drawQuad(dims.leftPanelWidth, screenHeight - dims.bottomPanelHeight, 
-                      screenWidth - dims.rightPanelWidth, screenHeight, 0.3f, 0.3f, 0.3f);
+    if (dragType == 0) { nw = dragW - dx; nx = dragX0 + dx; }
+    else if (dragType == 1) { nw = dragW + dx; }
+    else if (dragType == 2) { nh = dragH - dy; ny = dragY0 + dy; }
+    else if (dragType == 3) { nh = dragH + dy; }
+    else if (dragType == 4) { nx = dragX0 + dx; ny = dragY0 + dy; }
     
-    if (sizes.floatingVisible) {
-        renderer.drawQuad(sizes.floatingX, sizes.floatingY, 
-                          sizes.floatingX + sizes.floatingWidth, 
-                          sizes.floatingY + sizes.floatingHeight, 0.25f, 0.25f, 0.3f);
+    if (dragType != 4) {
+        nw = std::max(minW, nw);
+        nh = std::max(minH, nh);
+        if (dragType == 0) nx = dragX0 + (dragW - nw);
+        if (dragType == 2) ny = dragY0 + (dragH - nh);
     }
     
-    vector<PanelType> allPanels = {PanelType::Left, PanelType::Right, PanelType::Top, PanelType::Bottom};
-    if (sizes.floatingVisible) allPanels.push_back(PanelType::Floating);
+    b.x = nx; b.y = ny; b.width = nw; b.height = nh;
+    b.update();
+}
+
+void Panel::stopDrag() { dragging = false; }
+bool Panel::isDragging() const { return dragging; }
+void Panel::setVisible(bool v) { visible = v; }
+bool Panel::isVisible() const { return visible; }
+bool Panel::is3D() const { return is3DView; }
+void Panel::setMinSize(int mw, int mh) { minW = mw; minH = mh; if (b.width < minW) b.width = minW; if (b.height < minH) b.height = minH; b.update(); }
+
+void Panel::render(RenderUI& r) {
+    if (!visible) return;
     
-    for (PanelType panel : allPanels) {
-        int panelX, panelY, panelW, panelH;
-        getPanelBounds(panel, screenWidth, screenHeight, panelX, panelY, panelW, panelH);
-        
-        int dotX = panelX + panelW - 25;
-        int dotY = panelY + 5;
-        renderThreeDots(renderer, dotX, dotY);
-        
-        int activeDotX = panelX + panelW - 45;
-        int activeDotY = panelY + 5;
-        renderActiveDot(renderer, activeDotX, activeDotY, activePanel == panel);
-    }
-}
-
-void Panels::getPanelBounds(PanelType panel, int screenWidth, int screenHeight, 
-                            int& outX, int& outY, int& outW, int& outH) const {
-    PanelDimensions dims = getDimensions(screenWidth, screenHeight);
+    glColor3f(0.2f, 0.2f, 0.25f);
+    glVertex2f(b.x, b.y); glVertex2f(b.right, b.y);
+    glVertex2f(b.right, b.bottom); glVertex2f(b.x, b.bottom);
     
-    switch (panel) {
-        case PanelType::Left:
-            outX = 0;
-            outY = dims.topPanelHeight;
-            outW = dims.leftPanelWidth;
-            outH = screenHeight - dims.topPanelHeight - dims.bottomPanelHeight;
-            break;
-        case PanelType::Right:
-            outX = screenWidth - dims.rightPanelWidth;
-            outY = dims.topPanelHeight;
-            outW = dims.rightPanelWidth;
-            outH = screenHeight - dims.topPanelHeight - dims.bottomPanelHeight;
-            break;
-        case PanelType::Top:
-            outX = dims.leftPanelWidth;
-            outY = 0;
-            outW = screenWidth - dims.leftPanelWidth - dims.rightPanelWidth;
-            outH = dims.topPanelHeight;
-            break;
-        case PanelType::Bottom:
-            outX = dims.leftPanelWidth;
-            outY = screenHeight - dims.bottomPanelHeight;
-            outW = screenWidth - dims.leftPanelWidth - dims.rightPanelWidth;
-            outH = dims.bottomPanelHeight;
-            break;
-        case PanelType::Floating:
-            outX = sizes.floatingX;
-            outY = sizes.floatingY;
-            outW = sizes.floatingWidth;
-            outH = sizes.floatingHeight;
-            break;
-        default:
-            outX = outY = outW = outH = 0;
-            break;
-    }
-}
-
-void Panels::setLeftWidth(int width) {
-    sizes.leftWidth = std::max(sizes.minLeftWidth, std::min(sizes.maxLeftWidth, width));
-}
-
-void Panels::setRightWidth(int width) {
-    sizes.rightWidth = std::max(sizes.minRightWidth, std::min(sizes.maxRightWidth, width));
-}
-
-void Panels::setTopHeight(int height) {
-    sizes.topHeight = std::max(sizes.minTopHeight, std::min(sizes.maxTopHeight, height));
-}
-
-void Panels::setBottomHeight(int height) {
-    sizes.bottomHeight = std::max(sizes.minBottomHeight, std::min(sizes.maxBottomHeight, height));
-}
-
-void Panels::setFloatingWidth(int width) {
-    sizes.floatingWidth = std::max(sizes.minFloatingWidth, std::min(sizes.maxFloatingWidth, width));
-}
-
-void Panels::setFloatingHeight(int height) {
-    sizes.floatingHeight = std::max(sizes.minFloatingHeight, std::min(sizes.maxFloatingHeight, height));
-}
-
-void Panels::setFloatingPosition(int x, int y) {
-    sizes.floatingX = x;
-    sizes.floatingY = y;
-}
-
-void Panels::setFloatingVisible(bool visible) {
-    sizes.floatingVisible = visible;
-}
-
-void Panels::updateMinSizes(int minLeft, int minRight, int minTop, int minBottom) {
-    sizes.minLeftWidth = minLeft;
-    sizes.minRightWidth = minRight;
-    sizes.minTopHeight = minTop;
-    sizes.minBottomHeight = minBottom;
+    glColor3f(0.3f, 0.3f, 0.4f);
+    glVertex2f(b.x, b.y); glVertex2f(b.right, b.y);
+    glVertex2f(b.right, b.y + 25); glVertex2f(b.x, b.y + 25);
     
-    if (sizes.leftWidth < sizes.minLeftWidth) setLeftWidth(sizes.minLeftWidth);
-    if (sizes.rightWidth < sizes.minRightWidth) setRightWidth(sizes.minRightWidth);
-    if (sizes.topHeight < sizes.minTopHeight) setTopHeight(sizes.minTopHeight);
-    if (sizes.bottomHeight < sizes.minBottomHeight) setBottomHeight(sizes.minBottomHeight);
-}
-
-bool Panels::isOnLeftEdge(int x, int y, int screenWidth, int screenHeight) const {
-    int edgeX = sizes.leftWidth;
-    int zoneMin = edgeX - 3;
-    int zoneMax = edgeX + 3;
+    glColor3f(0.5f, 0.5f, 0.5f);
+    glVertex2f(b.x, b.y); glVertex2f(b.right, b.y);
+    glVertex2f(b.right, b.y + 2); glVertex2f(b.x, b.y + 2);
+    glVertex2f(b.x, b.bottom - 2); glVertex2f(b.right, b.bottom - 2);
+    glVertex2f(b.right, b.bottom); glVertex2f(b.x, b.bottom);
+    glVertex2f(b.x, b.y); glVertex2f(b.x + 2, b.y);
+    glVertex2f(b.x + 2, b.bottom); glVertex2f(b.x, b.bottom);
+    glVertex2f(b.right - 2, b.y); glVertex2f(b.right, b.y);
+    glVertex2f(b.right, b.bottom); glVertex2f(b.right - 2, b.bottom);
     
-    if (x < zoneMin || x > zoneMax) return false;
-    return y >= 0 && y <= screenHeight;
-}
-
-bool Panels::isOnRightEdge(int x, int y, int screenWidth, int screenHeight) const {
-    int edgeX = screenWidth - sizes.rightWidth;
-    int zoneMin = edgeX - 3;
-    int zoneMax = edgeX + 3;
+    int cx = b.right - 20, cy = b.y + 5;
+    glColor3f(0.6f, 0.2f, 0.2f);
+    glVertex2f(cx, cy); glVertex2f(cx + 12, cy);
+    glVertex2f(cx + 12, cy + 12); glVertex2f(cx, cy + 12);
     
-    if (x < zoneMin || x > zoneMax) return false;
-    return y >= 0 && y <= screenHeight;
-}
-
-bool Panels::isOnTopEdge(int x, int y, int screenWidth, int screenHeight) const {
-    int edgeY = sizes.topHeight;
-    int zoneMin = edgeY - 3;
-    int zoneMax = edgeY + 3;
+    glEnd();
     
-    if (y < zoneMin || y > zoneMax) return false;
-    return x >= sizes.leftWidth && x <= (screenWidth - sizes.rightWidth);
-}
-
-bool Panels::isOnBottomEdge(int x, int y, int screenWidth, int screenHeight) const {
-    int edgeY = screenHeight - sizes.bottomHeight;
-    int zoneMin = edgeY - 3;
-    int zoneMax = edgeY + 3;
+    r.drawText(b.x + 10, b.y + 8, name, 0.9f, 0.9f, 0.9f);
+    r.drawText(cx + 3, cy + 2, "X", 1.0f, 1.0f, 1.0f);
     
-    if (y < zoneMin || y > zoneMax) return false;
-    return x >= sizes.leftWidth && x <= (screenWidth - sizes.rightWidth);
-}
-
-bool Panels::isOnThreeDots(int x, int y, PanelType panel, int screenWidth, int screenHeight) const {
-    int panelX, panelY, panelW, panelH;
-    getPanelBounds(panel, screenWidth, screenHeight, panelX, panelY, panelW, panelH);
-    
-    int dotX = panelX + panelW - 25;
-    int dotY = panelY + 5;
-    
-    return x >= dotX && x <= dotX + 15 && y >= dotY && y <= dotY + 15;
-}
-
-bool Panels::isOnActiveDot(int x, int y, PanelType panel, int screenWidth, int screenHeight) const {
-    int panelX, panelY, panelW, panelH;
-    getPanelBounds(panel, screenWidth, screenHeight, panelX, panelY, panelW, panelH);
-    
-    int dotX = panelX + panelW - 45;
-    int dotY = panelY + 5;
-    
-    return x >= dotX && x <= dotX + 15 && y >= dotY && y <= dotY + 15;
-}
-
-PanelType Panels::getEdgeAt(int x, int y, int screenWidth, int screenHeight) const {
-    if (isOnLeftEdge(x, y, screenWidth, screenHeight)) return PanelType::Left;
-    if (isOnRightEdge(x, y, screenWidth, screenHeight)) return PanelType::Right;
-    if (isOnTopEdge(x, y, screenWidth, screenHeight)) return PanelType::Top;
-    if (isOnBottomEdge(x, y, screenWidth, screenHeight)) return PanelType::Bottom;
-    return PanelType::None;
-}
-
-PanelType Panels::getPanelAt(int x, int y, int screenWidth, int screenHeight) const {
-    int outX, outY, outW, outH;
-    
-    getPanelBounds(PanelType::Left, screenWidth, screenHeight, outX, outY, outW, outH);
-    if (x >= outX && x <= outX + outW && y >= outY && y <= outY + outH) return PanelType::Left;
-    
-    getPanelBounds(PanelType::Right, screenWidth, screenHeight, outX, outY, outW, outH);
-    if (x >= outX && x <= outX + outW && y >= outY && y <= outY + outH) return PanelType::Right;
-    
-    getPanelBounds(PanelType::Top, screenWidth, screenHeight, outX, outY, outW, outH);
-    if (x >= outX && x <= outX + outW && y >= outY && y <= outY + outH) return PanelType::Top;
-    
-    getPanelBounds(PanelType::Bottom, screenWidth, screenHeight, outX, outY, outW, outH);
-    if (x >= outX && x <= outX + outW && y >= outY && y <= outY + outH) return PanelType::Bottom;
-    
-    if (sizes.floatingVisible) {
-        getPanelBounds(PanelType::Floating, screenWidth, screenHeight, outX, outY, outW, outH);
-        if (x >= outX && x <= outX + outW && y >= outY && y <= outY + outH) return PanelType::Floating;
+    int by = b.y + 35;
+    for (auto& btn : buttons) {
+        int bw = btn.first.length() * 8 + 20;
+        int bx = b.x + 10;
+        glBegin(GL_QUADS);
+        glColor3f(0.4f, 0.4f, 0.5f);
+        glVertex2f(bx, by); glVertex2f(bx + bw, by);
+        glVertex2f(bx + bw, by + 25); glVertex2f(bx, by + 25);
+        glEnd();
+        r.drawText(bx + 10, by + 8, btn.first, 1.0f, 1.0f, 1.0f);
+        by += 30;
     }
     
-    return PanelType::None;
+    for (auto& lbl : labels) {
+        r.drawText(b.x + 10, by, lbl, 0.8f, 0.8f, 0.8f);
+        by += 20;
+    }
+    
+    glBegin(GL_QUADS);
 }
 
-PanelType Panels::getThreeDotsAt(int x, int y, int screenWidth, int screenHeight) const {
-    vector<PanelType> panels = {PanelType::Left, PanelType::Right, PanelType::Top, PanelType::Bottom};
-    if (sizes.floatingVisible) panels.push_back(PanelType::Floating);
-    
-    for (PanelType panel : panels) {
-        if (isOnThreeDots(x, y, panel, screenWidth, screenHeight)) {
-            return panel;
+PanelManager::PanelManager() : active(nullptr), activeEdge(-1), dragging(false), blockInput(false) {}
+PanelManager::~PanelManager() { for (auto p : panels) delete p; }
+
+Panel* PanelManager::add(const std::string& name, int x, int y, int w, int h, bool is3D) {
+    Panel* p = new Panel(name, x, y, w, h, is3D);
+    panels.push_back(p);
+    return p;
+}
+
+Panel* PanelManager::get3D() {
+    for (auto p : panels) if (p->is3D()) return p;
+    return nullptr;
+}
+
+Panel* PanelManager::at(int px, int py) {
+    for (auto p : panels) if (p->isVisible() && p->contains(px, py)) return p;
+    return nullptr;
+}
+
+void PanelManager::updateDocks(int sw, int sh) {
+    for (auto p : panels) p->updateDock(sw, sh);
+}
+
+void PanelManager::onMouseDown(int x, int y) {
+    for (auto p : panels) {
+        if (!p->isVisible()) continue;
+        if (p->closeClicked(x, y)) { p->setVisible(false); return; }
+        if (p->handleClick(x, y)) return;
+        int edge = p->getEdge(x, y);
+        if (edge != -1) {
+            active = p;
+            activeEdge = edge;
+            dragging = true;
+            blockInput = true;
+            p->startDrag(x, y, edge);
+            return;
         }
     }
-    return PanelType::None;
 }
 
-void Panels::resetPanelSize(PanelType panel) {
-    switch (panel) {
-        case PanelType::Left:
-            setLeftWidth(200);
-            break;
-        case PanelType::Right:
-            setRightWidth(200);
-            break;
-        case PanelType::Top:
-            setTopHeight(50);
-            break;
-        case PanelType::Bottom:
-            setBottomHeight(50);
-            break;
-        case PanelType::Floating:
-            setFloatingWidth(300);
-            setFloatingHeight(200);
-            break;
-        default:
-            break;
+void PanelManager::onMouseMove(int x, int y) {
+    if (dragging && active) active->drag(x, y);
+}
+
+void PanelManager::onMouseUp(int x, int y) {
+    if (dragging && active) {
+        active->stopDrag();
+        dragging = false;
+        active = nullptr;
+        blockInput = false;
     }
 }
 
-void Panels::splitPanel(PanelType panel) {
-    switch (panel) {
-        case PanelType::Left:
-            setLeftWidth(getLeftWidth() / 2);
-            break;
-        case PanelType::Right:
-            setRightWidth(getRightWidth() / 2);
-            break;
-        case PanelType::Top:
-            setTopHeight(getTopHeight() / 2);
-            break;
-        case PanelType::Bottom:
-            setBottomHeight(getBottomHeight() / 2);
-            break;
-        default:
-            break;
-    }
-}
+bool PanelManager::isBlockingInput() const { return blockInput; }
+bool PanelManager::isDragging() const { return dragging; }
 
-void Panels::changePanelType(PanelType panel, const string& newType) {
-    switch (panel) {
-        case PanelType::Left:
-            sizes.leftPanelType = newType;
-            break;
-        case PanelType::Right:
-            sizes.rightPanelType = newType;
-            break;
-        case PanelType::Top:
-            sizes.topPanelType = newType;
-            break;
-        case PanelType::Bottom:
-            sizes.bottomPanelType = newType;
-            break;
-        case PanelType::Floating:
-            sizes.floatingPanelType = newType;
-            break;
-        default:
-            break;
+void PanelManager::render(RenderUI& r) {
+    for (auto p : panels) {
+        if (p->isVisible()) {
+            glBegin(GL_QUADS);
+            p->render(r);
+            glEnd();
+        }
     }
-}
-
-void Panels::renderThreeDots(RenderUI& renderer, int x, int y) const {
-    glColor3f(0.6f, 0.6f, 0.6f);
-    glVertex2f(x, y);
-    glVertex2f(x + 3, y);
-    glVertex2f(x + 3, y + 3);
-    glVertex2f(x, y + 3);
-    
-    glVertex2f(x + 6, y);
-    glVertex2f(x + 9, y);
-    glVertex2f(x + 9, y + 3);
-    glVertex2f(x + 6, y + 3);
-    
-    glVertex2f(x + 12, y);
-    glVertex2f(x + 15, y);
-    glVertex2f(x + 15, y + 3);
-    glVertex2f(x + 12, y + 3);
-}
-
-void Panels::renderActiveDot(RenderUI& renderer, int x, int y, bool isActive) const {
-    if (isActive) {
-        glColor3f(0.5f, 0.5f, 0.5f);
-    } else {
-        glColor3f(0.3f, 0.3f, 0.3f);
-    }
-    glVertex2f(x, y);
-    glVertex2f(x + 8, y);
-    glVertex2f(x + 8, y + 8);
-    glVertex2f(x, y + 8);
 }

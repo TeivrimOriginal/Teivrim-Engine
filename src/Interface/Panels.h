@@ -1,131 +1,90 @@
 #ifndef PANELS_H
 #define PANELS_H
+
 #include <string>
 #include <vector>
+#include <functional>
+#include <windows.h>
 #include "../Core/Render/Win32/RenderUI.h"
 
-using namespace std;
-
-enum class PanelType {
-    None,
-    Left,
-    Right,
-    Top,
-    Bottom,
-    Floating
+struct PanelBounds {
+    int x, y, width, height, right, bottom;
+    PanelBounds() : x(0), y(0), width(0), height(0), right(0), bottom(0) {}
+    void update() { right = x + width; bottom = y + height; }
+    bool contains(int px, int py) const { return px >= x && px <= right && py >= y && py <= bottom; }
+    bool onLeft(int px, int py, int s=5) const { return px >= x-s && px <= x+s && py >= y && py <= bottom; }
+    bool onRight(int px, int py, int s=5) const { return px >= right-s && px <= right+s && py >= y && py <= bottom; }
+    bool onTop(int px, int py, int s=5) const { return py >= y-s && py <= y+s && px >= x && px <= right; }
+    bool onBottom(int px, int py, int s=5) const { return py >= bottom-s && py <= bottom+s && px >= x && px <= right; }
+    bool onTitle(int px, int py, int h=25) const { return px >= x && px <= right && py >= y && py <= y+h; }
 };
 
-struct PanelSizes {
-    int leftWidth = 200;
-    int rightWidth = 200;
-    int topHeight = 50;
-    int bottomHeight = 50;
-    int floatingWidth = 300;
-    int floatingHeight = 200;
-    
-    int minLeftWidth = 50;
-    int minRightWidth = 50;
-    int minTopHeight = 30;
-    int minBottomHeight = 30;
-    int minFloatingWidth = 150;
-    int minFloatingHeight = 100;
-    
-    int maxLeftWidth = 400;
-    int maxRightWidth = 400;
-    int maxTopHeight = 200;
-    int maxBottomHeight = 200;
-    int maxFloatingWidth = 800;
-    int maxFloatingHeight = 600;
-    
-    string leftPanelType = "Hierarchy";
-    string rightPanelType = "Inspector";
-    string topPanelType = "Scene Control";
-    string bottomPanelType = "Asset Manager";
-    string floatingPanelType = "Floating Panel";
-    
-    int floatingX = 100;
-    int floatingY = 100;
-    bool floatingVisible = false;
-};
-
-struct PanelDimensions {
-    int leftPanelWidth;
-    int rightPanelWidth;
-    int topPanelHeight;
-    int bottomPanelHeight;
-    int centerX;
-    int centerY;
-    int centerWidth;
-    int centerHeight;
-};
-
-class Panels {
+class Panel {
 private:
-    PanelSizes sizes;
-    PanelType activePanel = PanelType::None;
+    std::string name;
+    PanelBounds b;
+    int minW, minH;
+    bool visible, dragging;
+    int dragType, dragX, dragY, dragW, dragH, dragX0, dragY0;
+    int dockSide;
+    bool is3DView;
+    std::vector<std::pair<std::string, std::function<void()>>> buttons;
+    std::vector<std::string> labels;
     
 public:
-    Panels();
+    Panel(const std::string& n, int _x, int _y, int _w, int _h, bool is3D = false);
     
-    PanelDimensions getDimensions(int screenWidth, int screenHeight) const;
-    void render(RenderUI& renderer, int screenWidth, int screenHeight) const;
-    void getPanelBounds(PanelType panel, int screenWidth, int screenHeight, 
-                        int& outX, int& outY, int& outW, int& outH) const;
+    void setDock(int side, int sw, int sh);
+    void updateDock(int sw, int sh);
+    void addButton(const std::string& text, std::function<void()> cb);
+    void addLabel(const std::string& text);
     
-    void setLeftWidth(int width);
-    void setRightWidth(int width);
-    void setTopHeight(int height);
-    void setBottomHeight(int height);
-    void setFloatingWidth(int width);
-    void setFloatingHeight(int height);
-    void setFloatingPosition(int x, int y);
-    void setFloatingVisible(bool visible);
+    bool contains(int px, int py) const;
+    int getEdge(int px, int py, int s=5) const;
+    bool closeClicked(int px, int py) const;
+    bool handleClick(int px, int py);
     
-    void updateMinSizes(int minLeft, int minRight, int minTop, int minBottom);
+    void startDrag(int mx, int my, int edge);
+    void drag(int mx, int my);
+    void stopDrag();
+    bool isDragging() const;
     
-    int getLeftWidth() const { return sizes.leftWidth; }
-    int getRightWidth() const { return sizes.rightWidth; }
-    int getTopHeight() const { return sizes.topHeight; }
-    int getBottomHeight() const { return sizes.bottomHeight; }
-    int getFloatingWidth() const { return sizes.floatingWidth; }
-    int getFloatingHeight() const { return sizes.floatingHeight; }
-    int getFloatingX() const { return sizes.floatingX; }
-    int getFloatingY() const { return sizes.floatingY; }
-    bool getFloatingVisible() const { return sizes.floatingVisible; }
+    void setVisible(bool v);
+    bool isVisible() const;
+    bool is3D() const;
+    void setMinSize(int mw, int mh);
+    int getX() const { return b.x; }
+    int getY() const { return b.y; }
+    int getW() const { return b.width; }
+    int getH() const { return b.height; }
     
-    string getLeftPanelType() const { return sizes.leftPanelType; }
-    string getRightPanelType() const { return sizes.rightPanelType; }
-    string getTopPanelType() const { return sizes.topPanelType; }
-    string getBottomPanelType() const { return sizes.bottomPanelType; }
-    string getFloatingPanelType() const { return sizes.floatingPanelType; }
-    
-    void setLeftPanelType(const string& type) { sizes.leftPanelType = type; }
-    void setRightPanelType(const string& type) { sizes.rightPanelType = type; }
-    void setTopPanelType(const string& type) { sizes.topPanelType = type; }
-    void setBottomPanelType(const string& type) { sizes.bottomPanelType = type; }
-    void setFloatingPanelType(const string& type) { sizes.floatingPanelType = type; }
-    
-    void setActivePanel(PanelType panel) { activePanel = panel; }
-    PanelType getActivePanel() const { return activePanel; }
-    
-    bool isOnLeftEdge(int x, int y, int screenWidth, int screenHeight) const;
-    bool isOnRightEdge(int x, int y, int screenWidth, int screenHeight) const;
-    bool isOnTopEdge(int x, int y, int screenWidth, int screenHeight) const;
-    bool isOnBottomEdge(int x, int y, int screenWidth, int screenHeight) const;
-    bool isOnThreeDots(int x, int y, PanelType panel, int screenWidth, int screenHeight) const;
-    bool isOnActiveDot(int x, int y, PanelType panel, int screenWidth, int screenHeight) const;
-    
-    PanelType getEdgeAt(int x, int y, int screenWidth, int screenHeight) const;
-    PanelType getPanelAt(int x, int y, int screenWidth, int screenHeight) const;
-    PanelType getThreeDotsAt(int x, int y, int screenWidth, int screenHeight) const;
-    
-    void resetPanelSize(PanelType panel);
-    void splitPanel(PanelType panel);
-    void changePanelType(PanelType panel, const string& newType);
-    
+    void render(RenderUI& r);
+};
+
+class PanelManager {
 private:
-    void renderThreeDots(RenderUI& renderer, int x, int y) const;
-    void renderActiveDot(RenderUI& renderer, int x, int y, bool isActive) const;
+    std::vector<Panel*> panels;
+    Panel* active;
+    int activeEdge;
+    bool dragging;
+    bool blockInput;
+    
+public:
+    PanelManager();
+    ~PanelManager();
+    
+    Panel* add(const std::string& name, int x, int y, int w, int h, bool is3D = false);
+    Panel* get3D();
+    Panel* at(int px, int py);
+    void updateDocks(int sw, int sh);
+    
+    void onMouseDown(int x, int y);
+    void onMouseMove(int x, int y);
+    void onMouseUp(int x, int y);
+    
+    bool isBlockingInput() const;
+    bool isDragging() const;
+    void render(RenderUI& r);
 };
 
 #endif

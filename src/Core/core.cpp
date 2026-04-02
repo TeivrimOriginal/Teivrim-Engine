@@ -14,28 +14,22 @@
 
 using namespace std;
 
-// В начале файла, после глобальных переменных
 InterfaceManager* g_uiManager = nullptr;
-// Обработчик кликов мыши для Win32
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_LBUTTONDOWN: {
             int x = LOWORD(lParam);
             int y = HIWORD(lParam);
             if (g_uiManager) {
-                // Сначала проверяем нажатие на грани
                 g_uiManager->handleMouseDown(x, y);
-                // Потом обычный клик по кнопкам
                 g_uiManager->handleClick(x, y);
-                g_uiManager->BlockMoveToMainWindow(x, y);
-
             }
             break;
         }
         case WM_LBUTTONUP: {
             int x = LOWORD(lParam);
             int y = HIWORD(lParam);
-            
             if (g_uiManager) {
                 g_uiManager->handleMouseUp(x, y);
             }
@@ -44,7 +38,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_MOUSEMOVE: {
             int x = LOWORD(lParam);
             int y = HIWORD(lParam);
-            
             if (g_uiManager) {
                 g_uiManager->handleMouseMove(x, y);
             }
@@ -74,7 +67,7 @@ bool Core::loadModelFromPath(const std::string& path) {
 
     modelPath = path;
     modelLoaded = true;
-    needsOptimize = true;  // Флаг для оптимизации в GameLoop
+    needsOptimize = true;
 
     std::cout << "Модель успешно загружена: " << path << std::endl;
     return true;
@@ -167,8 +160,13 @@ void Core::GameLoop() {
         }
 
         if (!isStart) {
-            input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
-            input.processInputWin32(deltaTime, win32Window->getHWND());
+            // Блокировка движения камеры при перетаскивании панели
+            if (g_uiManager && g_uiManager->isBlockingRender()) {
+                input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
+            } else {
+                input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
+                input.processInputWin32(deltaTime, win32Window->getHWND());
+            }
 
             rendererw.setAnimateModel(false);
 
@@ -176,31 +174,21 @@ void Core::GameLoop() {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             if (modelLoaded && g_uiManager) {
-                FlexiblePanel* view3D = g_uiManager->getPanelManager()->get3DPanel();
-                
-                // Всегда рендерим модель, если она загружена
+                Panel* view3D = g_uiManager->getPanelManager()->get3D();
                 if (view3D && view3D->isVisible()) {
-                    const PanelBounds& b = view3D->getBounds();
-                    
                     RECT rect;
                     GetClientRect(win32Window->getHWND(), &rect);
                     int winH = rect.bottom - rect.top;
+                    int viewY = winH - (view3D->getY() + view3D->getH());
                     
-                    int viewY = winH - (b.y + b.height);
-                    
-                    glViewport(b.x, viewY, b.width, b.height);
-                    glScissor(b.x, viewY, b.width, b.height);
+                    glViewport(view3D->getX(), viewY, view3D->getW(), view3D->getH());
+                    glScissor(view3D->getX(), viewY, view3D->getW(), view3D->getH());
                     glEnable(GL_SCISSOR_TEST);
-                    if (view3D) {
-    std::cout << "3D Panel visible: " << view3D->isVisible() << " | bounds: " 
-              << view3D->getX() << "," << view3D->getY() << " " 
-              << view3D->getWidth() << "x" << view3D->getHeight() << std::endl;
-}
+                    
                     rendererw.renderModel(modelParser, shaderProgram, app.getCamera());
                     
                     glDisable(GL_SCISSOR_TEST);
                 } else {
-                    // Если 3D панель не существует или скрыта, рендерим на весь экран
                     RECT rect;
                     GetClientRect(win32Window->getHWND(), &rect);
                     glViewport(0, 0, rect.right - rect.left, rect.bottom - rect.top);
