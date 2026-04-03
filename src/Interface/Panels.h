@@ -98,6 +98,7 @@ public:
     ~PanelManager();
     
     Panel* add(const std::string& name, int x, int y, int w, int h, bool is3D = false);
+    Panel* getPanel(const std::string& name);
     Panel* get3D();
     Panel* at(int px, int py);
     const std::vector<Panel*>& getAll() const { return panels; }

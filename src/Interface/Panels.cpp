@@ -153,6 +153,13 @@ Panel* PanelManager::add(const std::string& name, int x, int y, int w, int h, bo
     return p;
 }
 
+Panel* PanelManager::getPanel(const std::string& name) {
+    for (auto p : panels) {
+        if (p->name == name) return p;
+    }
+    return nullptr;
+}
+
 Panel* PanelManager::get3D() {
     for (auto p : panels) if (p->is3D && p->visible) return p;
     return nullptr;
@@ -169,7 +176,10 @@ void PanelManager::registerCallback(const std::string& name, std::function<void(
 
 void PanelManager::loadUIFromJSON(const std::string& filename) {
     std::ifstream file(filename);
-    if (!file.is_open()) return;
+    if (!file.is_open()) {
+        std::cout << "Cannot open: " << filename << std::endl;
+        return;
+    }
     
     std::string content, line;
     while (std::getline(file, line)) content += line;

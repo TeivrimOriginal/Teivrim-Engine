@@ -12,22 +12,99 @@ InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePt
     panels->add("3D Viewport", 220, 40, sw - 480, sh - 40, true);
     panels->add("Console", 220, sh - 150, sw - 220, 150);
     
-    panels->registerCallback("Load Model", [this]() { if (core) core->openFileDialogAndLoadModel(getHWND()); });
-    panels->registerCallback("Start", [this]() { if (core) SwapFlag(*core); });
-    panels->registerCallback("Stop", [this]() { if (core) SwapFlag(*core); });
-    panels->registerCallback("Create Empty", []() { std::cout << "Create Empty" << std::endl; });
-    panels->registerCallback("Create Cube", []() { std::cout << "Create Cube" << std::endl; });
-    panels->registerCallback("Create Sphere", []() { std::cout << "Create Sphere" << std::endl; });
-    panels->registerCallback("Apply", []() { std::cout << "Apply" << std::endl; });
-    panels->registerCallback("Reset", []() { std::cout << "Reset" << std::endl; });
-    panels->registerCallback("Wireframe", []() { std::cout << "Wireframe" << std::endl; });
-    panels->registerCallback("Solid", []() { std::cout << "Solid" << std::endl; });
-    panels->registerCallback("Clear", []() { std::cout << "Clear" << std::endl; });
-    panels->registerCallback("File", []() { std::cout << "File" << std::endl; });
-    panels->registerCallback("Edit", []() { std::cout << "Edit" << std::endl; });
-    panels->registerCallback("View", []() { std::cout << "View" << std::endl; });
+    panels->registerCallback("Load Model", [this]() { 
+        if (core) core->openFileDialogAndLoadModel(getHWND()); 
+    });
+    panels->registerCallback("Start", [this]() { 
+        if (core) SwapFlag(*core); 
+    });
+    panels->registerCallback("Stop", [this]() { 
+        if (core) SwapFlag(*core); 
+    });
+    panels->registerCallback("Create Empty", []() { 
+        std::cout << "Create Empty" << std::endl; 
+    });
+    panels->registerCallback("Create Cube", []() { 
+        std::cout << "Create Cube" << std::endl; 
+    });
+    panels->registerCallback("Create Sphere", []() { 
+        std::cout << "Create Sphere" << std::endl; 
+    });
+    panels->registerCallback("Apply", []() { 
+        std::cout << "Apply" << std::endl; 
+    });
+    panels->registerCallback("Reset", []() { 
+        std::cout << "Reset" << std::endl; 
+    });
+    panels->registerCallback("Wireframe", []() { 
+        std::cout << "Wireframe" << std::endl; 
+    });
+    panels->registerCallback("Solid", []() { 
+        std::cout << "Solid" << std::endl; 
+    });
+    panels->registerCallback("Clear", []() { 
+        std::cout << "Clear" << std::endl; 
+    });
     
-    panels->loadConfig("Config/UIElements.json");
+    auto top = panels->getPanel("TopBar");
+    if (top) {
+        top->addButton("Load Model", 230, 8, 100, 24, 0.4f, 0.5f, 0.4f, [this]() { 
+            if (core) core->openFileDialogAndLoadModel(getHWND()); 
+        });
+        top->addButton("Start", 340, 8, 60, 24, 0.4f, 0.5f, 0.4f, [this]() { 
+            if (core) SwapFlag(*core); 
+        });
+        top->addButton("Stop", 410, 8, 60, 24, 0.5f, 0.4f, 0.4f, [this]() { 
+            if (core) SwapFlag(*core); 
+        });
+    }
+    
+    auto hierarchy = panels->getPanel("Hierarchy");
+    if (hierarchy) {
+        hierarchy->addButton("Create Empty", 10, 35, 100, 24, 0.4f, 0.4f, 0.5f, []() { 
+            std::cout << "Create Empty" << std::endl; 
+        });
+        hierarchy->addButton("Create Cube", 10, 65, 100, 24, 0.4f, 0.4f, 0.5f, []() { 
+            std::cout << "Create Cube" << std::endl; 
+        });
+        hierarchy->addButton("Create Sphere", 10, 95, 100, 24, 0.4f, 0.4f, 0.5f, []() { 
+            std::cout << "Create Sphere" << std::endl; 
+        });
+        hierarchy->addLabel("Objects: 0", 10, 130, 12, false, 0.7f, 0.7f, 0.7f);
+        hierarchy->addLabel("Selected: None", 10, 150, 12, false, 0.7f, 0.7f, 0.7f);
+    }
+    
+    auto inspector = panels->getPanel("Inspector");
+    if (inspector) {
+        inspector->addButton("Apply", 10, 35, 80, 24, 0.4f, 0.5f, 0.4f, []() { 
+            std::cout << "Apply" << std::endl; 
+        });
+        inspector->addButton("Reset", 100, 35, 80, 24, 0.5f, 0.4f, 0.4f, []() { 
+            std::cout << "Reset" << std::endl; 
+        });
+        inspector->addLabel("Position: 0,0,0", 10, 70, 12, false, 0.8f, 0.8f, 0.8f);
+        inspector->addLabel("Rotation: 0,0,0", 10, 90, 12, false, 0.8f, 0.8f, 0.8f);
+        inspector->addLabel("Scale: 1,1,1", 10, 110, 12, false, 0.8f, 0.8f, 0.8f);
+    }
+    
+    auto view3D = panels->getPanel("3D Viewport");
+    if (view3D) {
+        view3D->addButton("Wireframe", 10, 35, 80, 24, 0.4f, 0.4f, 0.5f, []() { 
+            std::cout << "Wireframe" << std::endl; 
+        });
+        view3D->addButton("Solid", 100, 35, 80, 24, 0.4f, 0.4f, 0.5f, []() { 
+            std::cout << "Solid" << std::endl; 
+        });
+    }
+    
+    auto console = panels->getPanel("Console");
+    if (console) {
+        console->addButton("Clear", 10, 35, 60, 24, 0.4f, 0.4f, 0.5f, []() { 
+            std::cout << "Clear" << std::endl; 
+        });
+        console->addLabel("> Ready", 10, 70, 12, false, 0.7f, 0.8f, 0.7f);
+    }
+    
     panels->loadLayout("Config/WindowSettings.json");
 }
 
@@ -77,8 +154,6 @@ void InterfaceManager::renderStatic() {
     panels->update(d.width, d.height);
     panels->render(renderer);
     objectUI.render(renderer, d.width, d.height, *panels);
-    
-    // panels->renderDebug(renderer);  // ЗАКОММЕНТИРОВАТЬ
     
     renderer.drawText(10, d.height - 25, "3D Viewer", 1.0f, 1.0f, 1.0f);
     if (core && core->modelLoaded) {
@@ -130,7 +205,16 @@ void InterfaceManager::handleMouseUp(int x, int y) {
     panels->onMouseUp(x, y); 
 }
 
-void InterfaceManager::SwapFlag(Core &A) { A.isStart = !A.isStart; }
-HWND InterfaceManager::getHWND() const { return window ? window->getHWND() : nullptr; }
+void InterfaceManager::SwapFlag(Core &A) { 
+    A.isStart = !A.isStart; 
+}
+
+HWND InterfaceManager::getHWND() const { 
+    return window ? window->getHWND() : nullptr; 
+}
+
 void InterfaceManager::BlockMoveToMainWindow(int x, int y) {}
-bool InterfaceManager::CheckerClickToPanel(int x, int y) { return panels->at(x, y) != nullptr; }
+
+bool InterfaceManager::CheckerClickToPanel(int x, int y) { 
+    return panels->at(x, y) != nullptr; 
+}
