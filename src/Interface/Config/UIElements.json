@@ -1,42 +1,54 @@
 {
-  "TopBar": {
-    "x": 0,
-    "y": 0,
-    "w": 1904,
-    "h": 40,
-    "visible": true,
-    "collapsed": false
-  },
-  "Hierarchy": {
-    "x": 0,
-    "y": 40,
-    "w": 220,
-    "h": 981,
-    "visible": true,
-    "collapsed": false
-  },
-  "Inspector": {
-    "x": 1644,
-    "y": 40,
-    "w": 260,
-    "h": 981,
-    "visible": true,
-    "collapsed": false
-  },
-  "3D Viewport": {
-    "x": 220,
-    "y": 40,
-    "w": 1424,
-    "h": 831,
-    "visible": true,
-    "collapsed": false
-  },
-  "Console": {
-    "x": 220,
-    "y": 871,
-    "w": 1684,
-    "h": 150,
-    "visible": true,
-    "collapsed": false
+  "panels": {
+    "TopBar": {
+      "buttons": [
+        {"name": "File", "x": 10, "y": 8, "width": 60, "height": 24, "color": [0.4, 0.4, 0.5]},
+        {"name": "Edit", "x": 80, "y": 8, "width": 60, "height": 24, "color": [0.4, 0.4, 0.5]},
+        {"name": "View", "x": 150, "y": 8, "width": 60, "height": 24, "color": [0.4, 0.4, 0.5]},
+        {"name": "Load Model", "x": 230, "y": 8, "width": 100, "height": 24, "color": [0.4, 0.5, 0.4]},
+        {"name": "Start", "x": 340, "y": 8, "width": 60, "height": 24, "color": [0.4, 0.5, 0.4]},
+        {"name": "Stop", "x": 410, "y": 8, "width": 60, "height": 24, "color": [0.5, 0.4, 0.4]}
+      ],
+      "labels": [
+        {"text": "FPS: 0", "x": 10, "y": 10, "fontSize": 12, "bold": false, "color": [0.9, 0.9, 0.9]}
+      ]
+    },
+    "Hierarchy": {
+      "buttons": [
+        {"name": "Create Empty", "x": 10, "y": 35, "width": 100, "height": 24, "color": [0.4, 0.4, 0.5]},
+        {"name": "Create Cube", "x": 10, "y": 65, "width": 100, "height": 24, "color": [0.4, 0.4, 0.5]},
+        {"name": "Create Sphere", "x": 10, "y": 95, "width": 100, "height": 24, "color": [0.4, 0.4, 0.5]}
+      ],
+      "labels": [
+        {"text": "Objects: 0", "x": 10, "y": 130, "fontSize": 12, "bold": false, "color": [0.7, 0.7, 0.7]},
+        {"text": "Selected: None", "x": 10, "y": 150, "fontSize": 12, "bold": false, "color": [0.7, 0.7, 0.7]}
+      ]
+    },
+    "Inspector": {
+      "buttons": [
+        {"name": "Apply", "x": 10, "y": 35, "width": 80, "height": 24, "color": [0.4, 0.5, 0.4]},
+        {"name": "Reset", "x": 100, "y": 35, "width": 80, "height": 24, "color": [0.5, 0.4, 0.4]}
+      ],
+      "labels": [
+        {"text": "Position: 0,0,0", "x": 10, "y": 70, "fontSize": 12, "bold": false, "color": [0.8, 0.8, 0.8]},
+        {"text": "Rotation: 0,0,0", "x": 10, "y": 90, "fontSize": 12, "bold": false, "color": [0.8, 0.8, 0.8]},
+        {"text": "Scale: 1,1,1", "x": 10, "y": 110, "fontSize": 12, "bold": false, "color": [0.8, 0.8, 0.8]}
+      ]
+    },
+    "3D Viewport": {
+      "buttons": [
+        {"name": "Wireframe", "x": 10, "y": 35, "width": 80, "height": 24, "color": [0.4, 0.4, 0.5]},
+        {"name": "Solid", "x": 100, "y": 35, "width": 80, "height": 24, "color": [0.4, 0.4, 0.5]}
+      ],
+      "labels": []
+    },
+    "Console": {
+      "buttons": [
+        {"name": "Clear", "x": 10, "y": 35, "width": 60, "height": 24, "color": [0.4, 0.4, 0.5]}
+      ],
+      "labels": [
+        {"text": "> Ready", "x": 10, "y": 70, "fontSize": 12, "bold": false, "color": [0.7, 0.8, 0.7]}
+      ]
+    }
   }
 }

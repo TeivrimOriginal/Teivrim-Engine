@@ -169,10 +169,7 @@ void PanelManager::registerCallback(const std::string& name, std::function<void(
 
 void PanelManager::loadUIFromJSON(const std::string& filename) {
     std::ifstream file(filename);
-    if (!file.is_open()) {
-        std::cout << "Cannot open: " << filename << std::endl;
-        return;
-    }
+    if (!file.is_open()) return;
     
     std::string content, line;
     while (std::getline(file, line)) content += line;
@@ -229,7 +226,7 @@ void PanelManager::loadUIFromJSON(const std::string& filename) {
                 if (it != globalCallbacks.end()) {
                     p->addButton(btnName, x, y, w, h, cr, cg, cb, it->second);
                 } else {
-                    p->addButton(btnName, x, y, w, h, cr, cg, cb, []() { std::cout << "Button clicked" << std::endl; });
+                    p->addButton(btnName, x, y, w, h, cr, cg, cb, []() {});
                 }
                 
                 btnPos = btnEnd + 1;
@@ -361,10 +358,8 @@ void PanelManager::loadLayout(const std::string& filename) {
 }
 
 void PanelManager::onMouseDown(int x, int y) {
-    std::cout << "\n=== onMouseDown: " << x << "," << y << std::endl;
     closeMenu();
     
-    // Ищем пару панелей с общей границей
     Panel* panel1 = nullptr;
     Panel* panel2 = nullptr;
     int commonEdge = -1;
@@ -390,9 +385,7 @@ void PanelManager::onMouseDown(int x, int y) {
         }
     }
     
-    if (panel1 && panel2) {
-        std::cout << ">>> DOUBLE EDGE: " << panel1->name << " edge=" << commonEdge 
-                  << " and " << panel2->name << std::endl;
+    if (panel1 && panel2 && panel1->name != "TopBar" && panel2->name != "TopBar") {
         dragging = panel1;
         dragPartner = panel2;
         dragX = x; dragY = y;
@@ -408,13 +401,11 @@ void PanelManager::onMouseDown(int x, int y) {
         return;
     }
     
-    // Если общей грани нет, ищем обычную грань
     for (auto p : panels) {
         if (!p->visible) continue;
         
         int edge = p->getEdge(x, y, 10);
         if (edge != -1 && edge != 4) {
-            std::cout << ">>> SINGLE EDGE: " << p->name << " edge=" << edge << std::endl;
             dragging = p;
             dragPartner = nullptr;
             dragX = x; dragY = y;
@@ -475,24 +466,20 @@ void PanelManager::onMouseMove(int x, int y) {
                 int newH1 = dragH1 + dy;
                 int newH2 = dragH2 - dy;
                 int newY2 = dragY2 + dy;
-                if (newH1 >= 100 && newH2 >= 50) {
+                if (newH1 >= 100 && newH2 >= 100) {
                     dragging->setSize(dragging->getW(), newH1);
                     dragPartner->setPos(dragPartner->getX(), newY2);
                     dragPartner->setSize(dragPartner->getW(), newH2);
-                    std::cout << "Double resize: " << dragging->name << " h=" << newH1 
-                              << ", " << dragPartner->name << " y=" << newY2 << " h=" << newH2 << std::endl;
                 }
             }
             else if (dragEdge == 2) {
                 int newH1 = dragH1 - dy;
                 int newH2 = dragH2 + dy;
                 int newY1 = dragY1 + dy;
-                if (newH1 >= 100 && newH2 >= 50) {
+                if (newH1 >= 100 && newH2 >= 100) {
                     dragging->setPos(dragging->getX(), newY1);
                     dragging->setSize(dragging->getW(), newH1);
                     dragPartner->setSize(dragPartner->getW(), newH2);
-                    std::cout << "Double resize: " << dragging->name << " y=" << newY1 << " h=" << newH1 
-                              << ", " << dragPartner->name << " h=" << newH2 << std::endl;
                 }
             }
             else if (dragEdge == 1) {
@@ -580,12 +567,10 @@ void PanelManager::onMouseMove(int x, int y) {
         }
     } else {
         dragging->setPos(x - dragX, y - dragY);
-        std::cout << "Moving " << dragging->name << " to " << dragging->getX() << "," << dragging->getY() << std::endl;
     }
 }
 
 void PanelManager::onMouseUp(int x, int y) {
-    std::cout << "========== MOUSE UP ==========\n" << std::endl;
     isDrag = false;
     dragging = nullptr;
     dragPartner = nullptr;
