@@ -6,37 +6,35 @@ InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePt
     
     int sw = 1280, sh = 720;
     
-    auto top = panels->add("TopBar", 0, 0, sw, 40);
-    top->addButton("File", []() { std::cout << "File" << std::endl; });
-    top->addButton("Edit", []() { std::cout << "Edit" << std::endl; });
-    top->addButton("View", []() { std::cout << "View" << std::endl; });
-    top->addButton("Load Model", [this]() { if (core) core->openFileDialogAndLoadModel(getHWND()); });
-    top->addButton("Start", [this]() { if (core) SwapFlag(*core); });
-    top->addButton("Stop", [this]() { if (core) SwapFlag(*core); });
+    panels->add("TopBar", 0, 0, sw, 40);
+    panels->add("Hierarchy", 0, 40, 220, sh - 40);
+    panels->add("Inspector", sw - 260, 40, 260, sh - 40);
+    panels->add("3D Viewport", 220, 40, sw - 480, sh - 40, true);
+    panels->add("Console", 220, sh - 150, sw - 220, 150);
     
-    auto left = panels->add("Hierarchy", 0, 40, 220, sh - 40);
-    left->addButton("Create Empty", []() { std::cout << "Create Empty" << std::endl; });
-    left->addButton("Create Cube", []() { std::cout << "Create Cube" << std::endl; });
-    left->addButton("Create Sphere", []() { std::cout << "Create Sphere" << std::endl; });
-    left->addLabel("Objects: 0");
+    panels->registerCallback("Load Model", [this]() { if (core) core->openFileDialogAndLoadModel(getHWND()); });
+    panels->registerCallback("Start", [this]() { if (core) SwapFlag(*core); });
+    panels->registerCallback("Stop", [this]() { if (core) SwapFlag(*core); });
+    panels->registerCallback("Create Empty", []() { std::cout << "Create Empty" << std::endl; });
+    panels->registerCallback("Create Cube", []() { std::cout << "Create Cube" << std::endl; });
+    panels->registerCallback("Create Sphere", []() { std::cout << "Create Sphere" << std::endl; });
+    panels->registerCallback("Apply", []() { std::cout << "Apply" << std::endl; });
+    panels->registerCallback("Reset", []() { std::cout << "Reset" << std::endl; });
+    panels->registerCallback("Wireframe", []() { std::cout << "Wireframe" << std::endl; });
+    panels->registerCallback("Solid", []() { std::cout << "Solid" << std::endl; });
+    panels->registerCallback("Clear", []() { std::cout << "Clear" << std::endl; });
+    panels->registerCallback("File", []() { std::cout << "File" << std::endl; });
+    panels->registerCallback("Edit", []() { std::cout << "Edit" << std::endl; });
+    panels->registerCallback("View", []() { std::cout << "View" << std::endl; });
     
-    auto right = panels->add("Inspector", sw - 260, 40, 260, sh - 40);
-    right->addButton("Apply", []() { std::cout << "Apply" << std::endl; });
-    right->addButton("Reset", []() { std::cout << "Reset" << std::endl; });
-    right->addLabel("Position: 0,0,0");
-    right->addLabel("Rotation: 0,0,0");
-    right->addLabel("Scale: 1,1,1");
-    
-    auto view3D = panels->add("3D Viewport", 220, 40, sw - 480, sh - 40, true);
-    view3D->addButton("Wireframe", []() { std::cout << "Wireframe" << std::endl; });
-    view3D->addButton("Solid", []() { std::cout << "Solid" << std::endl; });
-    
-    auto console = panels->add("Console", 220, sh - 150, sw - 220, 150);
-    console->addButton("Clear", []() { std::cout << "Clear" << std::endl; });
-    console->addLabel("> Ready");
+    panels->loadConfig("Config/UIElements.json");
+    panels->loadLayout("Config/WindowSettings.json");
 }
 
-InterfaceManager::~InterfaceManager() { delete panels; }
+InterfaceManager::~InterfaceManager() { 
+    panels->saveLayout("Config/WindowSettings.json");
+    delete panels; 
+}
 
 Dimensions InterfaceManager::getDimensions() {
     Dimensions d = {0, 0};
@@ -80,6 +78,8 @@ void InterfaceManager::renderStatic() {
     panels->render(renderer);
     objectUI.render(renderer, d.width, d.height, *panels);
     
+    // panels->renderDebug(renderer);  // ЗАКОММЕНТИРОВАТЬ
+    
     renderer.drawText(10, d.height - 25, "3D Viewer", 1.0f, 1.0f, 1.0f);
     if (core && core->modelLoaded) {
         std::string s = "Model: " + core->modelPath.substr(core->modelPath.find_last_of("/\\") + 1);
@@ -106,16 +106,15 @@ void InterfaceManager::renderDynamic() {
 void InterfaceManager::handleClick(int x, int y) {}
 
 void InterfaceManager::handleMouseDown(int x, int y) { 
-    std::cout << "InterfaceManager::handleMouseDown " << x << "," << y << std::endl;
     panels->onMouseDown(x, y); 
 }
 
 void InterfaceManager::handleMouseMove(int x, int y) { 
     panels->onMouseMove(x, y);
     
-    Panel* p = panels->at(x, y);
-    if (p) {
-        int edge = p->getEdge(x, y, 8);
+    for (auto p : panels->getAll()) {
+        if (!p->visible) continue;
+        int edge = p->getEdge(x, y, 10);
         if (edge == 0 || edge == 1) {
             SetCursor(LoadCursor(NULL, IDC_SIZEWE));
             return;

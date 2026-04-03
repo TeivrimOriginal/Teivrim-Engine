@@ -6,6 +6,9 @@
 #include <functional>
 #include <windows.h>
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <map>
 #include "../Core/Render/Win32/RenderUI.h"
 
 struct Rect {
@@ -26,12 +29,28 @@ public:
     Rect r;
     bool visible, collapsed;
     bool is3D;
-    std::vector<std::pair<std::string, std::function<void()>>> buttons;
-    std::vector<std::string> labels;
+    
+    struct ButtonInfo {
+        std::string name;
+        int x, y, w, h;
+        float r, g, b;
+        std::function<void()> callback;
+    };
+    
+    struct LabelInfo {
+        std::string text;
+        int x, y;
+        int fontSize;
+        bool bold;
+        float r, g, b;
+    };
+    
+    std::vector<ButtonInfo> buttons;
+    std::vector<LabelInfo> labels;
     
     Panel(const std::string& n, int x, int y, int w, int h, bool _3D = false);
-    void addButton(const std::string& text, std::function<void()> cb);
-    void addLabel(const std::string& text);
+    void addButton(const std::string& text, int x, int y, int w, int h, float cr, float cg, float ccol, std::function<void()> callback);
+    void addLabel(const std::string& text, int x, int y, int fontSize, bool bold, float cr, float cg, float cb);
     void setPos(int x, int y);
     void setSize(int w, int h);
     void setVisible(bool v);
@@ -43,7 +62,7 @@ public:
     bool onCloseBtn(int px, int py) const;
     bool onMenuBtn(int px, int py) const;
     bool onClickButton(int px, int py);
-    int getEdge(int px, int py, int s=8) const;
+    int getEdge(int px, int py, int s=10) const;
     
     int getX() const { return r.x; }
     int getY() const { return r.y; }
@@ -51,21 +70,28 @@ public:
     int getH() const { return r.h; }
     
     void render(RenderUI& render);
+    void setCallback(const std::string& btnName, std::function<void()> cb);
 };
 
 class PanelManager {
 private:
     std::vector<Panel*> panels;
     Panel* dragging;
-    int dragX, dragY, dragW, dragH, dragEdge;
-    bool isDrag, isResizing;
+    Panel* dragPartner;
+    int dragX, dragY;
+    int dragW1, dragH1, dragW2, dragH2;
+    int dragX1, dragY1, dragX2, dragY2;
+    int dragEdge;
+    bool isDrag, isResizing, isDoubleEdge;
     bool menuOpen;
     int menuX, menuY;
     std::vector<std::string> menuItems;
     std::function<void(int)> menuCallback;
+    int screenW, screenH;
+    std::map<std::string, std::function<void()>> globalCallbacks;
     
     void closeMenu();
-    void resizeNeighbors(Panel* p, int edge, int delta);
+    void loadUIFromJSON(const std::string& filename);
     
 public:
     PanelManager();
@@ -74,11 +100,18 @@ public:
     Panel* add(const std::string& name, int x, int y, int w, int h, bool is3D = false);
     Panel* get3D();
     Panel* at(int px, int py);
+    const std::vector<Panel*>& getAll() const { return panels; }
     void update(int sw, int sh);
     
     void onMouseDown(int x, int y);
     void onMouseMove(int x, int y);
     void onMouseUp(int x, int y);
+    
+    void saveLayout(const std::string& filename);
+    void loadLayout(const std::string& filename);
+    void loadConfig(const std::string& filename);
+    
+    void registerCallback(const std::string& name, std::function<void()> cb);
     
     bool isDragging() const;
     bool isBlockingInput() const { return isDrag; }
