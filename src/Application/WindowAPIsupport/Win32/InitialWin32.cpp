@@ -1,9 +1,15 @@
 #include "InitialWin32.h"
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_win32.h>
+#endif
 
 InitialWin32* InitialWin32::createWindow(int width, int height, const char* title) {
     InitialWin32* win = new InitialWin32();
     
-    HINSTANCE hInst = GetModuleHandle(NULL);
+    win->hInstance = GetModuleHandle(NULL);
+    win->windowWidth = width;
+    win->windowHeight = height;
     
     win->hMenu = CreateMenu();
     HMENU hFileMenu = CreatePopupMenu();
@@ -28,20 +34,20 @@ InitialWin32* InitialWin32::createWindow(int width, int height, const char* titl
     WNDCLASSA wc = {};
     wc.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
     wc.lpfnWndProc = InitialWin32::WindowProc;
-    wc.hInstance = hInst;
+    wc.hInstance = win->hInstance;
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wc.lpszClassName = "GLWin32Class";
+    wc.lpszClassName = "VulkanWin32Class";
     
     RegisterClassA(&wc);
     
     win->hwnd = CreateWindowExA(
         0,
-        "GLWin32Class",
+        "VulkanWin32Class",
         title,
         WS_OVERLAPPEDWINDOW | WS_VISIBLE,
         CW_USEDEFAULT, CW_USEDEFAULT,
         width, height,
-        NULL, win->hMenu, hInst, win
+        NULL, win->hMenu, win->hInstance, win
     );
     
     if (!win->hwnd) {
@@ -77,4 +83,23 @@ InitialWin32* InitialWin32::createWindow(int width, int height, const char* titl
     UpdateWindow(win->hwnd);
     
     return win;
+}
+
+// Реализация функции
+bool InitialWin32::createVulkanSurface(VkInstance instance, VkSurfaceKHR* surface) {
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+    VkWin32SurfaceCreateInfoKHR createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+    createInfo.hinstance = hInstance;
+    createInfo.hwnd = hwnd;
+    
+    auto func = (PFN_vkCreateWin32SurfaceKHR)vkGetInstanceProcAddr(instance, "vkCreateWin32SurfaceKHR");
+    if (func == nullptr) {
+        return false;
+    }
+    
+    return func(instance, &createInfo, nullptr, surface) == VK_SUCCESS;
+#else
+    return false;
+#endif
 }
