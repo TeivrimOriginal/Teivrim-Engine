@@ -2,8 +2,8 @@
 #include <iostream>
 
 InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api) 
-    : window(nullptr), core(corePtr), currentAPI(api), startupActive(true),
-      renderer(api == RenderAPI::OPENGL ? RenderAPIType::OPENGL : RenderAPIType::VULKAN) 
+    : window(nullptr), core(corePtr), currentAPI(api), startupActive(false),
+      renderer(api == RenderAPI::OPENGL ? RenderAPIType::OPENGL : RenderAPIType::VULKAN)
 {
     panels = new PanelManager();
     
@@ -134,14 +134,19 @@ void InterfaceManager::showStartupPanel() {
         currentAPI = RenderAPI::VULKAN;
         startupActive = false;
         panels->remove("Select Render API");
-        // Пересоздаем рендерер с Vulkan
+        
+        // Пересоздаем рендерер
         renderer = RenderUI(RenderAPIType::VULKAN);
         if (window) {
             renderer.initialize(getHWND(), 1280, 720);
         }
+        
+        if (core) {
+            core->setRenderAPI(RenderAPI::VULKAN);
+        }
+        
         std::cout << "Vulkan selected" << std::endl;
     });
-    
     startupActive = true;
 }
 
@@ -199,14 +204,11 @@ void InterfaceManager::renderStatic() {
     Dimensions d = getDimensions();
     if (d.width == 0 || d.height == 0) return;
     
-    // Если стартовая панель активна - рисуем только её
     if (startupActive) {
         renderer.beginFrame();
         renderer.setup2D(d.width, d.height);
-        
         panels->update(d.width, d.height);
         panels->render(renderer);
-        
         renderer.endFrame();
         renderer.present();
         return;

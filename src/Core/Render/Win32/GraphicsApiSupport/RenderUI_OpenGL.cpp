@@ -21,10 +21,19 @@ void RenderUI_OpenGL::saveState(GLint& prog, GLint vp[4], GLboolean& dt) {
 }
 
 void RenderUI_OpenGL::restoreState(GLint prog, GLint vp[4], GLboolean dt) {
+    // Восстанавливаем вьюпорт
     glViewport(vp[0], vp[1], vp[2], vp[3]);
+    
+    // Восстанавливаем depth test
     if (dt) glEnable(GL_DEPTH_TEST);
     else glDisable(GL_DEPTH_TEST);
+    
+    // ВАЖНО: возвращаем шейдерную программу
     glUseProgram(prog);
+    
+    // Отключаем то, что включили для UI
+    glDisable(GL_BLEND);
+    glDisable(GL_TEXTURE_2D);
 }
 
 void RenderUI_OpenGL::setup2D(int width, int height) {

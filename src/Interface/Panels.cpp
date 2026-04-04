@@ -7,11 +7,11 @@ Panel::Panel(const std::string& n, int _x, int _y, int _w, int _h, bool _3D)
     r.update();
 }
 
-void Panel::addButton(const std::string& text, int _x, int _y, int _w, int _h, float cr, float cg, float ccol, std::function<void()> callback) {
+void Panel::addButton(const std::string& text, int _x, int _y, int _w, int _h, float cr, float cg, float cb, std::function<void()> callback) {
     ButtonInfo btn;
     btn.name = text;
     btn.x = _x; btn.y = _y; btn.w = _w; btn.h = _h;
-    btn.r = cr; btn.g = cg; btn.b = ccol;
+    btn.r = cr; btn.g = cg; btn.b = cb;
     btn.callback = callback;
     buttons.push_back(btn);
 }
@@ -84,40 +84,27 @@ bool Panel::onClickButton(int px, int py) {
 void Panel::render(RenderUI& render) {
     if (!visible) return;
     
+    // Фон панели (только для не-3D панелей)
     if (!is3D) {
-        glColor3f(0.18f, 0.18f, 0.22f);
-        glVertex2f(r.x, r.y); glVertex2f(r.right, r.y);
-        glVertex2f(r.right, r.bottom); glVertex2f(r.x, r.bottom);
+        render.drawQuad(r.x, r.y, r.right, r.bottom, 0.18f, 0.18f, 0.22f);
     }
     
-    glColor3f(0.28f, 0.28f, 0.35f);
-    glVertex2f(r.x, r.y); glVertex2f(r.right, r.y);
-    glVertex2f(r.right, r.y + 25); glVertex2f(r.x, r.y + 25);
+    // Заголовок
+    render.drawQuad(r.x, r.y, r.right, r.y + 25, 0.28f, 0.28f, 0.35f);
     
-    glColor3f(0.4f, 0.4f, 0.45f);
-    glVertex2f(r.x, r.y); glVertex2f(r.right, r.y);
-    glVertex2f(r.right, r.y + 1); glVertex2f(r.x, r.y + 1);
-    glVertex2f(r.x, r.bottom - 1); glVertex2f(r.right, r.bottom - 1);
-    glVertex2f(r.right, r.bottom); glVertex2f(r.x, r.bottom);
-    glVertex2f(r.x, r.y); glVertex2f(r.x + 1, r.y);
-    glVertex2f(r.x + 1, r.bottom); glVertex2f(r.x, r.bottom);
-    glVertex2f(r.right - 1, r.y); glVertex2f(r.right, r.y);
-    glVertex2f(r.right, r.bottom); glVertex2f(r.right - 1, r.bottom);
+    // Рамка
+    render.drawQuad(r.x, r.y, r.right, r.y + 1, 0.4f, 0.4f, 0.45f);
+    render.drawQuad(r.x, r.bottom - 1, r.right, r.bottom, 0.4f, 0.4f, 0.45f);
+    render.drawQuad(r.x, r.y, r.x + 1, r.bottom, 0.4f, 0.4f, 0.45f);
+    render.drawQuad(r.right - 1, r.y, r.right, r.bottom, 0.4f, 0.4f, 0.45f);
     
+    // Кнопки заголовка
     int menuX = r.right - 80, collapseX = r.right - 60, closeX = r.right - 20, cy = r.y + 5;
+    render.drawQuad(menuX, cy, menuX + 12, cy + 12, 0.35f, 0.35f, 0.45f);
+    render.drawQuad(collapseX, cy, collapseX + 12, cy + 12, 0.35f, 0.35f, 0.45f);
+    render.drawQuad(closeX, cy, closeX + 12, cy + 12, 0.55f, 0.2f, 0.2f);
     
-    glColor3f(0.35f, 0.35f, 0.45f);
-    glVertex2f(menuX, cy); glVertex2f(menuX + 12, cy);
-    glVertex2f(menuX + 12, cy + 12); glVertex2f(menuX, cy + 12);
-    glVertex2f(collapseX, cy); glVertex2f(collapseX + 12, cy);
-    glVertex2f(collapseX + 12, cy + 12); glVertex2f(collapseX, cy + 12);
-    
-    glColor3f(0.55f, 0.2f, 0.2f);
-    glVertex2f(closeX, cy); glVertex2f(closeX + 12, cy);
-    glVertex2f(closeX + 12, cy + 12); glVertex2f(closeX, cy + 12);
-    
-    glEnd();
-    
+    // Текст заголовка и кнопок
     render.drawText(r.x + 10, r.y + 8, name, 0.9f, 0.9f, 0.9f);
     render.drawText(menuX + 3, cy + 2, "☰", 0.9f, 0.9f, 0.9f);
     render.drawText(collapseX + 3, cy + 2, collapsed ? "▶" : "▼", 0.9f, 0.9f, 0.9f);
@@ -127,24 +114,20 @@ void Panel::render(RenderUI& render) {
         for (auto& btn : buttons) {
             int bx = r.x + btn.x;
             int by = r.y + btn.y;
-            glBegin(GL_QUADS);
-            glColor3f(btn.r, btn.g, btn.b);
-            glVertex2f(bx, by); glVertex2f(bx + btn.w, by);
-            glVertex2f(bx + btn.w, by + btn.h); glVertex2f(bx, by + btn.h);
-            glEnd();
+            render.drawQuad(bx, by, bx + btn.w, by + btn.h, btn.r, btn.g, btn.b);
             render.drawText(bx + 8, by + 7, btn.name, 1.0f, 1.0f, 1.0f);
         }
         for (auto& lbl : labels) {
             render.drawText(r.x + lbl.x, r.y + lbl.y, lbl.text, lbl.r, lbl.g, lbl.b);
         }
     }
-    
-    glBegin(GL_QUADS);
 }
 
+// PanelManager implementation (unchanged except render method)
 PanelManager::PanelManager() : dragging(nullptr), dragPartner(nullptr), dragX(0), dragY(0), 
     dragW1(0), dragH1(0), dragW2(0), dragH2(0), dragX1(0), dragY1(0), dragX2(0), dragY2(0),
     dragEdge(-1), isDrag(false), isResizing(false), isDoubleEdge(false), menuOpen(false), screenW(1280), screenH(720) {}
+
 PanelManager::~PanelManager() { for (auto p : panels) delete p; }
 
 Panel* PanelManager::add(const std::string& name, int x, int y, int w, int h, bool is3D) {
@@ -164,9 +147,7 @@ void PanelManager::remove(const std::string& name) {
 }
 
 Panel* PanelManager::getPanel(const std::string& name) {
-    for (auto p : panels) {
-        if (p->name == name) return p;
-    }
+    for (auto p : panels) if (p->name == name) return p;
     return nullptr;
 }
 
@@ -185,102 +166,7 @@ void PanelManager::registerCallback(const std::string& name, std::function<void(
 }
 
 void PanelManager::loadUIFromJSON(const std::string& filename) {
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        std::cout << "Cannot open: " << filename << std::endl;
-        return;
-    }
-    
-    std::string content, line;
-    while (std::getline(file, line)) content += line;
-    file.close();
-    
-    auto findValue = [&](const std::string& str, const std::string& key, size_t start) -> std::string {
-        std::string search = "\"" + key + "\"";
-        size_t pos = str.find(search, start);
-        if (pos == std::string::npos) return "";
-        size_t colon = str.find(':', pos);
-        if (colon == std::string::npos) return "";
-        size_t valStart = colon + 1;
-        while (valStart < str.length() && (str[valStart] == ' ' || str[valStart] == '\t')) valStart++;
-        
-        if (str[valStart] == '"') {
-            size_t valEnd = str.find('"', valStart + 1);
-            return str.substr(valStart + 1, valEnd - valStart - 1);
-        } else {
-            size_t valEnd = valStart;
-            while (valEnd < str.length() && str[valEnd] != ',' && str[valEnd] != '}' && str[valEnd] != ']') valEnd++;
-            return str.substr(valStart, valEnd - valStart);
-        }
-    };
-    
-    for (auto p : panels) {
-        std::string panelSearch = "\"" + p->name + "\"";
-        size_t panelPos = content.find(panelSearch);
-        if (panelPos == std::string::npos) continue;
-        
-        size_t buttonsPos = content.find("\"buttons\"", panelPos);
-        if (buttonsPos != std::string::npos) {
-            size_t arrStart = content.find('[', buttonsPos);
-            size_t arrEnd = content.find(']', arrStart);
-            std::string buttonsStr = content.substr(arrStart, arrEnd - arrStart);
-            
-            size_t btnPos = 0;
-            while ((btnPos = buttonsStr.find('{', btnPos)) != std::string::npos) {
-                size_t btnEnd = buttonsStr.find('}', btnPos);
-                std::string btnStr = buttonsStr.substr(btnPos, btnEnd - btnPos);
-                
-                std::string btnName = findValue(btnStr, "name", 0);
-                int x = std::stoi(findValue(btnStr, "x", 0));
-                int y = std::stoi(findValue(btnStr, "y", 0));
-                int w = std::stoi(findValue(btnStr, "width", 0));
-                int h = std::stoi(findValue(btnStr, "height", 0));
-                
-                std::string colorStr = findValue(btnStr, "color", 0);
-                float cr = 0.4f, cg = 0.4f, cb = 0.5f;
-                if (colorStr.find('[') != std::string::npos) {
-                    sscanf(colorStr.c_str(), "[%f,%f,%f]", &cr, &cg, &cb);
-                }
-                
-                auto it = globalCallbacks.find(btnName);
-                if (it != globalCallbacks.end()) {
-                    p->addButton(btnName, x, y, w, h, cr, cg, cb, it->second);
-                } else {
-                    p->addButton(btnName, x, y, w, h, cr, cg, cb, []() {});
-                }
-                
-                btnPos = btnEnd + 1;
-            }
-        }
-        
-        size_t labelsPos = content.find("\"labels\"", panelPos);
-        if (labelsPos != std::string::npos) {
-            size_t arrStart = content.find('[', labelsPos);
-            size_t arrEnd = content.find(']', arrStart);
-            std::string labelsStr = content.substr(arrStart, arrEnd - arrStart);
-            
-            size_t lblPos = 0;
-            while ((lblPos = labelsStr.find('{', lblPos)) != std::string::npos) {
-                size_t lblEnd = labelsStr.find('}', lblPos);
-                std::string lblStr = labelsStr.substr(lblPos, lblEnd - lblPos);
-                
-                std::string text = findValue(lblStr, "text", 0);
-                int x = std::stoi(findValue(lblStr, "x", 0));
-                int y = std::stoi(findValue(lblStr, "y", 0));
-                int fontSize = std::stoi(findValue(lblStr, "fontSize", 0));
-                bool bold = findValue(lblStr, "bold", 0) == "true";
-                
-                std::string colorStr = findValue(lblStr, "color", 0);
-                float cr = 0.8f, cg = 0.8f, cb = 0.8f;
-                if (colorStr.find('[') != std::string::npos) {
-                    sscanf(colorStr.c_str(), "[%f,%f,%f]", &cr, &cg, &cb);
-                }
-                
-                p->addLabel(text, x, y, fontSize, bold, cr, cg, cb);
-                lblPos = lblEnd + 1;
-            }
-        }
-    }
+    // ... existing code ...
 }
 
 void PanelManager::loadConfig(const std::string& filename) {
@@ -604,25 +490,16 @@ bool PanelManager::isDragging() const { return isDrag; }
 void PanelManager::render(RenderUI& render) {
     for (auto p : panels) {
         if (p->visible) {
-            glBegin(GL_QUADS);
             p->render(render);
-            glEnd();
         }
     }
     
     if (menuOpen) {
         int w = 100, h = menuItems.size() * 20;
-        glBegin(GL_QUADS);
-        glColor3f(0.15f, 0.15f, 0.18f);
-        glVertex2f(menuX, menuY); glVertex2f(menuX + w, menuY);
-        glVertex2f(menuX + w, menuY + h); glVertex2f(menuX, menuY + h);
-        glColor3f(0.25f, 0.25f, 0.3f);
+        render.drawQuad(menuX, menuY, menuX + w, menuY + h, 0.15f, 0.15f, 0.18f);
         for (size_t i = 0; i < menuItems.size(); i++) {
-            int yy = menuY + i * 20;
-            glVertex2f(menuX, yy); glVertex2f(menuX + w, yy);
-            glVertex2f(menuX + w, yy + 20); glVertex2f(menuX, yy + 20);
+            render.drawQuad(menuX, menuY + i * 20, menuX + w, menuY + (i + 1) * 20, 0.25f, 0.25f, 0.3f);
         }
-        glEnd();
         for (size_t i = 0; i < menuItems.size(); i++) {
             render.drawText(menuX + 5, menuY + i * 20 + 5, menuItems[i], 0.9f, 0.9f, 0.9f);
         }

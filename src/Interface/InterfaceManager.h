@@ -12,10 +12,7 @@ struct Dimensions {
     int height;
 };
 
-enum class RenderAPI {
-    OPENGL,
-    VULKAN
-};
+// НЕ ОБЪЯВЛЯЙ RenderAPI ЗДЕСЬ СНОВА! ОН УЖЕ В core.h
 
 class InterfaceManager {
 private:

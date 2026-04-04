@@ -4,7 +4,6 @@
 #include <GL/glew.h>
 #include <windows.h>
 #include <string>
-
 #include "stb_truetype.h"
 
 class RenderUI_OpenGL {

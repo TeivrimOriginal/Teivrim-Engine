@@ -85,6 +85,7 @@ public:
         return PeekMessage(&msg, 0, WM_QUIT, WM_QUIT, PM_NOREMOVE);
     }
     
+    // ТОЛЬКО ОДИН метод getFramebufferSize (удали дубликат)
     void getFramebufferSize(int* width, int* height) {
         *width = windowWidth;
         *height = windowHeight;
@@ -95,15 +96,10 @@ public:
 #ifdef VK_USE_PLATFORM_WIN32_KHR
         extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
         extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
-        
-        #ifdef _DEBUG
-        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-        #endif
 #endif
         return extensions;
     }
     
-    // Только объявление, без тела
     bool createVulkanSurface(VkInstance instance, VkSurfaceKHR* surface);
     
     ~InitialWin32() {

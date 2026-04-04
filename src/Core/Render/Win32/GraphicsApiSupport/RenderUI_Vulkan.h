@@ -2,11 +2,10 @@
 #define RENDERUI_VULKAN_H
 
 #include <vulkan/vulkan.h>
+#include <vulkan/vulkan_win32.h>
 #include <windows.h>
 #include <string>
 #include <vector>
-#include <map>
-
 #include "stb_truetype.h"
 
 class RenderUI_Vulkan {
@@ -16,44 +15,63 @@ public:
     
     bool initialize(HWND hwnd, int width, int height);
     void cleanup();
-    
     void beginFrame();
     void endFrame();
+    void present();
     void setup2D(int width, int height);
     
     void drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
     void drawQuad(int x1, int y1, int x2, int y2, float r, float g, float b);
-    
     void drawText(int x, int y, const std::string& text, float r, float g, float b);
     void drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b);
     
-    void present();
-
 private:
-    struct Vertex {
+    struct UIVertex {
         float x, y;
         float r, g, b, a;
-        float u, v;
     };
     
-    void initFont();
-    void createPipeline();
-    void createBuffers();
-    void updateVertexBuffer(const std::vector<Vertex>& vertices);
+    bool createInstance();
+    bool createSurface();
+    bool pickPhysicalDevice();
+    bool createLogicalDevice();
+    bool createSwapChain();
+    bool createImageViews();
+    bool createRenderPass();
+    bool createGraphicsPipeline();
+    bool createFramebuffers();
+    bool createCommandPool();
+    bool createVertexBuffer();
+    bool createCommandBuffers();
+    bool createSyncObjects();
     
+    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
+                      VkBuffer& buffer, VkDeviceMemory& memory);
+    void updateVertexBuffer(const std::vector<UIVertex>& vertices);
+    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+    void recreateSwapChain();
+    void cleanupSwapChain();
+    
+    void initFont();
+    void renderText();
+    
+    // Vulkan objects
     VkInstance instance;
     VkPhysicalDevice physicalDevice;
     VkDevice device;
     VkQueue graphicsQueue;
     VkSurfaceKHR surface;
     VkSwapchainKHR swapChain;
-    VkImageView swapChainImageView;
+    VkFormat swapChainImageFormat;
+    VkExtent2D swapChainExtent;
+    std::vector<VkImage> swapChainImages;
+    std::vector<VkImageView> swapChainImageViews;
     VkRenderPass renderPass;
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
+    std::vector<VkFramebuffer> swapChainFramebuffers;
     VkCommandPool commandPool;
-    VkCommandBuffer commandBuffer;
-    VkFramebuffer framebuffer;
+    std::vector<VkCommandBuffer> commandBuffers;
     
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
@@ -62,7 +80,7 @@ private:
     VkSemaphore renderFinishedSemaphore;
     VkFence inFlightFence;
     
-    // Замена GLuint на unsigned int
+    // Font
     unsigned int fontTexture;
     bool fontInitialized;
     stbtt_bakedchar glyphs[96];
@@ -71,7 +89,8 @@ private:
     int windowHeight;
     HWND hwnd;
     bool initialized;
-    uint32_t imageIndex;
+    uint32_t currentFrame;
+    std::vector<UIVertex> pendingVertices;
 };
 
 #endif

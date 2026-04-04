@@ -4,7 +4,6 @@
 #include <GL/glew.h>
 #include <windows.h>
 #include <string>
-#include <memory>
 
 enum class RenderAPIType {
     OPENGL,
@@ -37,8 +36,6 @@ public:
     RenderAPIType getCurrentAPI() const { return currentAPI; }
 
 private:
-    void drawPanel(float x1, float y1, float x2, float y2, float r, float g, float b);
-    
     RenderAPIType currentAPI;
     class RenderUI_OpenGL* glImpl;
     class RenderUI_Vulkan* vkImpl;
