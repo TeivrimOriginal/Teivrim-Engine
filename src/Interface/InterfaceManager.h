@@ -12,6 +12,12 @@ struct Dimensions {
     int height;
 };
 
+// Флаг для выбора API рендеринга
+enum class RenderAPI {
+    OPENGL,
+    VULKAN
+};
+
 class InterfaceManager {
 private:
     InitialWin32* window;
@@ -19,9 +25,10 @@ private:
     ObjectUI objectUI;
     PanelManager* panels;
     Core* core;
+    RenderAPI currentAPI;
     
 public:
-    InterfaceManager(Core* corePtr);
+    InterfaceManager(Core* corePtr, RenderAPI api = RenderAPI::OPENGL);
     ~InterfaceManager();
     
     void setWindow(InitialWin32* w) { window = w; }
@@ -37,6 +44,11 @@ public:
     void SwapFlag(Core &A);
     HWND getHWND() const;
     
+    bool initializeRender(HWND hwnd, int width, int height);
+    void beginFrame();
+    void endFrame();
+    void present();
+    
     bool isClick = true;
     void swapclick() { isClick = !isClick; }
     void BlockMoveToMainWindow(int x, int y);
@@ -44,6 +56,9 @@ public:
     
     bool isBlockingRender() { return panels ? panels->isBlockingInput() : false; }
     PanelManager* getPanelManager() { return panels; }
+    
+    RenderAPI getCurrentAPI() const { return currentAPI; }
+    void setRenderAPI(RenderAPI api);
 };
 
 #endif

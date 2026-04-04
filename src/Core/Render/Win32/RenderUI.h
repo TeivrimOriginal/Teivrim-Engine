@@ -6,14 +6,23 @@
 #include <string>
 #include <memory>
 
-#include "GraphicsApiSupport/RenderUI_OpenGL.h"
+enum class RenderAPIType {
+    OPENGL,
+    VULKAN
+};
 
 class RenderUI {
 public:
-    RenderUI();
+    RenderUI(RenderAPIType api = RenderAPIType::OPENGL);
     ~RenderUI();
     
-    void drawUI(HWND hwnd);
+    bool initialize(HWND hwnd, int width, int height);
+    void cleanup();
+    
+    void beginFrame();
+    void endFrame();
+    void present();
+    
     void saveState(GLint& prog, GLint vp[4], GLboolean& dt);
     void restoreState(GLint prog, GLint vp[4], GLboolean dt);
     void setup2D(int width, int height);
@@ -24,11 +33,16 @@ public:
     
     void drawText(int x, int y, const std::string& text, float r, float g, float b);
     void drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b);
+    
+    RenderAPIType getCurrentAPI() const { return currentAPI; }
 
 private:
     void drawPanel(float x1, float y1, float x2, float y2, float r, float g, float b);
     
-    std::unique_ptr<RenderUI_OpenGL> renderImpl;
+    RenderAPIType currentAPI;
+    class RenderUI_OpenGL* glImpl;
+    class RenderUI_Vulkan* vkImpl;
+    bool isOpenGL;
 };
 
 #endif

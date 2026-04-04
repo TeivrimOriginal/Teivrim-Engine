@@ -1,7 +1,10 @@
 #include "InterfaceManager.h"
 #include <iostream>
 
-InterfaceManager::InterfaceManager(Core* corePtr) : window(nullptr), core(corePtr) {
+InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api) 
+    : core(corePtr), currentAPI(api), renderer(api == RenderAPI::OPENGL ? 
+        RenderAPIType::OPENGL : RenderAPIType::VULKAN), window(nullptr)  // Исправленный порядок
+{
     panels = new PanelManager();
     
     int sw = 1280, sh = 720;
@@ -113,6 +116,31 @@ InterfaceManager::~InterfaceManager() {
     delete panels; 
 }
 
+bool InterfaceManager::initializeRender(HWND hwnd, int width, int height) {
+    return renderer.initialize(hwnd, width, height);
+}
+
+void InterfaceManager::beginFrame() {
+    renderer.beginFrame();
+}
+
+void InterfaceManager::endFrame() {
+    renderer.endFrame();
+}
+
+void InterfaceManager::present() {
+    renderer.present();
+}
+
+void InterfaceManager::setRenderAPI(RenderAPI api) {
+    if (currentAPI == api) return;
+    
+    currentAPI = api;
+    // Пересоздаем рендерер с новым API
+    // renderer = RenderUI(api == RenderAPI::OPENGL ? RenderAPIType::OPENGL : RenderAPIType::VULKAN);
+    // Нужно переинициализировать
+}
+
 Dimensions InterfaceManager::getDimensions() {
     Dimensions d = {0, 0};
     if (!window) return d;
@@ -126,56 +154,89 @@ Dimensions InterfaceManager::getDimensions() {
 }
 
 void InterfaceManager::clearScreen(int width, int height) {
-    glViewport(0, 0, width, height);
-    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // Для OpenGL
+    if (currentAPI == RenderAPI::OPENGL) {
+        glViewport(0, 0, width, height);
+        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
+    // Для Vulkan очистка делается через render pass
 }
 
 void InterfaceManager::setup3DViewport(const Dimensions& dims) {
     Panel* view3D = panels ? panels->get3D() : nullptr;
-    if (view3D && view3D->visible) {
-        glViewport(view3D->getX(), dims.height - (view3D->getY() + view3D->getH()), 
-                   view3D->getW(), view3D->getH());
-    } else {
-        glViewport(0, 0, dims.width, dims.height);
+    
+    if (currentAPI == RenderAPI::OPENGL) {
+        if (view3D && view3D->visible) {
+            glViewport(view3D->getX(), dims.height - (view3D->getY() + view3D->getH()), 
+                       view3D->getW(), view3D->getH());
+        } else {
+            glViewport(0, 0, dims.width, dims.height);
+        }
+        glEnable(GL_DEPTH_TEST);
     }
-    glEnable(GL_DEPTH_TEST);
+    // Для Vulkan viewport настраивается через pipeline
 }
 
 void InterfaceManager::renderStatic() {
     Dimensions d = getDimensions();
     if (d.width == 0 || d.height == 0) return;
     
-    GLint prog, vp[4];
-    GLboolean dt;
-    renderer.saveState(prog, vp, dt);
-    renderer.setup2D(d.width, d.height);
-    
-    panels->update(d.width, d.height);
-    panels->render(renderer);
-    objectUI.render(renderer, d.width, d.height, *panels);
-    
-    renderer.drawText(10, d.height - 25, "3D Viewer", 1.0f, 1.0f, 1.0f);
-    if (core && core->modelLoaded) {
-        std::string s = "Model: " + core->modelPath.substr(core->modelPath.find_last_of("/\\") + 1);
-        renderer.drawText(10, d.height - 40, s, 0.5f, 0.8f, 0.5f);
+    if (currentAPI == RenderAPI::OPENGL) {
+        GLint prog, vp[4];
+        GLboolean dt;
+        renderer.saveState(prog, vp, dt);
+        renderer.setup2D(d.width, d.height);
+        
+        panels->update(d.width, d.height);
+        panels->render(renderer);
+        objectUI.render(renderer, d.width, d.height, *panels);
+        
+        renderer.drawText(10, d.height - 25, "3D Viewer", 1.0f, 1.0f, 1.0f);
+        if (core && core->modelLoaded) {
+            std::string s = "Model: " + core->modelPath.substr(core->modelPath.find_last_of("/\\") + 1);
+            renderer.drawText(10, d.height - 40, s, 0.5f, 0.8f, 0.5f);
+        } else {
+            renderer.drawText(10, d.height - 40, "No model loaded", 1.0f, 0.8f, 0.3f);
+        }
+        
+        renderer.restoreMatrices();
+        renderer.restoreState(prog, vp, dt);
     } else {
-        renderer.drawText(10, d.height - 40, "No model loaded", 1.0f, 0.8f, 0.3f);
+        // Vulkan версия
+        renderer.beginFrame();
+        renderer.setup2D(d.width, d.height);
+        
+        panels->update(d.width, d.height);
+        panels->render(renderer);
+        objectUI.render(renderer, d.width, d.height, *panels);
+        
+        renderer.drawText(10, d.height - 25, "3D Viewer (Vulkan)", 1.0f, 1.0f, 1.0f);
+        if (core && core->modelLoaded) {
+            std::string s = "Model: " + core->modelPath.substr(core->modelPath.find_last_of("/\\") + 1);
+            renderer.drawText(10, d.height - 40, s, 0.5f, 0.8f, 0.5f);
+        } else {
+            renderer.drawText(10, d.height - 40, "No model loaded", 1.0f, 0.8f, 0.3f);
+        }
+        
+        renderer.endFrame();
+        renderer.present();
     }
-    
-    renderer.restoreMatrices();
-    renderer.restoreState(prog, vp, dt);
 }
 
 void InterfaceManager::renderDynamic() {
     Dimensions d = getDimensions();
     if (d.width == 0 || d.height == 0) return;
-    GLint prog, vp[4];
-    GLboolean dt;
-    renderer.saveState(prog, vp, dt);
-    renderer.setup2D(d.width, d.height);
-    renderer.restoreMatrices();
-    renderer.restoreState(prog, vp, dt);
+    
+    if (currentAPI == RenderAPI::OPENGL) {
+        GLint prog, vp[4];
+        GLboolean dt;
+        renderer.saveState(prog, vp, dt);
+        renderer.setup2D(d.width, d.height);
+        renderer.restoreMatrices();
+        renderer.restoreState(prog, vp, dt);
+    }
+    // Для Vulkan dynamic rendering
 }
 
 void InterfaceManager::handleClick(int x, int y) {}
