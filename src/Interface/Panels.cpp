@@ -153,6 +153,16 @@ Panel* PanelManager::add(const std::string& name, int x, int y, int w, int h, bo
     return p;
 }
 
+void PanelManager::remove(const std::string& name) {
+    for (auto it = panels.begin(); it != panels.end(); ++it) {
+        if ((*it)->name == name) {
+            delete *it;
+            panels.erase(it);
+            break;
+        }
+    }
+}
+
 Panel* PanelManager::getPanel(const std::string& name) {
     for (auto p : panels) {
         if (p->name == name) return p;

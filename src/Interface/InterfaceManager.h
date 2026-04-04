@@ -12,7 +12,6 @@ struct Dimensions {
     int height;
 };
 
-// Флаг для выбора API рендеринга
 enum class RenderAPI {
     OPENGL,
     VULKAN
@@ -26,6 +25,7 @@ private:
     PanelManager* panels;
     Core* core;
     RenderAPI currentAPI;
+    bool startupActive;
     
 public:
     InterfaceManager(Core* corePtr, RenderAPI api = RenderAPI::OPENGL);
@@ -49,6 +49,10 @@ public:
     void endFrame();
     void present();
     
+    void showStartupPanel();
+    bool isStartupActive() const { return startupActive; }
+    RenderAPI getCurrentAPI() const { return currentAPI; }
+    
     bool isClick = true;
     void swapclick() { isClick = !isClick; }
     void BlockMoveToMainWindow(int x, int y);
@@ -56,9 +60,6 @@ public:
     
     bool isBlockingRender() { return panels ? panels->isBlockingInput() : false; }
     PanelManager* getPanelManager() { return panels; }
-    
-    RenderAPI getCurrentAPI() const { return currentAPI; }
-    void setRenderAPI(RenderAPI api);
 };
 
 #endif

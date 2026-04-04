@@ -319,12 +319,12 @@ unsigned int ModelParser::textureFromFile(const char* path, const std::string& d
     int width, height, nrComponents;
     
     // 1. Пробуем как абсолютный путь
-    data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 0);
+    data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 4); // ПРИНУДИТЕЛЬНО 4 КАНАЛА
     
     if(!data && !directory.empty()) {
         // 2. Пробуем относительно директории модели
         filename = directory + '/' + std::string(path);
-        data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 0);
+        data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 4); // ПРИНУДИТЕЛЬНО 4 КАНАЛА
     }
     
     if(!data) {
@@ -334,7 +334,7 @@ unsigned int ModelParser::textureFromFile(const char* path, const std::string& d
         if(pos != std::string::npos) {
             simpleName = simpleName.substr(pos + 1);
         }
-        data = stbi_load(simpleName.c_str(), &width, &height, &nrComponents, 0);
+        data = stbi_load(simpleName.c_str(), &width, &height, &nrComponents, 4); // ПРИНУДИТЕЛЬНО 4 КАНАЛА
     }
     
     if(!data) {
@@ -345,13 +345,8 @@ unsigned int ModelParser::textureFromFile(const char* path, const std::string& d
     unsigned int textureID;
     glGenTextures(1, &textureID);
     
-    GLenum format;
-    if(nrComponents == 1)
-        format = GL_RED;
-    else if(nrComponents == 3)
-        format = GL_RGB;
-    else if(nrComponents == 4)
-        format = GL_RGBA;
+    // ВСЕГДА ИСПОЛЬЗУЕМ GL_RGBA
+    GLenum format = GL_RGBA;
     
     glBindTexture(GL_TEXTURE_2D, textureID);
     glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
@@ -363,6 +358,8 @@ unsigned int ModelParser::textureFromFile(const char* path, const std::string& d
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     
     stbi_image_free(data);
+    
+    std::cout << "Текстура загружена: " << width << "x" << height << ", каналов: 4 (RGBA)" << std::endl;
     
     return textureID;
 }

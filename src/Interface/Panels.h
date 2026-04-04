@@ -98,6 +98,7 @@ public:
     ~PanelManager();
     
     Panel* add(const std::string& name, int x, int y, int w, int h, bool is3D = false);
+    void remove(const std::string& name);
     Panel* getPanel(const std::string& name);
     Panel* get3D();
     Panel* at(int px, int py);

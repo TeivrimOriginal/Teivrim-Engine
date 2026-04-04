@@ -123,6 +123,7 @@ void Core::GameLoop() {
 
     g_uiManager = new InterfaceManager(this);
     g_uiManager->setWindow(win32Window);
+    g_uiManager->showStartupPanel();  // ПОКАЗЫВАЕМ ПАНЕЛЬ ВЫБОРА API
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
 
     Input input(app, g_uiManager);
@@ -149,6 +150,15 @@ void Core::GameLoop() {
         }
 
         win32Window->pollEvents();
+
+        // ЕСЛИ СТАРТОВАЯ ПАНЕЛЬ ЕЩЕ АКТИВНА - НЕ РЕНДЕРИМ 3D
+        if (g_uiManager->isStartupActive()) {
+            g_uiManager->renderStatic();
+            HDC hdc = GetDC(win32Window->getHWND());
+            SwapBuffers(hdc);
+            ReleaseDC(win32Window->getHWND(), hdc);
+            continue;  // ПРОПУСКАЕМ 3D РЕНДЕР
+        }
 
         POINT currentMousePos;
         GetCursorPos(&currentMousePos);

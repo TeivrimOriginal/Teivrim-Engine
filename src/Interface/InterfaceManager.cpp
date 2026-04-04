@@ -2,8 +2,8 @@
 #include <iostream>
 
 InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api) 
-    : core(corePtr), currentAPI(api), renderer(api == RenderAPI::OPENGL ? 
-        RenderAPIType::OPENGL : RenderAPIType::VULKAN), window(nullptr)  // Исправленный порядок
+    : window(nullptr), core(corePtr), currentAPI(api), startupActive(true),
+      renderer(api == RenderAPI::OPENGL ? RenderAPIType::OPENGL : RenderAPIType::VULKAN) 
 {
     panels = new PanelManager();
     
@@ -116,6 +116,35 @@ InterfaceManager::~InterfaceManager() {
     delete panels; 
 }
 
+void InterfaceManager::showStartupPanel() {
+    Dimensions d = getDimensions();
+    int sw = d.width > 0 ? d.width : 1280;
+    int sh = d.height > 0 ? d.height : 720;
+    
+    Panel* startupPanel = panels->add("Select Render API", sw/2 - 150, sh/2 - 75, 300, 150, false);
+    
+    startupPanel->addButton("OpenGL (Fully Working)", 50, 30, 200, 40, 0.3f, 0.6f, 0.3f, [this]() {
+        currentAPI = RenderAPI::OPENGL;
+        startupActive = false;
+        panels->remove("Select Render API");
+        std::cout << "OpenGL selected" << std::endl;
+    });
+    
+    startupPanel->addButton("Vulkan (Experimental)", 50, 80, 200, 40, 0.6f, 0.3f, 0.3f, [this]() {
+        currentAPI = RenderAPI::VULKAN;
+        startupActive = false;
+        panels->remove("Select Render API");
+        // Пересоздаем рендерер с Vulkan
+        renderer = RenderUI(RenderAPIType::VULKAN);
+        if (window) {
+            renderer.initialize(getHWND(), 1280, 720);
+        }
+        std::cout << "Vulkan selected" << std::endl;
+    });
+    
+    startupActive = true;
+}
+
 bool InterfaceManager::initializeRender(HWND hwnd, int width, int height) {
     return renderer.initialize(hwnd, width, height);
 }
@@ -132,15 +161,6 @@ void InterfaceManager::present() {
     renderer.present();
 }
 
-void InterfaceManager::setRenderAPI(RenderAPI api) {
-    if (currentAPI == api) return;
-    
-    currentAPI = api;
-    // Пересоздаем рендерер с новым API
-    // renderer = RenderUI(api == RenderAPI::OPENGL ? RenderAPIType::OPENGL : RenderAPIType::VULKAN);
-    // Нужно переинициализировать
-}
-
 Dimensions InterfaceManager::getDimensions() {
     Dimensions d = {0, 0};
     if (!window) return d;
@@ -154,13 +174,11 @@ Dimensions InterfaceManager::getDimensions() {
 }
 
 void InterfaceManager::clearScreen(int width, int height) {
-    // Для OpenGL
     if (currentAPI == RenderAPI::OPENGL) {
         glViewport(0, 0, width, height);
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
-    // Для Vulkan очистка делается через render pass
 }
 
 void InterfaceManager::setup3DViewport(const Dimensions& dims) {
@@ -175,12 +193,24 @@ void InterfaceManager::setup3DViewport(const Dimensions& dims) {
         }
         glEnable(GL_DEPTH_TEST);
     }
-    // Для Vulkan viewport настраивается через pipeline
 }
 
 void InterfaceManager::renderStatic() {
     Dimensions d = getDimensions();
     if (d.width == 0 || d.height == 0) return;
+    
+    // Если стартовая панель активна - рисуем только её
+    if (startupActive) {
+        renderer.beginFrame();
+        renderer.setup2D(d.width, d.height);
+        
+        panels->update(d.width, d.height);
+        panels->render(renderer);
+        
+        renderer.endFrame();
+        renderer.present();
+        return;
+    }
     
     if (currentAPI == RenderAPI::OPENGL) {
         GLint prog, vp[4];
@@ -203,7 +233,6 @@ void InterfaceManager::renderStatic() {
         renderer.restoreMatrices();
         renderer.restoreState(prog, vp, dt);
     } else {
-        // Vulkan версия
         renderer.beginFrame();
         renderer.setup2D(d.width, d.height);
         
@@ -236,7 +265,6 @@ void InterfaceManager::renderDynamic() {
         renderer.restoreMatrices();
         renderer.restoreState(prog, vp, dt);
     }
-    // Для Vulkan dynamic rendering
 }
 
 void InterfaceManager::handleClick(int x, int y) {}

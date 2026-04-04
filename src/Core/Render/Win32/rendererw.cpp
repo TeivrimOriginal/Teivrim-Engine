@@ -5,7 +5,7 @@
 #include <glm/gtc/type_ptr.hpp>
 using namespace std;
 
-// Шейдеры (оставляем как есть)
+// Шейдеры (исправлены - убран discard и альфа-тест)
 const char* RendererW::vertexShaderSource = 
 "#version 330 core\n"
 "layout (location = 0) in vec3 aPos;\n"
@@ -46,9 +46,10 @@ const char* RendererW::fragmentShaderSource =
 "void main() {\n"
 "    vec4 texColor = texture(texture_diffuse1, TexCoords);\n"
 "    \n"
-"    if(texColor.a < 0.1) {\n"
-"        discard;\n"
-"    }\n"
+"    // УБРАЛ DISCARD - теперь альфа-канал не удаляет пиксели\n"
+"    // if(texColor.a < 0.1) {\n"
+"    //     discard;\n"
+"    // }\n"
 "    \n"
 "    vec3 color = useTexture ? texColor.rgb : objectColor;\n"
 "    \n"
@@ -101,8 +102,14 @@ bool RendererW::initialize(InitialWin32* win) {
     }
     
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthFunc(GL_LESS);
+    glDepthMask(GL_TRUE);
+    
+    // ОТКЛЮЧАЕМ БЛЕНДИНГ ДЛЯ МОДЕЛЕЙ (включаем только для UI)
+    glDisable(GL_BLEND);
+    
+    // ОТКЛЮЧАЕМ CULLING (исправляет проблему с вывернутыми нормалями)
+    glDisable(GL_CULL_FACE);
     
     cout << "OpenGL version: " << glGetString(GL_VERSION) << endl;
     
@@ -110,7 +117,6 @@ bool RendererW::initialize(InitialWin32* win) {
 }
 
 void RendererW::cleanup() {
-    // Очищаем старые буферы
     for (size_t i = 0; i < VAOs.size(); i++) {
         glDeleteVertexArrays(1, &VAOs[i]);
     }
@@ -121,7 +127,6 @@ void RendererW::cleanup() {
         glDeleteBuffers(1, &EBOs[i]);
     }
     
-    // Очищаем оптимизированные буферы
     for (size_t i = 0; i < meshVAOs.size(); i++) {
         glDeleteVertexArrays(1, &meshVAOs[i].vao);
         glDeleteBuffers(1, &meshVAOs[i].vbo);
@@ -142,9 +147,7 @@ void RendererW::endFrame() {
     window->pollEvents();
 }
 
-// РЕАЛИЗАЦИЯ МЕТОДА OPTIMIZE
 void RendererW::optimize(const ModelParser& model, GLuint shaderProgram) {
-    // Очищаем старые буферы
     for (size_t i = 0; i < meshVAOs.size(); i++) {
         glDeleteVertexArrays(1, &meshVAOs[i].vao);
         glDeleteBuffers(1, &meshVAOs[i].vbo);
@@ -172,7 +175,6 @@ void RendererW::optimize(const ModelParser& model, GLuint shaderProgram) {
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh.indices.size() * sizeof(unsigned int),
                     &mesh.indices[0], GL_STATIC_DRAW);
         
-        // Vertex attributes
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
@@ -186,13 +188,11 @@ void RendererW::optimize(const ModelParser& model, GLuint shaderProgram) {
         buffers.textures = mesh.textures;
         meshVAOs.push_back(buffers);
         
-        // Сохраняем в общие списки для cleanup
         VAOs.push_back(buffers.vao);
         VBOs.push_back(buffers.vbo);
         EBOs.push_back(buffers.ebo);
     }
     
-    // Кэшируем uniform locations
     cachedShaderProgram = shaderProgram;
     cachedModelLoc = glGetUniformLocation(shaderProgram, "model");
     cachedViewLoc = glGetUniformLocation(shaderProgram, "view");
@@ -209,12 +209,17 @@ void RendererW::optimize(const ModelParser& model, GLuint shaderProgram) {
 void RendererW::renderModel(const ModelParser& model, GLuint shaderProgram, Camera& camera) {
     glUseProgram(shaderProgram);
     
-    // Автоматическая оптимизация при первом рендере или смене шейдера
+    // ПЕРЕД РЕНДЕРОМ - отключаем всё что мешает
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_CULL_FACE);
+    
     if (meshVAOs.empty() || cachedShaderProgram != shaderProgram) {
         optimize(model, shaderProgram);
     }
     
-    // Матрица модели
     glm::mat4 modelMatrix = glm::mat4(1.0f);
     modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 0.0f, 0.0f)); 
     modelMatrix = glm::scale(modelMatrix, glm::vec3(0.01f));
@@ -237,7 +242,6 @@ void RendererW::renderModel(const ModelParser& model, GLuint shaderProgram, Came
         100.0f
     );
     
-    // Устанавливаем uniform-ы
     if (cachedModelLoc != -1)
         glUniformMatrix4fv(cachedModelLoc, 1, GL_FALSE, glm::value_ptr(modelMatrix));
     if (cachedViewLoc != -1)
@@ -253,7 +257,6 @@ void RendererW::renderModel(const ModelParser& model, GLuint shaderProgram, Came
         glUniform3f(cachedViewPosLoc, 
                     camera.GetPosition().x, camera.GetPosition().y, camera.GetPosition().z);
     
-    // Рендерим меши
     for (size_t i = 0; i < meshVAOs.size(); i++) {
         const MeshBuffers& buffers = meshVAOs[i];
         
@@ -299,7 +302,6 @@ void RendererW::renderModel(const ModelParser& model, GLuint shaderProgram, Came
     }
 }
 
-// Остальные методы без изменений
 GLuint RendererW::createMeshBuffers(const StandardMesh& mesh) {
     GLuint VAO, VBO, EBO;
     
