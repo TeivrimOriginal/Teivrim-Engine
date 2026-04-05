@@ -103,13 +103,11 @@ void RenderUI_Vulkan::setup2D(int width, int height) {
 void RenderUI_Vulkan::drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
     if (windowWidth <= 0 || windowHeight <= 0) return;
     
-    // Правильная трансформация в NDC
     float nx1 = (x1 / windowWidth) * 2.0f - 1.0f;
-    float ny1 = ((windowHeight - y1) / windowHeight) * 2.0f - 1.0f;
+    float ny1 = (y1 / windowHeight) * 2.0f - 1.0f;
     float nx2 = (x2 / windowWidth) * 2.0f - 1.0f;
-    float ny2 = ((windowHeight - y2) / windowHeight) * 2.0f - 1.0f;
+    float ny2 = (y2 / windowHeight) * 2.0f - 1.0f;
     
-    // Два треугольника
     pendingVertices.push_back({nx1, ny1, r, g, b, 1.0f});
     pendingVertices.push_back({nx2, ny1, r, g, b, 1.0f});
     pendingVertices.push_back({nx2, ny2, r, g, b, 1.0f});
@@ -124,11 +122,16 @@ void RenderUI_Vulkan::drawQuad(int x1, int y1, int x2, int y2, float r, float g,
 }
 
 void RenderUI_Vulkan::drawText(int x, int y, const std::string& text, float r, float g, float b) {
-    drawQuad(x, y, x + (int)(text.length() * 8), y + 16, r, g, b);
+    float textWidth = text.length() * 8;
+    float textHeight = 16;
+    drawQuad((float)x, (float)y, (float)(x + textWidth), (float)(y + textHeight), r, g, b);
 }
 
 void RenderUI_Vulkan::drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b) {
-    drawText(x + w/2 - (int)(text.length() * 4), y + h/2 - 8, text, r, g, b);
+    float textWidth = text.length() * 8;
+    float textHeight = 16;
+    drawQuad((float)(x + (w - textWidth) / 2), (float)(y + (h - textHeight) / 2), 
+             (float)(x + (w + textWidth) / 2), (float)(y + (h + textHeight) / 2), r, g, b);
 }
 
 bool RenderUI_Vulkan::createInstance() {
@@ -582,9 +585,11 @@ void RenderUI_Vulkan::present() {
         pendingVertices.clear();
     }
     
+    vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+    
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, 
-                                             imageAvailableSemaphores[0], VK_NULL_HANDLE, &imageIndex);
+                                             imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
     
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         recreateSwapChain();
@@ -593,9 +598,7 @@ void RenderUI_Vulkan::present() {
     
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) return;
     
-    vkWaitForFences(device, 1, &inFlightFences[0], VK_TRUE, UINT64_MAX);
-    vkResetFences(device, 1, &inFlightFences[0]);
-    
+    vkResetFences(device, 1, &inFlightFences[currentFrame]);
     vkResetCommandBuffer(commandBuffers[imageIndex], 0);
     
     VkCommandBufferBeginInfo beginInfo{};
@@ -630,25 +633,27 @@ void RenderUI_Vulkan::present() {
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &imageAvailableSemaphores[0];
+    submitInfo.pWaitSemaphores = &imageAvailableSemaphores[currentFrame];
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     submitInfo.pWaitDstStageMask = &waitStage;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &renderFinishedSemaphores[0];
+    submitInfo.pSignalSemaphores = &renderFinishedSemaphores[currentFrame];
     
-    vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[0]);
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]);
     
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &renderFinishedSemaphores[0];
+    presentInfo.pWaitSemaphores = &renderFinishedSemaphores[currentFrame];
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &swapChain;
     presentInfo.pImageIndices = &imageIndex;
     
     vkQueuePresentKHR(graphicsQueue, &presentInfo);
+    
+    currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 void RenderUI_Vulkan::initFont() {
