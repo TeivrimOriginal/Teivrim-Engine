@@ -84,6 +84,12 @@ bool Panel::onClickButton(int px, int py) {
 void Panel::render(RenderUI& render) {
     if (!visible) return;
     
+    static int counter = 0;
+    if (counter++ < 10) {
+        printf("[PANEL] Rendering panel: %s at %d,%d size %dx%d\n", 
+               name.c_str(), r.x, r.y, r.w, r.h);
+    }
+    
     // Фон панели (только для не-3D панелей)
     if (!is3D) {
         render.drawQuad(r.x, r.y, r.right, r.bottom, 0.18f, 0.18f, 0.22f);
@@ -488,6 +494,14 @@ void PanelManager::onMouseUp(int x, int y) {
 bool PanelManager::isDragging() const { return isDrag; }
 
 void PanelManager::render(RenderUI& render) {
+    printf("[PANELMANAGER] render() called, %d panels\n", (int)panels.size());
+    
+    for (auto p : panels) {
+        if (p->visible) {
+            p->render(render);
+        }
+    }
+    
     for (auto p : panels) {
         if (p->visible) {
             p->render(render);

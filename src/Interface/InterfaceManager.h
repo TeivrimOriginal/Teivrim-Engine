@@ -12,8 +12,6 @@ struct Dimensions {
     int height;
 };
 
-// НЕ ОБЪЯВЛЯЙ RenderAPI ЗДЕСЬ СНОВА! ОН УЖЕ В core.h
-
 class InterfaceManager {
 private:
     InitialWin32* window;
@@ -41,7 +39,7 @@ public:
     void SwapFlag(Core &A);
     HWND getHWND() const;
     
-    bool initializeRender(HWND hwnd, int width, int height);
+    bool initializeRender(HWND hwnd, int width, int height);  // <-- ДОБАВИТЬ ЭТУ СТРОКУ
     void beginFrame();
     void endFrame();
     void present();

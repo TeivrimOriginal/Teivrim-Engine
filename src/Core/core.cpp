@@ -88,7 +88,6 @@ void Core::renderModel(Camera& camera) {
         }
         rendererw.renderModel(modelParser, shaderProgram, camera);
     } else {
-        // Vulkan 3D - заглушка
         rendererv.renderModel(camera);
     }
 }
@@ -172,6 +171,10 @@ void Core::GameLoop() {
 
     g_uiManager = new InterfaceManager(this, currentAPI);
     g_uiManager->setWindow(win32Window);
+    
+    // ВАЖНО: Инициализируем UI рендерер
+    g_uiManager->initializeRender(win32Window->getHWND(), 1280, 720);
+    
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
 
     Input input(app, g_uiManager);
@@ -211,7 +214,6 @@ void Core::GameLoop() {
                 input.processInputWin32(deltaTime, win32Window->getHWND());
             }
 
-            // Очистка экрана для OpenGL
             if (currentAPI == RenderAPI::OPENGL) {
                 glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

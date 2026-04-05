@@ -8,6 +8,8 @@
 #include <vector>
 #include "stb_truetype.h"
 
+#define MAX_FRAMES_IN_FLIGHT 2
+
 class RenderUI_Vulkan {
 public:
     RenderUI_Vulkan();
@@ -51,9 +53,9 @@ private:
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     void recreateSwapChain();
     void cleanupSwapChain();
+    VkShaderModule createShaderModule(const std::vector<char>& code);
     
     void initFont();
-    void renderText();
     
     // Vulkan objects
     VkInstance instance;
@@ -76,9 +78,10 @@ private:
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
     
-    VkSemaphore imageAvailableSemaphore;
-    VkSemaphore renderFinishedSemaphore;
-    VkFence inFlightFence;
+    // Sync objects (ТОЛЬКО ОДИН РАЗ)
+    std::vector<VkSemaphore> imageAvailableSemaphores;
+    std::vector<VkSemaphore> renderFinishedSemaphores;
+    std::vector<VkFence> inFlightFences;
     
     // Font
     unsigned int fontTexture;
@@ -91,6 +94,7 @@ private:
     bool initialized;
     uint32_t currentFrame;
     std::vector<UIVertex> pendingVertices;
+    uint32_t vertexCount;
 };
 
 #endif

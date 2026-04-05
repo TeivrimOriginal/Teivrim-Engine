@@ -21,25 +21,21 @@ void RenderUI_OpenGL::saveState(GLint& prog, GLint vp[4], GLboolean& dt) {
 }
 
 void RenderUI_OpenGL::restoreState(GLint prog, GLint vp[4], GLboolean dt) {
-    // Восстанавливаем вьюпорт
     glViewport(vp[0], vp[1], vp[2], vp[3]);
-    
-    // Восстанавливаем depth test
     if (dt) glEnable(GL_DEPTH_TEST);
     else glDisable(GL_DEPTH_TEST);
-    
-    // ВАЖНО: возвращаем шейдерную программу
     glUseProgram(prog);
-    
-    // Отключаем то, что включили для UI
     glDisable(GL_BLEND);
     glDisable(GL_TEXTURE_2D);
 }
 
 void RenderUI_OpenGL::setup2D(int width, int height) {
+    printf("[OPENGL UI] setup2D: %dx%d\n", width, height);
+    
     glViewport(0, 0, width, height);
     glUseProgram(0);
     glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
     
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
@@ -59,11 +55,19 @@ void RenderUI_OpenGL::restoreMatrices() {
 }
 
 void RenderUI_OpenGL::drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
+    static int counter = 0;
+    if (counter++ < 20) {
+        printf("[OPENGL UI] drawQuad: %.0f,%.0f to %.0f,%.0f rgb(%.2f,%.2f,%.2f)\n", 
+               x1, y1, x2, y2, r, g, b);
+    }
+    
+    glBegin(GL_QUADS);
     glColor3f(r, g, b);
     glVertex2f(x1, y1);
     glVertex2f(x2, y1);
     glVertex2f(x2, y2);
     glVertex2f(x1, y2);
+    glEnd();
 }
 
 void RenderUI_OpenGL::drawQuad(int x1, int y1, int x2, int y2, float r, float g, float b) {

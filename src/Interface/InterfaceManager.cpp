@@ -2,7 +2,7 @@
 #include <iostream>
 
 InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api) 
-    : window(nullptr), core(corePtr), currentAPI(api), startupActive(false),
+    : window(nullptr), core(corePtr), currentAPI(api), startupActive(false),  // <-- false
       renderer(api == RenderAPI::OPENGL ? RenderAPIType::OPENGL : RenderAPIType::VULKAN)
 {
     panels = new PanelManager();
@@ -116,56 +116,6 @@ InterfaceManager::~InterfaceManager() {
     delete panels; 
 }
 
-void InterfaceManager::showStartupPanel() {
-    Dimensions d = getDimensions();
-    int sw = d.width > 0 ? d.width : 1280;
-    int sh = d.height > 0 ? d.height : 720;
-    
-    Panel* startupPanel = panels->add("Select Render API", sw/2 - 150, sh/2 - 75, 300, 150, false);
-    
-    startupPanel->addButton("OpenGL (Fully Working)", 50, 30, 200, 40, 0.3f, 0.6f, 0.3f, [this]() {
-        currentAPI = RenderAPI::OPENGL;
-        startupActive = false;
-        panels->remove("Select Render API");
-        std::cout << "OpenGL selected" << std::endl;
-    });
-    
-    startupPanel->addButton("Vulkan (Experimental)", 50, 80, 200, 40, 0.6f, 0.3f, 0.3f, [this]() {
-        currentAPI = RenderAPI::VULKAN;
-        startupActive = false;
-        panels->remove("Select Render API");
-        
-        // Пересоздаем рендерер
-        renderer = RenderUI(RenderAPIType::VULKAN);
-        if (window) {
-            renderer.initialize(getHWND(), 1280, 720);
-        }
-        
-        if (core) {
-            core->setRenderAPI(RenderAPI::VULKAN);
-        }
-        
-        std::cout << "Vulkan selected" << std::endl;
-    });
-    startupActive = true;
-}
-
-bool InterfaceManager::initializeRender(HWND hwnd, int width, int height) {
-    return renderer.initialize(hwnd, width, height);
-}
-
-void InterfaceManager::beginFrame() {
-    renderer.beginFrame();
-}
-
-void InterfaceManager::endFrame() {
-    renderer.endFrame();
-}
-
-void InterfaceManager::present() {
-    renderer.present();
-}
-
 Dimensions InterfaceManager::getDimensions() {
     Dimensions d = {0, 0};
     if (!window) return d;
@@ -204,15 +154,8 @@ void InterfaceManager::renderStatic() {
     Dimensions d = getDimensions();
     if (d.width == 0 || d.height == 0) return;
     
-    if (startupActive) {
-        renderer.beginFrame();
-        renderer.setup2D(d.width, d.height);
-        panels->update(d.width, d.height);
-        panels->render(renderer);
-        renderer.endFrame();
-        renderer.present();
-        return;
-    }
+    std::cout << "[DEBUG] renderStatic, currentAPI=" << (currentAPI == RenderAPI::VULKAN ? "VULKAN" : "OPENGL") 
+              << ", panels count=" << panels->getAll().size() << std::endl;
     
     if (currentAPI == RenderAPI::OPENGL) {
         GLint prog, vp[4];
@@ -255,6 +198,7 @@ void InterfaceManager::renderStatic() {
     }
 }
 
+// ... rest of InterfaceManager.cpp (handleMouseDown, handleMouseMove, etc.) unchanged ...
 void InterfaceManager::renderDynamic() {
     Dimensions d = getDimensions();
     if (d.width == 0 || d.height == 0) return;
@@ -308,4 +252,7 @@ void InterfaceManager::BlockMoveToMainWindow(int x, int y) {}
 
 bool InterfaceManager::CheckerClickToPanel(int x, int y) { 
     return panels->at(x, y) != nullptr; 
+}
+bool InterfaceManager::initializeRender(HWND hwnd, int width, int height) {
+    return renderer.initialize(hwnd, width, height);
 }

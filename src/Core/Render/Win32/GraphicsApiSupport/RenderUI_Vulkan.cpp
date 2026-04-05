@@ -4,79 +4,57 @@
 #include <vector>
 #include <algorithm>
 #include <set>
-
-// ВЕРШИННЫЙ ШЕЙДЕР (SPIR-V)
-static const uint32_t vertShaderCode[] = {
-    0x07230203, 0x00010000, 0x0008000b, 0x0000002b, 0x00000000, 0x00020011, 0x00000001, 0x0006000b,
-    0x00000001, 0x4c534c47, 0x6474732e, 0x3035342e, 0x00000000, 0x0003000e, 0x00000000, 0x00000001,
-    0x000d000f, 0x00000000, 0x00000004, 0x6e69616d, 0x00000000, 0x0000000b, 0x0000000f, 0x00000015,
-    0x00000019, 0x0000001d, 0x00000021, 0x00030003, 0x00000002, 0x000001cc
-};
-
-// ФРАГМЕНТНЫЙ ШЕЙДЕР (SPIR-V)
-static const uint32_t fragShaderCode[] = {
-    0x07230203, 0x00010000, 0x0008000b, 0x0000000f, 0x00000000, 0x00020011, 0x00000001, 0x0006000b,
-    0x00000001, 0x4c534c47, 0x6474732e, 0x3035342e, 0x00000000, 0x0003000e, 0x00000000, 0x00000001,
-    0x0008000f, 0x00000004, 0x00000004, 0x6e69616d, 0x00000000, 0x00000007, 0x0000000b, 0x0000000d,
-    0x00030003, 0x00000002, 0x000001cc
-};
+#include <fstream>
+#include <iostream>
 
 RenderUI_Vulkan::RenderUI_Vulkan() 
     : instance(VK_NULL_HANDLE), physicalDevice(VK_NULL_HANDLE), device(VK_NULL_HANDLE),
       surface(VK_NULL_HANDLE), swapChain(VK_NULL_HANDLE), renderPass(VK_NULL_HANDLE),
       pipelineLayout(VK_NULL_HANDLE), graphicsPipeline(VK_NULL_HANDLE),
       commandPool(VK_NULL_HANDLE), vertexBuffer(VK_NULL_HANDLE), vertexBufferMemory(VK_NULL_HANDLE),
-      imageAvailableSemaphore(VK_NULL_HANDLE), renderFinishedSemaphore(VK_NULL_HANDLE),
-      inFlightFence(VK_NULL_HANDLE), fontTexture(0), fontInitialized(false),
-      windowWidth(0), windowHeight(0), hwnd(nullptr), initialized(false), currentFrame(0) {
+      fontTexture(0), fontInitialized(false),
+      windowWidth(0), windowHeight(0), hwnd(nullptr), initialized(false), currentFrame(0),
+      vertexCount(0) {
     memset(glyphs, 0, sizeof(glyphs));
 }
 
 RenderUI_Vulkan::~RenderUI_Vulkan() { cleanup(); }
+
+static std::vector<char> readFile(const std::string& filename) {
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+    if (!file.is_open()) {
+        printf("[VULKAN UI] Failed to open file: %s\n", filename.c_str());
+        return {};
+    }
+    size_t fileSize = (size_t)file.tellg();
+    std::vector<char> buffer(fileSize);
+    file.seekg(0);
+    file.read(buffer.data(), fileSize);
+    file.close();
+    printf("[VULKAN UI] Loaded %s (%zu bytes)\n", filename.c_str(), fileSize);
+    return buffer;
+}
 
 bool RenderUI_Vulkan::initialize(HWND hwnd, int width, int height) {
     this->hwnd = hwnd;
     this->windowWidth = width;
     this->windowHeight = height;
     
-    printf("[VULKAN UI] Step 1: Creating instance...\n");
-    if (!createInstance()) { printf("FAILED\n"); return false; }
+    printf("[VULKAN UI] Initializing...\n");
     
-    printf("[VULKAN UI] Step 2: Creating surface...\n");
-    if (!createSurface()) { printf("FAILED\n"); return false; }
-    
-    printf("[VULKAN UI] Step 3: Picking physical device...\n");
-    if (!pickPhysicalDevice()) { printf("FAILED\n"); return false; }
-    
-    printf("[VULKAN UI] Step 4: Creating logical device...\n");
-    if (!createLogicalDevice()) { printf("FAILED\n"); return false; }
-    
-    printf("[VULKAN UI] Step 5: Creating swap chain...\n");
-    if (!createSwapChain()) { printf("FAILED\n"); return false; }
-    
-    printf("[VULKAN UI] Step 6: Creating image views...\n");
-    if (!createImageViews()) { printf("FAILED\n"); return false; }
-    
-    printf("[VULKAN UI] Step 7: Creating render pass...\n");
-    if (!createRenderPass()) { printf("FAILED\n"); return false; }
-    
-    printf("[VULKAN UI] Step 8: Creating graphics pipeline...\n");
-    if (!createGraphicsPipeline()) { printf("FAILED\n"); return false; }
-    
-    printf("[VULKAN UI] Step 9: Creating framebuffers...\n");
-    if (!createFramebuffers()) { printf("FAILED\n"); return false; }
-    
-    printf("[VULKAN UI] Step 10: Creating command pool...\n");
-    if (!createCommandPool()) { printf("FAILED\n"); return false; }
-    
-    printf("[VULKAN UI] Step 11: Creating vertex buffer...\n");
-    if (!createVertexBuffer()) { printf("FAILED\n"); return false; }
-    
-    printf("[VULKAN UI] Step 12: Creating command buffers...\n");
-    if (!createCommandBuffers()) { printf("FAILED\n"); return false; }
-    
-    printf("[VULKAN UI] Step 13: Creating sync objects...\n");
-    if (!createSyncObjects()) { printf("FAILED\n"); return false; }
+    if (!createInstance()) { printf("[VULKAN UI] Failed createInstance\n"); return false; }
+    if (!createSurface()) { printf("[VULKAN UI] Failed createSurface\n"); return false; }
+    if (!pickPhysicalDevice()) { printf("[VULKAN UI] Failed pickPhysicalDevice\n"); return false; }
+    if (!createLogicalDevice()) { printf("[VULKAN UI] Failed createLogicalDevice\n"); return false; }
+    if (!createSwapChain()) { printf("[VULKAN UI] Failed createSwapChain\n"); return false; }
+    if (!createImageViews()) { printf("[VULKAN UI] Failed createImageViews\n"); return false; }
+    if (!createRenderPass()) { printf("[VULKAN UI] Failed createRenderPass\n"); return false; }
+    if (!createGraphicsPipeline()) { printf("[VULKAN UI] Failed createGraphicsPipeline\n"); return false; }
+    if (!createFramebuffers()) { printf("[VULKAN UI] Failed createFramebuffers\n"); return false; }
+    if (!createCommandPool()) { printf("[VULKAN UI] Failed createCommandPool\n"); return false; }
+    if (!createVertexBuffer()) { printf("[VULKAN UI] Failed createVertexBuffer\n"); return false; }
+    if (!createCommandBuffers()) { printf("[VULKAN UI] Failed createCommandBuffers\n"); return false; }
+    if (!createSyncObjects()) { printf("[VULKAN UI] Failed createSyncObjects\n"); return false; }
     
     initFont();
     
@@ -93,9 +71,13 @@ void RenderUI_Vulkan::cleanup() {
         if (vertexBuffer) vkDestroyBuffer(device, vertexBuffer, nullptr);
         if (vertexBufferMemory) vkFreeMemory(device, vertexBufferMemory, nullptr);
         if (commandPool) vkDestroyCommandPool(device, commandPool, nullptr);
-        if (imageAvailableSemaphore) vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
-        if (renderFinishedSemaphore) vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
-        if (inFlightFence) vkDestroyFence(device, inFlightFence, nullptr);
+        
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            if (imageAvailableSemaphores[i]) vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+            if (renderFinishedSemaphores[i]) vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+            if (inFlightFences[i]) vkDestroyFence(device, inFlightFences[i], nullptr);
+        }
+        
         vkDestroyDevice(device, nullptr);
         device = VK_NULL_HANDLE;
     }
@@ -104,62 +86,117 @@ void RenderUI_Vulkan::cleanup() {
 }
 
 void RenderUI_Vulkan::beginFrame() {
-    if (!device || !inFlightFence) return;
-    vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
-    vkResetFences(device, 1, &inFlightFence);
+    printf("[VULKAN UI] beginFrame()\n");
 }
 
 void RenderUI_Vulkan::endFrame() {
+    printf("[VULKAN UI] endFrame()\n");
     present();
 }
 
 void RenderUI_Vulkan::present() {
-    if (!device || !swapChain) return;
+    printf("[VULKAN UI] present() called\n");
+    
+    if (!device || !swapChain) {
+        printf("[VULKAN UI] present(): device or swapChain is null!\n");
+        return;
+    }
     
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, 
-                                             imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+                                             imageAvailableSemaphores[0], VK_NULL_HANDLE, &imageIndex);
     
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        printf("[VULKAN UI] Swap chain out of date\n");
         recreateSwapChain();
         return;
     }
     
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+        printf("[VULKAN UI] vkAcquireNextImageKHR failed: %d\n", result);
         return;
     }
     
-    updateVertexBuffer(pendingVertices);
+    printf("[VULKAN UI] Acquired image %d, vertices=%zu\n", imageIndex, pendingVertices.size());
+    
+    if (pendingVertices.size() > 0) {
+        updateVertexBuffer(pendingVertices);
+        vertexCount = pendingVertices.size();
+        printf("[VULKAN UI] Updated vertex buffer with %d vertices\n", vertexCount);
+    }
     pendingVertices.clear();
+    
+    vkResetCommandBuffer(commandBuffers[imageIndex], 0);
+    
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vkBeginCommandBuffer(commandBuffers[imageIndex], &beginInfo);
+    
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = renderPass;
+    renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = swapChainExtent;
+    
+    VkClearValue clearColor = {0.2f, 0.3f, 0.3f, 1.0f};
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+    
+    vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+    
+    if (vertexCount > 0) {
+        VkBuffer vertexBuffers[] = {vertexBuffer};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(commandBuffers[imageIndex], 0, 1, vertexBuffers, offsets);
+        vkCmdDraw(commandBuffers[imageIndex], vertexCount, 1, 0, 0);
+        printf("[VULKAN UI] vkCmdDraw with %d vertices\n", vertexCount);
+    }
+    
+    vkCmdEndRenderPass(commandBuffers[imageIndex]);
+    vkEndCommandBuffer(commandBuffers[imageIndex]);
     
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &imageAvailableSemaphore;
+    submitInfo.pWaitSemaphores = &imageAvailableSemaphores[0];
+    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    submitInfo.pWaitDstStageMask = &waitStage;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
+    submitInfo.pSignalSemaphores = &renderFinishedSemaphores[0];
     
-    vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence);
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
     
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &renderFinishedSemaphore;
+    presentInfo.pWaitSemaphores = &renderFinishedSemaphores[0];
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &swapChain;
     presentInfo.pImageIndices = &imageIndex;
     
     vkQueuePresentKHR(graphicsQueue, &presentInfo);
+    vkQueueWaitIdle(graphicsQueue);
+    
+    printf("[VULKAN UI] present() finished\n");
 }
 
 void RenderUI_Vulkan::setup2D(int width, int height) {
+    printf("[VULKAN UI] setup2D(%d, %d)\n", width, height);
     windowWidth = width;
     windowHeight = height;
 }
 
 void RenderUI_Vulkan::drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
+    static int counter = 0;
+    if (counter++ < 20) {
+        printf("[VULKAN UI] drawQuad: %.0f,%.0f to %.0f,%.0f rgb(%.2f,%.2f,%.2f)\n", 
+               x1, y1, x2, y2, r, g, b);
+    }
+    
     float nx1 = (x1 / windowWidth) * 2.0f - 1.0f;
     float ny1 = (y1 / windowHeight) * 2.0f - 1.0f;
     float nx2 = (x2 / windowWidth) * 2.0f - 1.0f;
@@ -202,10 +239,7 @@ bool RenderUI_Vulkan::createInstance() {
     createInfo.enabledLayerCount = 0;
     
     VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
-    if (result != VK_SUCCESS) {
-        printf("[VULKAN UI] vkCreateInstance failed: %d\n", result);
-        return false;
-    }
+    if (result != VK_SUCCESS) return false;
     return true;
 }
 
@@ -216,26 +250,16 @@ bool RenderUI_Vulkan::createSurface() {
     surfaceInfo.hwnd = hwnd;
     
     auto func = (PFN_vkCreateWin32SurfaceKHR)vkGetInstanceProcAddr(instance, "vkCreateWin32SurfaceKHR");
-    if (!func) {
-        printf("[VULKAN UI] vkCreateWin32SurfaceKHR not found\n");
-        return false;
-    }
+    if (!func) return false;
     
     VkResult result = func(instance, &surfaceInfo, nullptr, &surface);
-    if (result != VK_SUCCESS) {
-        printf("[VULKAN UI] CreateSurface failed: %d\n", result);
-        return false;
-    }
-    return true;
+    return result == VK_SUCCESS;
 }
 
 bool RenderUI_Vulkan::pickPhysicalDevice() {
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-    if (deviceCount == 0) {
-        printf("[VULKAN UI] No physical devices\n");
-        return false;
-    }
+    if (deviceCount == 0) return false;
     
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
@@ -249,7 +273,6 @@ bool RenderUI_Vulkan::pickPhysicalDevice() {
 }
 
 bool RenderUI_Vulkan::createLogicalDevice() {
-    // Находим queue family с графикой и презентацией
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
     
@@ -273,10 +296,7 @@ bool RenderUI_Vulkan::createLogicalDevice() {
         if (graphicsFamily != UINT32_MAX && presentFamily != UINT32_MAX) break;
     }
     
-    if (graphicsFamily == UINT32_MAX) {
-        printf("[VULKAN UI] No graphics queue family found!\n");
-        return false;
-    }
+    if (graphicsFamily == UINT32_MAX) return false;
     
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::set<uint32_t> uniqueFamilies = {graphicsFamily, presentFamily};
@@ -301,10 +321,7 @@ bool RenderUI_Vulkan::createLogicalDevice() {
     createInfo.ppEnabledExtensionNames = extensions;
     
     VkResult result = vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
-    if (result != VK_SUCCESS) {
-        printf("[VULKAN UI] CreateDevice failed: %d\n", result);
-        return false;
-    }
+    if (result != VK_SUCCESS) return false;
     
     vkGetDeviceQueue(device, graphicsFamily, 0, &graphicsQueue);
     return true;
@@ -410,21 +427,16 @@ bool RenderUI_Vulkan::createRenderPass() {
 }
 
 bool RenderUI_Vulkan::createGraphicsPipeline() {
-    VkShaderModuleCreateInfo vertCI{};
-    vertCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    vertCI.codeSize = sizeof(vertShaderCode);
-    vertCI.pCode = vertShaderCode;
+    std::vector<char> vertCode = readFile("ui_vert.spv");
+    std::vector<char> fragCode = readFile("ui_frag.spv");
     
-    VkShaderModule vertModule;
-    if (vkCreateShaderModule(device, &vertCI, nullptr, &vertModule) != VK_SUCCESS) return false;
+    if (vertCode.empty() || fragCode.empty()) {
+        printf("[VULKAN UI] Failed to load shader files!\n");
+        return false;
+    }
     
-    VkShaderModuleCreateInfo fragCI{};
-    fragCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    fragCI.codeSize = sizeof(fragShaderCode);
-    fragCI.pCode = fragShaderCode;
-    
-    VkShaderModule fragModule;
-    if (vkCreateShaderModule(device, &fragCI, nullptr, &fragModule) != VK_SUCCESS) return false;
+    VkShaderModule vertModule = createShaderModule(vertCode);
+    VkShaderModule fragModule = createShaderModule(fragCode);
     
     VkPipelineShaderStageCreateInfo vertStage{};
     vertStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -445,18 +457,23 @@ bool RenderUI_Vulkan::createGraphicsPipeline() {
     binding.stride = sizeof(UIVertex);
     binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     
-    VkVertexInputAttributeDescription attr{};
-    attr.binding = 0;
-    attr.location = 0;
-    attr.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attr.offset = 0;
+    std::vector<VkVertexInputAttributeDescription> attributes(2);
+    attributes[0].binding = 0;
+    attributes[0].location = 0;
+    attributes[0].format = VK_FORMAT_R32G32_SFLOAT;
+    attributes[0].offset = offsetof(UIVertex, x);
+    
+    attributes[1].binding = 0;
+    attributes[1].location = 1;
+    attributes[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributes[1].offset = offsetof(UIVertex, r);
     
     VkPipelineVertexInputStateCreateInfo vertexInput{};
     vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInput.vertexBindingDescriptionCount = 1;
     vertexInput.pVertexBindingDescriptions = &binding;
-    vertexInput.vertexAttributeDescriptionCount = 1;
-    vertexInput.pVertexAttributeDescriptions = &attr;
+    vertexInput.vertexAttributeDescriptionCount = attributes.size();
+    vertexInput.pVertexAttributeDescriptions = attributes.data();
     
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -551,6 +568,7 @@ bool RenderUI_Vulkan::createCommandPool() {
     VkCommandPoolCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     createInfo.queueFamilyIndex = 0;
+    createInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     
     VkResult result = vkCreateCommandPool(device, &createInfo, nullptr, &commandPool);
     return result == VK_SUCCESS;
@@ -610,11 +628,6 @@ bool RenderUI_Vulkan::createCommandBuffers() {
         
         vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-        
-        VkBuffer vertexBuffers[] = {vertexBuffer};
-        VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
-        
         vkCmdEndRenderPass(commandBuffers[i]);
         vkEndCommandBuffer(commandBuffers[i]);
     }
@@ -623,6 +636,10 @@ bool RenderUI_Vulkan::createCommandBuffers() {
 }
 
 bool RenderUI_Vulkan::createSyncObjects() {
+    imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+    
     VkSemaphoreCreateInfo semInfo{};
     semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     
@@ -630,9 +647,13 @@ bool RenderUI_Vulkan::createSyncObjects() {
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
     
-    vkCreateSemaphore(device, &semInfo, nullptr, &imageAvailableSemaphore);
-    vkCreateSemaphore(device, &semInfo, nullptr, &renderFinishedSemaphore);
-    vkCreateFence(device, &fenceInfo, nullptr, &inFlightFence);
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        if (vkCreateSemaphore(device, &semInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+            vkCreateSemaphore(device, &semInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+            vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+            return false;
+        }
+    }
     
     return true;
 }
@@ -675,4 +696,18 @@ void RenderUI_Vulkan::recreateSwapChain() {
 
 void RenderUI_Vulkan::initFont() {
     fontInitialized = true;
+}
+
+VkShaderModule RenderUI_Vulkan::createShaderModule(const std::vector<char>& code) {
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = code.size();
+    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+    
+    VkShaderModule shaderModule;
+    if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        printf("[VULKAN UI] Failed to create shader module\n");
+        return VK_NULL_HANDLE;
+    }
+    return shaderModule;
 }
