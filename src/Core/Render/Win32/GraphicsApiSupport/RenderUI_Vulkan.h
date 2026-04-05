@@ -55,7 +55,6 @@ private:
     
     void initFont();
     
-    // Vulkan objects
     VkInstance instance;
     VkPhysicalDevice physicalDevice;
     VkDevice device;
@@ -76,12 +75,10 @@ private:
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
     
-    // Sync objects
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
     
-    // Font
     unsigned int fontTexture;
     bool fontInitialized;
     stbtt_bakedchar glyphs[96];

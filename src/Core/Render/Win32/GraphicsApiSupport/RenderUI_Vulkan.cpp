@@ -31,7 +31,6 @@ static std::vector<char> readFile(const std::string& filename) {
     file.seekg(0);
     file.read(buffer.data(), fileSize);
     file.close();
-    printf("[VULKAN UI] Loaded %s (%zu bytes)\n", filename.c_str(), fileSize);
     return buffer;
 }
 
@@ -92,24 +91,30 @@ void RenderUI_Vulkan::endFrame() {
 }
 
 void RenderUI_Vulkan::setup2D(int width, int height) {
-    printf("[VULKAN UI] setup2D(%d, %d)\n", width, height);
-    
     if (width > 0 && height > 0 && width < 10000 && height < 10000) {
-        windowWidth = width;
-        windowHeight = height;
+        if (windowWidth != width || windowHeight != height) {
+            printf("[VULKAN UI] setup2D(%d, %d)\n", width, height);
+            windowWidth = width;
+            windowHeight = height;
+        }
     }
 }
 
 void RenderUI_Vulkan::drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
     if (windowWidth <= 0 || windowHeight <= 0) return;
     
+    // Правильная трансформация в NDC
     float nx1 = (x1 / windowWidth) * 2.0f - 1.0f;
-    float ny1 = ((y1 / windowHeight) * 2.0f - 1.0f);
+    float ny1 = ((windowHeight - y1) / windowHeight) * 2.0f - 1.0f;
     float nx2 = (x2 / windowWidth) * 2.0f - 1.0f;
-    float ny2 = ((y2 / windowHeight) * 2.0f - 1.0f);
+    float ny2 = ((windowHeight - y2) / windowHeight) * 2.0f - 1.0f;
     
+    // Два треугольника
     pendingVertices.push_back({nx1, ny1, r, g, b, 1.0f});
     pendingVertices.push_back({nx2, ny1, r, g, b, 1.0f});
+    pendingVertices.push_back({nx2, ny2, r, g, b, 1.0f});
+    
+    pendingVertices.push_back({nx1, ny1, r, g, b, 1.0f});
     pendingVertices.push_back({nx2, ny2, r, g, b, 1.0f});
     pendingVertices.push_back({nx1, ny2, r, g, b, 1.0f});
 }
@@ -125,8 +130,6 @@ void RenderUI_Vulkan::drawText(int x, int y, const std::string& text, float r, f
 void RenderUI_Vulkan::drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b) {
     drawText(x + w/2 - (int)(text.length() * 4), y + h/2 - 8, text, r, g, b);
 }
-
-// ============ VULKAN IMPLEMENTATION ============
 
 bool RenderUI_Vulkan::createInstance() {
     VkApplicationInfo appInfo{};
@@ -185,7 +188,6 @@ bool RenderUI_Vulkan::createLogicalDevice() {
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
     
     uint32_t graphicsFamily = UINT32_MAX;
-    
     for (uint32_t i = 0; i < queueFamilyCount; i++) {
         if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             graphicsFamily = i;
@@ -364,12 +366,12 @@ bool RenderUI_Vulkan::createGraphicsPipeline() {
     vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInput.vertexBindingDescriptionCount = 1;
     vertexInput.pVertexBindingDescriptions = &binding;
-    vertexInput.vertexAttributeDescriptionCount = attributes.size();
+    vertexInput.vertexAttributeDescriptionCount = (uint32_t)attributes.size();
     vertexInput.pVertexAttributeDescriptions = attributes.data();
     
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;  // ИСПРАВЛЕНО!
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     
     VkViewport viewport{};
     viewport.x = 0; viewport.y = 0;
@@ -401,9 +403,7 @@ bool RenderUI_Vulkan::createGraphicsPipeline() {
     VkPipelineColorBlendAttachmentState colorBlend{};
     colorBlend.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                                 VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colorBlend.blendEnable = VK_TRUE;
-    colorBlend.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    colorBlend.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlend.blendEnable = VK_FALSE;
     
     VkPipelineColorBlendStateCreateInfo colorBlending{};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -412,7 +412,9 @@ bool RenderUI_Vulkan::createGraphicsPipeline() {
     
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout);
+    if (vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+        return false;
+    }
     
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -451,7 +453,9 @@ bool RenderUI_Vulkan::createFramebuffers() {
         createInfo.height = swapChainExtent.height;
         createInfo.layers = 1;
         
-        vkCreateFramebuffer(device, &createInfo, nullptr, &swapChainFramebuffers[i]);
+        if (vkCreateFramebuffer(device, &createInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+            return false;
+        }
     }
     return true;
 }
@@ -475,7 +479,9 @@ bool RenderUI_Vulkan::createVertexBuffer() {
     bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer);
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) {
+        return false;
+    }
     
     VkMemoryRequirements memReqs;
     vkGetBufferMemoryRequirements(device, vertexBuffer, &memReqs);
@@ -486,7 +492,10 @@ bool RenderUI_Vulkan::createVertexBuffer() {
     allocInfo.memoryTypeIndex = findMemoryType(memReqs.memoryTypeBits, 
                                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     
-    vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory);
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS) {
+        return false;
+    }
+    
     vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
     return true;
 }
@@ -500,8 +509,7 @@ bool RenderUI_Vulkan::createCommandBuffers() {
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = (uint32_t)commandBuffers.size();
     
-    vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data());
-    return true;
+    return vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) == VK_SUCCESS;
 }
 
 bool RenderUI_Vulkan::createSyncObjects() {
@@ -551,7 +559,10 @@ uint32_t RenderUI_Vulkan::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFl
 void RenderUI_Vulkan::cleanupSwapChain() {
     for (auto fb : swapChainFramebuffers) vkDestroyFramebuffer(device, fb, nullptr);
     for (auto iv : swapChainImageViews) vkDestroyImageView(device, iv, nullptr);
-    vkDestroySwapchainKHR(device, swapChain, nullptr);
+    if (swapChain) vkDestroySwapchainKHR(device, swapChain, nullptr);
+    swapChainFramebuffers.clear();
+    swapChainImageViews.clear();
+    swapChainImages.clear();
 }
 
 void RenderUI_Vulkan::recreateSwapChain() {
@@ -560,7 +571,6 @@ void RenderUI_Vulkan::recreateSwapChain() {
     createSwapChain();
     createImageViews();
     createFramebuffers();
-    createCommandBuffers();
 }
 
 void RenderUI_Vulkan::present() {
@@ -568,7 +578,7 @@ void RenderUI_Vulkan::present() {
     
     if (pendingVertices.size() > 0) {
         updateVertexBuffer(pendingVertices);
-        vertexCount = pendingVertices.size();
+        vertexCount = (uint32_t)pendingVertices.size();
         pendingVertices.clear();
     }
     
@@ -583,10 +593,14 @@ void RenderUI_Vulkan::present() {
     
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) return;
     
+    vkWaitForFences(device, 1, &inFlightFences[0], VK_TRUE, UINT64_MAX);
+    vkResetFences(device, 1, &inFlightFences[0]);
+    
     vkResetCommandBuffer(commandBuffers[imageIndex], 0);
     
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(commandBuffers[imageIndex], &beginInfo);
     
     VkRenderPassBeginInfo renderPassInfo{};
@@ -596,7 +610,7 @@ void RenderUI_Vulkan::present() {
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapChainExtent;
     
-    VkClearValue clearColor = {0.2f, 0.3f, 0.3f, 1.0f};
+    VkClearValue clearColor = {{{0.2f, 0.3f, 0.3f, 1.0f}}};
     renderPassInfo.clearValueCount = 1;
     renderPassInfo.pClearValues = &clearColor;
     
@@ -624,7 +638,7 @@ void RenderUI_Vulkan::present() {
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = &renderFinishedSemaphores[0];
     
-    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[0]);
     
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -635,7 +649,6 @@ void RenderUI_Vulkan::present() {
     presentInfo.pImageIndices = &imageIndex;
     
     vkQueuePresentKHR(graphicsQueue, &presentInfo);
-    vkQueueWaitIdle(graphicsQueue);
 }
 
 void RenderUI_Vulkan::initFont() {
@@ -650,7 +663,6 @@ VkShaderModule RenderUI_Vulkan::createShaderModule(const std::vector<char>& code
     
     VkShaderModule shaderModule;
     if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-        printf("[VULKAN UI] Failed to create shader module\n");
         return VK_NULL_HANDLE;
     }
     return shaderModule;
