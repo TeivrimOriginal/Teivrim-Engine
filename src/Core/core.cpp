@@ -172,8 +172,17 @@ void Core::GameLoop() {
     g_uiManager = new InterfaceManager(this, currentAPI);
     g_uiManager->setWindow(win32Window);
     
-    // ВАЖНО: Инициализируем UI рендерер
-    g_uiManager->initializeRender(win32Window->getHWND(), 1280, 720);
+    RECT rect;
+    GetClientRect(win32Window->getHWND(), &rect);
+    int windowWidth = rect.right - rect.left;
+    int windowHeight = rect.bottom - rect.top;
+    
+    if (windowWidth <= 0 || windowHeight <= 0) {
+        windowWidth = 1280;
+        windowHeight = 720;
+    }
+    
+    g_uiManager->initializeRender(win32Window->getHWND(), windowWidth, windowHeight);
     
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
 

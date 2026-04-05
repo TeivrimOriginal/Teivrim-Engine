@@ -85,122 +85,28 @@ void RenderUI_Vulkan::cleanup() {
     if (instance) vkDestroyInstance(instance, nullptr);
 }
 
-void RenderUI_Vulkan::beginFrame() {
-    printf("[VULKAN UI] beginFrame()\n");
-}
+void RenderUI_Vulkan::beginFrame() {}
 
 void RenderUI_Vulkan::endFrame() {
-    printf("[VULKAN UI] endFrame()\n");
     present();
-}
-
-void RenderUI_Vulkan::present() {
-    printf("[VULKAN UI] present() called\n");
-    
-    if (!device || !swapChain) {
-        printf("[VULKAN UI] present(): device or swapChain is null!\n");
-        return;
-    }
-    
-    uint32_t imageIndex;
-    VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, 
-                                             imageAvailableSemaphores[0], VK_NULL_HANDLE, &imageIndex);
-    
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-        printf("[VULKAN UI] Swap chain out of date\n");
-        recreateSwapChain();
-        return;
-    }
-    
-    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-        printf("[VULKAN UI] vkAcquireNextImageKHR failed: %d\n", result);
-        return;
-    }
-    
-    printf("[VULKAN UI] Acquired image %d, vertices=%zu\n", imageIndex, pendingVertices.size());
-    
-    if (pendingVertices.size() > 0) {
-        updateVertexBuffer(pendingVertices);
-        vertexCount = pendingVertices.size();
-        printf("[VULKAN UI] Updated vertex buffer with %d vertices\n", vertexCount);
-    }
-    pendingVertices.clear();
-    
-    vkResetCommandBuffer(commandBuffers[imageIndex], 0);
-    
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    vkBeginCommandBuffer(commandBuffers[imageIndex], &beginInfo);
-    
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = renderPass;
-    renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = swapChainExtent;
-    
-    VkClearValue clearColor = {0.2f, 0.3f, 0.3f, 1.0f};
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
-    
-    vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-    
-    if (vertexCount > 0) {
-        VkBuffer vertexBuffers[] = {vertexBuffer};
-        VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(commandBuffers[imageIndex], 0, 1, vertexBuffers, offsets);
-        vkCmdDraw(commandBuffers[imageIndex], vertexCount, 1, 0, 0);
-        printf("[VULKAN UI] vkCmdDraw with %d vertices\n", vertexCount);
-    }
-    
-    vkCmdEndRenderPass(commandBuffers[imageIndex]);
-    vkEndCommandBuffer(commandBuffers[imageIndex]);
-    
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &imageAvailableSemaphores[0];
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    submitInfo.pWaitDstStageMask = &waitStage;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &renderFinishedSemaphores[0];
-    
-    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-    
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &renderFinishedSemaphores[0];
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = &swapChain;
-    presentInfo.pImageIndices = &imageIndex;
-    
-    vkQueuePresentKHR(graphicsQueue, &presentInfo);
-    vkQueueWaitIdle(graphicsQueue);
-    
-    printf("[VULKAN UI] present() finished\n");
 }
 
 void RenderUI_Vulkan::setup2D(int width, int height) {
     printf("[VULKAN UI] setup2D(%d, %d)\n", width, height);
-    windowWidth = width;
-    windowHeight = height;
+    
+    if (width > 0 && height > 0 && width < 10000 && height < 10000) {
+        windowWidth = width;
+        windowHeight = height;
+    }
 }
 
 void RenderUI_Vulkan::drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
-    static int counter = 0;
-    if (counter++ < 20) {
-        printf("[VULKAN UI] drawQuad: %.0f,%.0f to %.0f,%.0f rgb(%.2f,%.2f,%.2f)\n", 
-               x1, y1, x2, y2, r, g, b);
-    }
+    if (windowWidth <= 0 || windowHeight <= 0) return;
     
     float nx1 = (x1 / windowWidth) * 2.0f - 1.0f;
-    float ny1 = (y1 / windowHeight) * 2.0f - 1.0f;
+    float ny1 = ((y1 / windowHeight) * 2.0f - 1.0f);
     float nx2 = (x2 / windowWidth) * 2.0f - 1.0f;
-    float ny2 = (y2 / windowHeight) * 2.0f - 1.0f;
+    float ny2 = ((y2 / windowHeight) * 2.0f - 1.0f);
     
     pendingVertices.push_back({nx1, ny1, r, g, b, 1.0f});
     pendingVertices.push_back({nx2, ny1, r, g, b, 1.0f});
@@ -239,8 +145,7 @@ bool RenderUI_Vulkan::createInstance() {
     createInfo.enabledLayerCount = 0;
     
     VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
-    if (result != VK_SUCCESS) return false;
-    return true;
+    return result == VK_SUCCESS;
 }
 
 bool RenderUI_Vulkan::createSurface() {
@@ -280,43 +185,29 @@ bool RenderUI_Vulkan::createLogicalDevice() {
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
     
     uint32_t graphicsFamily = UINT32_MAX;
-    uint32_t presentFamily = UINT32_MAX;
     
     for (uint32_t i = 0; i < queueFamilyCount; i++) {
         if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             graphicsFamily = i;
+            break;
         }
-        
-        VkBool32 presentSupport = false;
-        vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport);
-        if (presentSupport) {
-            presentFamily = i;
-        }
-        
-        if (graphicsFamily != UINT32_MAX && presentFamily != UINT32_MAX) break;
     }
     
     if (graphicsFamily == UINT32_MAX) return false;
     
-    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-    std::set<uint32_t> uniqueFamilies = {graphicsFamily, presentFamily};
-    
     float priority = 1.0f;
-    for (uint32_t family : uniqueFamilies) {
-        VkDeviceQueueCreateInfo queueInfo{};
-        queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queueInfo.queueFamilyIndex = family;
-        queueInfo.queueCount = 1;
-        queueInfo.pQueuePriorities = &priority;
-        queueCreateInfos.push_back(queueInfo);
-    }
+    VkDeviceQueueCreateInfo queueInfo{};
+    queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueInfo.queueFamilyIndex = graphicsFamily;
+    queueInfo.queueCount = 1;
+    queueInfo.pQueuePriorities = &priority;
     
     const char* extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    createInfo.queueCreateInfoCount = (uint32_t)queueCreateInfos.size();
-    createInfo.pQueueCreateInfos = queueCreateInfos.data();
+    createInfo.queueCreateInfoCount = 1;
+    createInfo.pQueueCreateInfos = &queueInfo;
     createInfo.enabledExtensionCount = 1;
     createInfo.ppEnabledExtensionNames = extensions;
     
@@ -329,7 +220,8 @@ bool RenderUI_Vulkan::createLogicalDevice() {
 
 bool RenderUI_Vulkan::createSwapChain() {
     VkSurfaceCapabilitiesKHR caps;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &caps);
+    VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &caps);
+    if (result != VK_SUCCESS) return false;
     
     uint32_t imageCount = caps.minImageCount + 1;
     if (caps.maxImageCount > 0 && imageCount > caps.maxImageCount) {
@@ -366,7 +258,7 @@ bool RenderUI_Vulkan::createSwapChain() {
     createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
     createInfo.clipped = VK_TRUE;
     
-    VkResult result = vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain);
+    result = vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain);
     if (result != VK_SUCCESS) return false;
     
     vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
@@ -477,7 +369,7 @@ bool RenderUI_Vulkan::createGraphicsPipeline() {
     
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;  // ИСПРАВЛЕНО!
     
     VkViewport viewport{};
     viewport.x = 0; viewport.y = 0;
@@ -609,29 +501,6 @@ bool RenderUI_Vulkan::createCommandBuffers() {
     allocInfo.commandBufferCount = (uint32_t)commandBuffers.size();
     
     vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data());
-    
-    for (size_t i = 0; i < commandBuffers.size(); i++) {
-        VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        vkBeginCommandBuffer(commandBuffers[i], &beginInfo);
-        
-        VkRenderPassBeginInfo renderPassInfo{};
-        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassInfo.renderPass = renderPass;
-        renderPassInfo.framebuffer = swapChainFramebuffers[i];
-        renderPassInfo.renderArea.offset = {0, 0};
-        renderPassInfo.renderArea.extent = swapChainExtent;
-        
-        VkClearValue clearColor = {0.2f, 0.3f, 0.3f, 1.0f};
-        renderPassInfo.clearValueCount = 1;
-        renderPassInfo.pClearValues = &clearColor;
-        
-        vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-        vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-        vkCmdEndRenderPass(commandBuffers[i]);
-        vkEndCommandBuffer(commandBuffers[i]);
-    }
-    
     return true;
 }
 
@@ -692,6 +561,81 @@ void RenderUI_Vulkan::recreateSwapChain() {
     createImageViews();
     createFramebuffers();
     createCommandBuffers();
+}
+
+void RenderUI_Vulkan::present() {
+    if (!device || !swapChain) return;
+    
+    if (pendingVertices.size() > 0) {
+        updateVertexBuffer(pendingVertices);
+        vertexCount = pendingVertices.size();
+        pendingVertices.clear();
+    }
+    
+    uint32_t imageIndex;
+    VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, 
+                                             imageAvailableSemaphores[0], VK_NULL_HANDLE, &imageIndex);
+    
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        recreateSwapChain();
+        return;
+    }
+    
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) return;
+    
+    vkResetCommandBuffer(commandBuffers[imageIndex], 0);
+    
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vkBeginCommandBuffer(commandBuffers[imageIndex], &beginInfo);
+    
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = renderPass;
+    renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = swapChainExtent;
+    
+    VkClearValue clearColor = {0.2f, 0.3f, 0.3f, 1.0f};
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+    
+    vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+    
+    if (vertexCount > 0) {
+        VkBuffer vertexBuffers[] = {vertexBuffer};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(commandBuffers[imageIndex], 0, 1, vertexBuffers, offsets);
+        vkCmdDraw(commandBuffers[imageIndex], vertexCount, 1, 0, 0);
+    }
+    
+    vkCmdEndRenderPass(commandBuffers[imageIndex]);
+    vkEndCommandBuffer(commandBuffers[imageIndex]);
+    
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &imageAvailableSemaphores[0];
+    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    submitInfo.pWaitDstStageMask = &waitStage;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &renderFinishedSemaphores[0];
+    
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = &renderFinishedSemaphores[0];
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = &swapChain;
+    presentInfo.pImageIndices = &imageIndex;
+    
+    vkQueuePresentKHR(graphicsQueue, &presentInfo);
+    vkQueueWaitIdle(graphicsQueue);
 }
 
 void RenderUI_Vulkan::initFont() {

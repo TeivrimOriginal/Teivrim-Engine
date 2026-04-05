@@ -2,7 +2,7 @@
 #include <iostream>
 
 InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api) 
-    : window(nullptr), core(corePtr), currentAPI(api), startupActive(false),  // <-- false
+    : window(nullptr), core(corePtr), currentAPI(api), startupActive(false),
       renderer(api == RenderAPI::OPENGL ? RenderAPIType::OPENGL : RenderAPIType::VULKAN)
 {
     panels = new PanelManager();
@@ -116,7 +116,7 @@ InterfaceManager::~InterfaceManager() {
     delete panels; 
 }
 
-Dimensions InterfaceManager::getDimensions() {
+InterfaceManager::Dimensions InterfaceManager::getDimensions() {
     Dimensions d = {0, 0};
     if (!window) return d;
     HWND hwnd = window->getHWND();
@@ -153,9 +153,6 @@ void InterfaceManager::setup3DViewport(const Dimensions& dims) {
 void InterfaceManager::renderStatic() {
     Dimensions d = getDimensions();
     if (d.width == 0 || d.height == 0) return;
-    
-    std::cout << "[DEBUG] renderStatic, currentAPI=" << (currentAPI == RenderAPI::VULKAN ? "VULKAN" : "OPENGL") 
-              << ", panels count=" << panels->getAll().size() << std::endl;
     
     if (currentAPI == RenderAPI::OPENGL) {
         GLint prog, vp[4];
@@ -198,7 +195,6 @@ void InterfaceManager::renderStatic() {
     }
 }
 
-// ... rest of InterfaceManager.cpp (handleMouseDown, handleMouseMove, etc.) unchanged ...
 void InterfaceManager::renderDynamic() {
     Dimensions d = getDimensions();
     if (d.width == 0 || d.height == 0) return;
@@ -213,7 +209,9 @@ void InterfaceManager::renderDynamic() {
     }
 }
 
-void InterfaceManager::handleClick(int x, int y) {}
+void InterfaceManager::handleClick(int x, int y) {
+    isClick = true;
+}
 
 void InterfaceManager::handleMouseDown(int x, int y) { 
     panels->onMouseDown(x, y); 
@@ -221,6 +219,7 @@ void InterfaceManager::handleMouseDown(int x, int y) {
 
 void InterfaceManager::handleMouseMove(int x, int y) { 
     panels->onMouseMove(x, y);
+    isClick = false;
     
     for (auto p : panels->getAll()) {
         if (!p->visible) continue;
@@ -253,6 +252,20 @@ void InterfaceManager::BlockMoveToMainWindow(int x, int y) {}
 bool InterfaceManager::CheckerClickToPanel(int x, int y) { 
     return panels->at(x, y) != nullptr; 
 }
-bool InterfaceManager::initializeRender(HWND hwnd, int width, int height) {
-    return renderer.initialize(hwnd, width, height);
+
+bool InterfaceManager::isBlockingRender() {
+    return false;
+}
+
+void InterfaceManager::setWindow(InitialWin32* win) {
+    window = win;
+    // Убираем вызов panels->setWindow, так как его нет
+}
+
+void InterfaceManager::initializeRender(HWND hwnd, int width, int height) {
+    renderer.initialize(hwnd, width, height);
+}
+
+void InterfaceManager::updateWindowSize(int width, int height) {
+    renderer.setup2D(width, height);
 }

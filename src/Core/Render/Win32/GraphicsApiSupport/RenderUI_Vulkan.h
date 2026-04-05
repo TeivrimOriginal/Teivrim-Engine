@@ -47,8 +47,6 @@ private:
     bool createCommandBuffers();
     bool createSyncObjects();
     
-    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
-                      VkBuffer& buffer, VkDeviceMemory& memory);
     void updateVertexBuffer(const std::vector<UIVertex>& vertices);
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     void recreateSwapChain();
@@ -78,7 +76,7 @@ private:
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
     
-    // Sync objects (ТОЛЬКО ОДИН РАЗ)
+    // Sync objects
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
