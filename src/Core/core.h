@@ -7,7 +7,7 @@
 #include "Render/Win32/rendererw.h"
 #include "Render/Win32/rendererv.h"
 #include "Render/Parser/parser.h"
-
+#include "ShaderManager.h"
 enum class RenderAPI { OPENGL, VULKAN };
 
 class Core {
@@ -29,7 +29,6 @@ public:
     void GameLoop();
     bool loadModelFromPath(const std::string& path);
     bool openFileDialogAndLoadModel(HWND hwnd);
-    
 private:
     RendererW rendererw;
     RendererV rendererv;

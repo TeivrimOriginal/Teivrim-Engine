@@ -155,7 +155,7 @@ bool Core::openFileDialogAndLoadModel(HWND hwnd) {
 
 void Core::GameLoop() {
     Application app;
-
+    CREATE_SHADERS();  // ОДНА СТРОКА ВСЕГО
     if (!app.createApplication()) {
         std::cerr << "Application creation failed!" << std::endl;
         return;

@@ -1,14 +1,10 @@
 #ifndef RENDERUI_VULKAN_H
 #define RENDERUI_VULKAN_H
 
-#include <vulkan/vulkan.h>
-#include <vulkan/vulkan_win32.h>
 #include <windows.h>
 #include <string>
 #include <vector>
-#include "stb_truetype.h"
-
-#define MAX_FRAMES_IN_FLIGHT 2
+#include "VkInit.h"
 
 class RenderUI_Vulkan {
 public:
@@ -33,55 +29,11 @@ private:
         float r, g, b, a;
     };
     
-    bool createInstance();
-    bool createSurface();
-    bool pickPhysicalDevice();
-    bool createLogicalDevice();
-    bool createSwapChain();
-    bool createImageViews();
-    bool createRenderPass();
-    bool createGraphicsPipeline();
-    bool createFramebuffers();
-    bool createCommandPool();
-    bool createVertexBuffer();
-    bool createCommandBuffers();
-    bool createSyncObjects();
-    
     void updateVertexBuffer(const std::vector<UIVertex>& vertices);
-    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     void recreateSwapChain();
-    void cleanupSwapChain();
-    VkShaderModule createShaderModule(const std::vector<char>& code);
-    
     void initFont();
     
-    VkInstance instance;
-    VkPhysicalDevice physicalDevice;
-    VkDevice device;
-    VkQueue graphicsQueue;
-    VkSurfaceKHR surface;
-    VkSwapchainKHR swapChain;
-    VkFormat swapChainImageFormat;
-    VkExtent2D swapChainExtent;
-    std::vector<VkImage> swapChainImages;
-    std::vector<VkImageView> swapChainImageViews;
-    VkRenderPass renderPass;
-    VkPipelineLayout pipelineLayout;
-    VkPipeline graphicsPipeline;
-    std::vector<VkFramebuffer> swapChainFramebuffers;
-    VkCommandPool commandPool;
-    std::vector<VkCommandBuffer> commandBuffers;
-    
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-    
-    std::vector<VkSemaphore> imageAvailableSemaphores;
-    std::vector<VkSemaphore> renderFinishedSemaphores;
-    std::vector<VkFence> inFlightFences;
-    
-    unsigned int fontTexture;
-    bool fontInitialized;
-    stbtt_bakedchar glyphs[96];
+    VkContext vk;
     
     int windowWidth;
     int windowHeight;
