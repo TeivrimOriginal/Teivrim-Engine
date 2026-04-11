@@ -10,6 +10,7 @@
 #include <conio.h>
 #include <commdlg.h>
 #include "../Application/WindowAPIsupport/Win32/InitialWin32.h"
+#include "Vulkan.h"
 
 using namespace std;
 
@@ -69,11 +70,17 @@ void Core::initializeRender(InitialWin32* window) {
         }
         std::cout << "OpenGL renderer initialized" << std::endl;
     } else {
-        if (!rendererv.initialize(window)) {
+        RECT rect;
+        GetClientRect(window->getHWND(), &rect);
+        vulkan = new Vulkan(window->getHWND(), rect.right - rect.left, rect.bottom - rect.top);
+        if (!vulkan->isInitialized()) {
             std::cerr << "Failed to initialize Vulkan renderer" << std::endl;
+            delete vulkan;
+            vulkan = nullptr;
             return;
         }
-        std::cout << "Vulkan renderer initialized (STUB - 3D models won't render)" << std::endl;
+        vulkan->setup2D(rect.right - rect.left, rect.bottom - rect.top);
+        std::cout << "Vulkan renderer initialized" << std::endl;
     }
     rendererInitialized = true;
 }
@@ -88,7 +95,9 @@ void Core::renderModel(Camera& camera) {
         }
         rendererw.renderModel(modelParser, shaderProgram, camera);
     } else {
-        rendererv.renderModel(camera);
+        if (vulkan) {
+            vulkan->drawTriangle();
+        }
     }
 }
 
@@ -100,7 +109,8 @@ void Core::cleanupRender() {
             shaderProgram = 0;
         }
     } else {
-        rendererv.cleanup();
+        delete vulkan;
+        vulkan = nullptr;
     }
 }
 
@@ -155,7 +165,7 @@ bool Core::openFileDialogAndLoadModel(HWND hwnd) {
 
 void Core::GameLoop() {
     Application app;
-    CREATE_SHADERS();  // ОДНА СТРОКА ВСЕГО
+
     if (!app.createApplication()) {
         std::cerr << "Application creation failed!" << std::endl;
         return;
@@ -171,7 +181,9 @@ void Core::GameLoop() {
 
     g_uiManager = new InterfaceManager(this, currentAPI);
     g_uiManager->setWindow(win32Window);
-    
+    if (currentAPI == RenderAPI::VULKAN && vulkan) {
+        g_uiManager->setVulkan(vulkan);
+    }
     RECT rect;
     GetClientRect(win32Window->getHWND(), &rect);
     int windowWidth = rect.right - rect.left;
@@ -187,78 +199,29 @@ void Core::GameLoop() {
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
 
     Input input(app, g_uiManager);
-    POINT lastMousePos = {0, 0};
-    GetCursorPos(&lastMousePos);
-
-    int frameCount = 0;
-    float fpsTimer = 0.0f;
 
     while (!win32Window->shouldClose()) {
-        static float lastFrame = 0.0f;
-        float currentFrame = GetTickCount() / 1000.0f;
-        float deltaTime = currentFrame - lastFrame;
-        lastFrame = currentFrame;
-
-        fpsTimer += deltaTime;
-        frameCount++;
-        if (fpsTimer >= 1.0f) {
-            char title[256];
-            sprintf_s(title, "FPS: %d", frameCount);
-            SetWindowTextA(win32Window->getHWND(), title);
-            frameCount = 0;
-            fpsTimer = 0.0f;
-        }
-
         win32Window->pollEvents();
-
-        POINT currentMousePos;
-        GetCursorPos(&currentMousePos);
-        ScreenToClient(win32Window->getHWND(), &currentMousePos);
-
-        if (!isStart) {
-            if (g_uiManager && g_uiManager->isBlockingRender()) {
-                input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
+        
+        if (currentAPI == RenderAPI::VULKAN && vulkan) {
+            vulkan->beginFrame();
+            
+            g_uiManager->renderStatic();
+            
+            if (modelLoaded) {
+                renderModel(app.getCamera());
             } else {
-                input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
-                input.processInputWin32(deltaTime, win32Window->getHWND());
+                vulkan->drawTriangle();
             }
-
-            if (currentAPI == RenderAPI::OPENGL) {
-                glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            
+            vulkan->endFrame();
+            vulkan->present();
+        } else if (currentAPI == RenderAPI::OPENGL) {
+            if (g_uiManager) {
+                g_uiManager->renderStatic();
             }
-
-            if (modelLoaded && g_uiManager) {
-                Panel* view3D = g_uiManager->getPanelManager()->get3D();
-                if (view3D && view3D->visible && currentAPI == RenderAPI::OPENGL) {
-                    RECT rect;
-                    GetClientRect(win32Window->getHWND(), &rect);
-                    int winH = rect.bottom - rect.top;
-                    int viewY = winH - (view3D->getY() + view3D->getH());
-                    
-                    glViewport(view3D->getX(), viewY, view3D->getW(), view3D->getH());
-                    glScissor(view3D->getX(), viewY, view3D->getW(), view3D->getH());
-                    glEnable(GL_SCISSOR_TEST);
-                    
-                    renderModel(app.getCamera());
-                    
-                    glDisable(GL_SCISSOR_TEST);
-                } else {
-                    if (currentAPI == RenderAPI::OPENGL) {
-                        RECT rect;
-                        GetClientRect(win32Window->getHWND(), &rect);
-                        glViewport(0, 0, rect.right - rect.left, rect.bottom - rect.top);
-                    }
-                    renderModel(app.getCamera());
-                }
-            }
+            win32Window->swapBuffers();
         }
-
-        g_uiManager->renderStatic();
-        win32Window->swapBuffers();
-
-        lastMousePos = currentMousePos;
-        Sleep(0);
     }
 
     delete g_uiManager;

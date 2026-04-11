@@ -1,6 +1,6 @@
 #include "RenderUI.h"
 #include "GraphicsApiSupport/RenderUI_OpenGL.h"
-#include "GraphicsApiSupport/RenderUI_Vulkan.h"
+#include "../../Vulkan.h"
 #include <iostream>
 
 RenderUI::RenderUI(RenderAPIType api) 
@@ -10,24 +10,29 @@ RenderUI::RenderUI(RenderAPIType api)
         glImpl = new RenderUI_OpenGL();
         std::cout << "RenderUI: OpenGL mode" << std::endl;
     } else {
-        vkImpl = new RenderUI_Vulkan();
-        std::cout << "RenderUI: Vulkan mode" << std::endl;
+        // vkImpl будет установлен через setVulkan()
+        std::cout << "RenderUI: Vulkan mode (waiting for Vulkan instance)" << std::endl;
     }
 }
 
 RenderUI::~RenderUI() {
     delete glImpl;
-    delete vkImpl;
+    // vkImpl не удаляем - он принадлежит Core
 }
 
 bool RenderUI::initialize(HWND hwnd, int width, int height) {
     if (isOpenGL && glImpl) return true;
-    if (vkImpl) return vkImpl->initialize(hwnd, width, height);
+    if (vkImpl) return true;  // уже установлен
     return false;
 }
 
+void RenderUI::setVulkan(Vulkan* vk) {
+    vkImpl = vk;
+    std::cout << "RenderUI: Vulkan instance set" << std::endl;
+}
+
 void RenderUI::cleanup() {
-    if (vkImpl) vkImpl->cleanup();
+    // ничего не делаем
 }
 
 void RenderUI::beginFrame() {

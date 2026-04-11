@@ -10,6 +10,8 @@ enum class RenderAPIType {
     VULKAN
 };
 
+class Vulkan;  // forward declaration
+
 class RenderUI {
 public:
     RenderUI(RenderAPIType api = RenderAPIType::OPENGL);
@@ -17,6 +19,7 @@ public:
     
     bool initialize(HWND hwnd, int width, int height);
     void cleanup();
+    void setVulkan(Vulkan* vk);
     
     void beginFrame();
     void endFrame();
@@ -38,7 +41,7 @@ public:
 private:
     RenderAPIType currentAPI;
     class RenderUI_OpenGL* glImpl;
-    class RenderUI_Vulkan* vkImpl;
+    class Vulkan* vkImpl;  // теперь указатель на Vulkan класс
     bool isOpenGL;
 };
 

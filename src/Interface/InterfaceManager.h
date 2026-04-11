@@ -5,7 +5,10 @@
 #include "../Core/Render/Win32/RenderUI.h"
 #include "Panels.h"
 #include "ObjectUI.h"
-#include "../Core/core.h"
+
+class Core;
+class Vulkan;
+enum class RenderAPI;  // только объявление, не определение
 
 class InterfaceManager {
 public:
@@ -21,13 +24,14 @@ public:
     void handleMouseUp(int x, int y);
     void updateWindowSize(int width, int height);
     bool isBlockingRender();
-    void setWindow(InitialWin32* window);
+    void setWindow(class InitialWin32* window);
+    void setVulkan(class Vulkan* vk);
     PanelManager* getPanelManager() { return panels; }
     void SwapFlag(Core &A);
     HWND getHWND() const;
     void BlockMoveToMainWindow(int x, int y);
     bool CheckerClickToPanel(int x, int y);
-    bool isClick = false;  // Добавляем isClick
+    bool isClick = false;
     
     struct Dimensions {
         int width, height;
@@ -38,7 +42,7 @@ public:
     void setCore(Core* corePtr) { core = corePtr; }
 
 private:
-    InitialWin32* window;
+    class InitialWin32* window;
     Core* core;
     PanelManager* panels;
     ObjectUI objectUI;

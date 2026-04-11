@@ -1,5 +1,9 @@
 #include "InterfaceManager.h"
+#include "../Core/core.h"  // нужно добавить для использования RenderAPI
+#include "../Core/Vulkan.h"
 #include <iostream>
+
+// ... остальной код без изменений ...
 
 InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api) 
     : window(nullptr), core(corePtr), currentAPI(api), startupActive(false),
@@ -116,6 +120,10 @@ InterfaceManager::~InterfaceManager() {
     delete panels; 
 }
 
+void InterfaceManager::setVulkan(Vulkan* vk) {
+    renderer.setVulkan(vk);
+}
+
 InterfaceManager::Dimensions InterfaceManager::getDimensions() {
     Dimensions d = {0, 0};
     if (!window) return d;
@@ -175,7 +183,7 @@ void InterfaceManager::renderStatic() {
         renderer.restoreMatrices();
         renderer.restoreState(prog, vp, dt);
     } else {
-        renderer.beginFrame();
+        // Для Vulkan - только вызовы draw, без beginFrame/endFrame
         renderer.setup2D(d.width, d.height);
         
         panels->update(d.width, d.height);
@@ -189,9 +197,6 @@ void InterfaceManager::renderStatic() {
         } else {
             renderer.drawText(10, d.height - 40, "No model loaded", 1.0f, 0.8f, 0.3f);
         }
-        
-        renderer.endFrame();
-        renderer.present();
     }
 }
 
@@ -259,11 +264,11 @@ bool InterfaceManager::isBlockingRender() {
 
 void InterfaceManager::setWindow(InitialWin32* win) {
     window = win;
-    // Убираем вызов panels->setWindow, так как его нет
 }
 
 void InterfaceManager::initializeRender(HWND hwnd, int width, int height) {
     renderer.initialize(hwnd, width, height);
+    // Vulkan будет передан через setVulkan из Core
 }
 
 void InterfaceManager::updateWindowSize(int width, int height) {

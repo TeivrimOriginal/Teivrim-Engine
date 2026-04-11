@@ -5,9 +5,9 @@
 #include <GL/glew.h>
 #include <windows.h>
 #include "Render/Win32/rendererw.h"
-#include "Render/Win32/rendererv.h"
 #include "Render/Parser/parser.h"
-#include "ShaderManager.h"
+#include "Vulkan.h"
+
 enum class RenderAPI { OPENGL, VULKAN };
 
 class Core {
@@ -29,12 +29,15 @@ public:
     void GameLoop();
     bool loadModelFromPath(const std::string& path);
     bool openFileDialogAndLoadModel(HWND hwnd);
+    
+    Vulkan* getVulkan() { return vulkan; }
+    
 private:
     RendererW rendererw;
-    RendererV rendererv;
     RenderAPI currentAPI = RenderAPI::OPENGL;
     InitialWin32* currentWindow = nullptr;
     bool rendererInitialized = false;
+    Vulkan* vulkan = nullptr;
 };
 
 #endif

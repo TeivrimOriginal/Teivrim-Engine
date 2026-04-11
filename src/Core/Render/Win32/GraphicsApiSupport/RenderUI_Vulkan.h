@@ -24,24 +24,10 @@ public:
     void drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b);
     
 private:
-    struct UIVertex {
-        float x, y;
-        float r, g, b, a;
-    };
-    
-    void updateVertexBuffer(const std::vector<UIVertex>& vertices);
-    void recreateSwapChain();
-    void initFont();
-    
-    VkContext vk;
-    
     int windowWidth;
     int windowHeight;
     HWND hwnd;
     bool initialized;
-    uint32_t currentFrame;
-    std::vector<UIVertex> pendingVertices;
-    uint32_t vertexCount;
 };
 
 #endif

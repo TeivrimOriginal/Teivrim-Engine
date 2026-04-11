@@ -494,7 +494,7 @@ void PanelManager::onMouseUp(int x, int y) {
 bool PanelManager::isDragging() const { return isDrag; }
 
 void PanelManager::render(RenderUI& render) {
-    printf("[PANELMANAGER] render() called, %d panels\n", (int)panels.size());
+    // printf("[PANELMANAGER] render() called, %d panels\n", (int)panels.size());  // закомментировать для减少 спама
     
     for (auto p : panels) {
         if (p->visible) {
@@ -502,11 +502,7 @@ void PanelManager::render(RenderUI& render) {
         }
     }
     
-    for (auto p : panels) {
-        if (p->visible) {
-            p->render(render);
-        }
-    }
+    // ВТОРОЙ ПРОХОД УДАЛЁН
     
     if (menuOpen) {
         int w = 100, h = menuItems.size() * 20;

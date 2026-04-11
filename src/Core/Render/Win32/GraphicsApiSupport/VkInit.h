@@ -18,60 +18,80 @@ struct VkContext {
     VkExtent2D swapChainExtent = {};
     std::vector<VkImage> swapChainImages;
     std::vector<VkImageView> swapChainImageViews;
-    VkRenderPass renderPass = VK_NULL_HANDLE;
-    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
-    VkPipeline graphicsPipeline = VK_NULL_HANDLE;
-    std::vector<VkFramebuffer> swapChainFramebuffers;
     VkCommandPool commandPool = VK_NULL_HANDLE;
-    std::vector<VkCommandBuffer> commandBuffers;
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
+    VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
     
-    VkBuffer vertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    VkRenderPass renderPass3D = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout3D = VK_NULL_HANDLE;
+    VkPipeline pipeline3D = VK_NULL_HANDLE;
+    std::vector<VkFramebuffer> framebuffers3D;
     
-    std::vector<VkSemaphore> imageAvailableSemaphores;
-    std::vector<VkSemaphore> renderFinishedSemaphores;
-    std::vector<VkFence> inFlightFences;
+    VkRenderPass renderPassUI = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayoutUI = VK_NULL_HANDLE;
+    VkPipeline pipelineUI = VK_NULL_HANDLE;
+    std::vector<VkFramebuffer> framebuffersUI;
     
     HWND hwnd = nullptr;
     int width = 0;
     int height = 0;
-    uint32_t currentFrame = 0;
+    
+    // Данные для рендера
+    void* vertexData3D = nullptr;
+    uint32_t vertexCount3D = 0;
+    size_t vertexSize3D = 0;
+    VkBuffer vertexBuffer3D = VK_NULL_HANDLE;
+    VkDeviceMemory vertexBufferMemory3D = VK_NULL_HANDLE;
+    
+    void* vertexDataUI = nullptr;
+    uint32_t vertexCountUI = 0;
+    size_t vertexSizeUI = 0;
+    VkBuffer vertexBufferUI = VK_NULL_HANDLE;
+    VkDeviceMemory vertexBufferMemoryUI = VK_NULL_HANDLE;
 };
 
 class VkInit {
 public:
-    static bool createInstance(VkInstance& instance);
-    static bool createSurface(VkInstance instance, HWND hwnd, VkSurfaceKHR& surface);
-    static bool pickPhysicalDevice(VkInstance instance, VkPhysicalDevice& physicalDevice);
-    static bool createLogicalDevice(VkPhysicalDevice physicalDevice, VkDevice& device, VkQueue& graphicsQueue);
-    static bool createSwapChain(VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface,
-                                VkSwapchainKHR& swapChain, VkFormat& imageFormat, VkExtent2D& extent,
-                                std::vector<VkImage>& images, int width, int height);
-    static bool createImageViews(VkDevice device, const std::vector<VkImage>& images, VkFormat format,
-                                 std::vector<VkImageView>& imageViews);
-    static bool createRenderPass(VkDevice device, VkFormat format, VkRenderPass& renderPass);
-    static bool createGraphicsPipeline(VkDevice device, VkRenderPass renderPass, VkExtent2D extent,
-                                       VkPipelineLayout& pipelineLayout, VkPipeline& graphicsPipeline);
-    static bool createFramebuffers(VkDevice device, VkRenderPass renderPass,
-                                   const std::vector<VkImageView>& imageViews, VkExtent2D extent,
-                                   std::vector<VkFramebuffer>& framebuffers);
-    static bool createCommandPool(VkDevice device, VkCommandPool& commandPool);
-    static bool createVertexBuffer(VkDevice device, VkPhysicalDevice physicalDevice,
-                                   VkBuffer& buffer, VkDeviceMemory& memory);
-    static bool createCommandBuffers(VkDevice device, VkCommandPool commandPool,
-                                     const std::vector<VkFramebuffer>& framebuffers,
-                                     std::vector<VkCommandBuffer>& commandBuffers);
-    static bool createSyncObjects(VkDevice device, std::vector<VkSemaphore>& imageAvailable,
-                                  std::vector<VkSemaphore>& renderFinished, std::vector<VkFence>& fences);
+    static VkContext& getContext();
+    static bool initialize(HWND hwnd, int width, int height);
+    static void cleanup();
     
-    static void cleanupSwapChain(VkDevice device, VkSwapchainKHR swapChain,
-                                 std::vector<VkImageView>& imageViews,
-                                 std::vector<VkFramebuffer>& framebuffers);
-    static void cleanup(VkContext& ctx);
+    static bool beginFrame(uint32_t& imageIndex);
+    static void endFrame(uint32_t imageIndex);
+    static void renderFrame(); // Один вызов на кадр
+    
+    static void set3DData(const void* data, uint32_t vertexCount, size_t vertexSize);
+    static void setUIData(const void* data, uint32_t vertexCount, size_t vertexSize);
     
 private:
-    static uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
-    static VkShaderModule createShaderModule(VkDevice device, const std::vector<char>& code);
+    static VkContext ctx;
+    static bool initialized;
+    static uint32_t currentImageIndex;
+    
+    static bool createInstance();
+    static bool createSurface();
+    static bool pickPhysicalDevice();
+    static bool createLogicalDevice();
+    static bool createSwapChain();
+    static bool createImageViews();
+    static bool createCommandPool();
+    static bool createSemaphores();
+    static bool createVertexBuffers();
+    
+    static bool createRenderPass3D();
+    static bool createPipeline3D();
+    static bool createFramebuffers3D();
+    
+    static bool createRenderPassUI();
+    static bool createPipelineUI();
+    static bool createFramebuffersUI();
+    
+    static void recreateSwapChain();
+    static void cleanupSwapChain();
+    
+    static uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+    static VkShaderModule createShaderModule(const std::vector<char>& code);
     static std::vector<char> readFile(const std::string& filename);
 };
 

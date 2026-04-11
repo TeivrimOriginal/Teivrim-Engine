@@ -1,30 +1,44 @@
 #include "rendererv.h"
+#include "GraphicsApiSupport/VkInit.h"
 #include <iostream>
 
 RendererV::RendererV() : window(nullptr), animateModel(true), initialized(false) {
-    std::cout << "[VULKAN 3D] Constructor (STUB - no 3D rendering)" << std::endl;
+    std::cout << "[VULKAN 3D] Constructor" << std::endl;
 }
 
-RendererV::~RendererV() {
-    cleanup();
-}
+RendererV::~RendererV() { cleanup(); }
 
 bool RendererV::initialize(InitialWin32* win) {
     window = win;
+    if (!window || !window->getHWND()) return false;
+    
+    RECT rect;
+    GetClientRect(window->getHWND(), &rect);
+    
+    if (!VkInit::initialize(window->getHWND(), rect.right - rect.left, rect.bottom - rect.top))
+        return false;
+    
     initialized = true;
-    std::cout << "[VULKAN 3D] Initialized (STUB MODE - 3D models won't render)" << std::endl;
+    std::cout << "[VULKAN 3D] Initialized" << std::endl;
     return true;
 }
 
 void RendererV::cleanup() {
+    VkInit::cleanup();
     initialized = false;
-    std::cout << "[VULKAN 3D] Cleanup" << std::endl;
 }
 
 void RendererV::renderModel(Camera& camera) {
-    // Заглушка - ничего не рендерит
     if (!initialized) return;
-    // 3D модели через Vulkan НЕ РЕНДЕРЯТСЯ
+    
+    struct Vertex { float x, y; float r, g, b, a; };
+    Vertex vertices[] = {
+        {0.0f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f},
+        {0.5f,  0.5f, 0.0f, 1.0f, 0.0f, 1.0f},
+        {-0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f}
+    };
+    
+    VkInit::set3DData(vertices, 3, sizeof(Vertex));
 }
 
 void RendererV::setAnimateModel(bool animate) {
