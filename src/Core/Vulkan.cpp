@@ -39,13 +39,12 @@ static void compileShaders() {
 }
 
 Vulkan::Vulkan(HWND hwnd, int width, int height) 
-    : hwnd(hwnd), width(width), height(height), initialized(false), modelAngle(0.0f), modelLoaded(false),
+    : hwnd(hwnd), width(width), height(height), initialized(false), modelAngle(0.0f), currentFrame(0), currentImageIndex(0), modelLoaded(false),
       instance(VK_NULL_HANDLE), physDevice(VK_NULL_HANDLE), device(VK_NULL_HANDLE),
       graphicsQueue(VK_NULL_HANDLE), surface(VK_NULL_HANDLE), swapchain(VK_NULL_HANDLE),
       renderPass(VK_NULL_HANDLE), pipelineLayout3D(VK_NULL_HANDLE), pipelineLayoutUI(VK_NULL_HANDLE),
       pipeline3D(VK_NULL_HANDLE), pipelineUI(VK_NULL_HANDLE),
       commandPool(VK_NULL_HANDLE), cmdBuffer(VK_NULL_HANDLE),
-      imageAvailableSem(VK_NULL_HANDLE), renderFinishedSem(VK_NULL_HANDLE),
       vertexBuffer(VK_NULL_HANDLE), indexBuffer(VK_NULL_HANDLE),
       vertexBufferMemory(VK_NULL_HANDLE), indexBufferMemory(VK_NULL_HANDLE),
       uniformBuffer(VK_NULL_HANDLE), uniformBufferMemory(VK_NULL_HANDLE),
@@ -54,7 +53,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     
     compileShaders();
     
-    // 1. Create instance
     VkApplicationInfo appInfo{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     appInfo.apiVersion = VK_API_VERSION_1_0;
     
@@ -69,7 +67,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
         return;
     }
     
-    // 2. Create surface
     VkWin32SurfaceCreateInfoKHR surfInfo{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
     surfInfo.hinstance = GetModuleHandle(NULL);
     surfInfo.hwnd = hwnd;
@@ -78,7 +75,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
         return;
     }
     
-    // 3. Pick physical device
     uint32_t deviceCount;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
     if (deviceCount == 0) {
@@ -89,7 +85,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
     physDevice = devices[0];
     
-    // 4. Create logical device
     uint32_t queueFamily = 0;
     VkDeviceQueueCreateInfo queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
     queueInfo.queueFamilyIndex = queueFamily;
@@ -111,34 +106,16 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     
     vkGetDeviceQueue(device, queueFamily, 0, &graphicsQueue);
     
-    // 5. Create swapchain
     createSwapchain();
-    
-    // 6. Create render pass
     createRenderPass();
-    
-    // 7. Create framebuffers
     createFramebuffers();
-    
-    // 8. Create command pool
     createCommandPool();
-    
-    // 9. Create sync objects
     createSyncObjects();
-    
-    // 10. Create uniform buffer
     createUniformBuffer();
-    
-    // 11. Create descriptor set
     createDescriptorSet();
-    
-    // 12. Create pipelines
     createPipelines();
-    
-    // 13. Create UI buffers
     createUIBuffers();
     
-    // 14. Set default matrices
     viewMat = glm::lookAt(glm::vec3(0.0f, 50.0f, 200.0f), glm::vec3(0, 50, 0), glm::vec3(0, 1, 0));
     projMat = glm::perspective(glm::radians(45.0f), (float)width/height, 0.1f, 1000.0f);
     projMat[1][1] *= -1;
@@ -152,8 +129,11 @@ Vulkan::~Vulkan() {
     if (device) {
         vkDeviceWaitIdle(device);
         
-        vkDestroySemaphore(device, renderFinishedSem, nullptr);
-        vkDestroySemaphore(device, imageAvailableSem, nullptr);
+        for (int i = 0; i < 2; i++) {
+            vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+            vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+        }
+        vkDestroyFence(device, inFlightFence, nullptr);
         vkDestroyCommandPool(device, commandPool, nullptr);
         vkDestroyPipeline(device, pipeline3D, nullptr);
         vkDestroyPipeline(device, pipelineUI, nullptr);
@@ -207,14 +187,20 @@ void Vulkan::createSwapchain() {
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physDevice, surface, &caps);
     VkSurfaceFormatKHR format{VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
     swapchainFormat = format.format;
-    swapchainExtent = caps.currentExtent;
+    
+    if (caps.currentExtent.width == 0 || caps.currentExtent.height == 0) {
+        swapchainExtent.width = std::max(1u, (uint32_t)width);
+        swapchainExtent.height = std::max(1u, (uint32_t)height);
+    } else {
+        swapchainExtent = caps.currentExtent;
+    }
     
     VkSwapchainCreateInfoKHR swapInfo{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
     swapInfo.surface = surface;
-    swapInfo.minImageCount = 2;
+    swapInfo.minImageCount = std::max(2u, caps.minImageCount + 1);
     swapInfo.imageFormat = format.format;
     swapInfo.imageColorSpace = format.colorSpace;
-    swapInfo.imageExtent = caps.currentExtent;
+    swapInfo.imageExtent = swapchainExtent;
     swapInfo.imageArrayLayers = 1;
     swapInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     swapInfo.preTransform = caps.currentTransform;
@@ -279,8 +265,8 @@ void Vulkan::createFramebuffers() {
         fbInfo.renderPass = renderPass;
         fbInfo.attachmentCount = 1;
         fbInfo.pAttachments = &swapchainImageViews[i];
-        fbInfo.width = (uint32_t)width;
-        fbInfo.height = (uint32_t)height;
+        fbInfo.width = swapchainExtent.width;
+        fbInfo.height = swapchainExtent.height;
         fbInfo.layers = 1;
         if (vkCreateFramebuffer(device, &fbInfo, nullptr, &framebuffers[i]) != VK_SUCCESS) {
             std::cerr << "Failed to create framebuffer" << std::endl;
@@ -307,8 +293,14 @@ void Vulkan::createCommandPool() {
 
 void Vulkan::createSyncObjects() {
     VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    vkCreateSemaphore(device, &semInfo, nullptr, &imageAvailableSem);
-    vkCreateSemaphore(device, &semInfo, nullptr, &renderFinishedSem);
+    for (int i = 0; i < 2; i++) {
+        vkCreateSemaphore(device, &semInfo, nullptr, &imageAvailableSemaphores[i]);
+        vkCreateSemaphore(device, &semInfo, nullptr, &renderFinishedSemaphores[i]);
+    }
+    
+    VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    vkCreateFence(device, &fenceInfo, nullptr, &inFlightFence);
 }
 
 void Vulkan::createModelBuffers() {
@@ -399,7 +391,6 @@ void Vulkan::createPipelines() {
     VkShaderModule uiVertModule = createShaderModule("autoshadertest/ui_vert.spv");
     VkShaderModule uiFragModule = createShaderModule("autoshadertest/ui_frag.spv");
     
-    // 3D Pipeline
     auto bindingDesc = VkVertexInputBindingDescription{0, sizeof(VertexGPU), VK_VERTEX_INPUT_RATE_VERTEX};
     auto attrDesc = std::array<VkVertexInputAttributeDescription, 3>{
         VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, pos)},
@@ -468,7 +459,6 @@ void Vulkan::createPipelines() {
     pipelineInfo.subpass = 0;
     vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline3D);
     
-    // UI Pipeline
     auto uiBindingDesc = VkVertexInputBindingDescription{0, sizeof(UIVertex), VK_VERTEX_INPUT_RATE_VERTEX};
     auto uiAttrDesc = std::array<VkVertexInputAttributeDescription, 2>{
         VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(UIVertex, pos)},
@@ -553,38 +543,6 @@ void Vulkan::updateUniformBuffer() {
     vkUnmapMemory(device, uniformBufferMemory);
 }
 
-void Vulkan::renderUI() {
-    if (uiQuads.empty()) return;
-    
-    std::vector<UIVertex> vertices;
-    for (const auto& quad : uiQuads) {
-        float x1 = (quad.x1 / width) * 2.0f - 1.0f;
-        float y1 = 1.0f - (quad.y1 / height) * 2.0f;
-        float x2 = (quad.x2 / width) * 2.0f - 1.0f;
-        float y2 = 1.0f - (quad.y2 / height) * 2.0f;
-        
-        vertices.push_back({{x1, y1}, quad.color});
-        vertices.push_back({{x2, y1}, quad.color});
-        vertices.push_back({{x1, y2}, quad.color});
-        vertices.push_back({{x2, y2}, quad.color});
-    }
-    
-    if (!vertices.empty()) {
-        void* data;
-        vkMapMemory(device, uiVertexBufferMemory, 0, vertices.size() * sizeof(UIVertex), 0, &data);
-        memcpy(data, vertices.data(), vertices.size() * sizeof(UIVertex));
-        vkUnmapMemory(device, uiVertexBufferMemory);
-        
-        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineUI);
-        VkDeviceSize offsets = 0;
-        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &uiVertexBuffer, &offsets);
-        vkCmdDraw(cmdBuffer, vertices.size(), 1, 0, 0);
-    }
-    
-    uiQuads.clear();
-    uiTexts.clear();
-}
-
 void Vulkan::setup2D(int width, int height) {
     this->width = width;
     this->height = height;
@@ -601,7 +559,7 @@ void Vulkan::drawQuad(float x1, float y1, float x2, float y2, float r, float g, 
 }
 
 void Vulkan::drawText(int x, int y, const std::string& text, float r, float g, float b) {
-    // TODO: реализовать рендер текста
+    // TODO
 }
 
 void Vulkan::drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b) {
@@ -650,50 +608,100 @@ void Vulkan::setProjectionMatrix(const glm::mat4& proj) { projMat = proj; projMa
 void Vulkan::setModelMatrix(const glm::mat4& model) { modelMat = model; }
 
 void Vulkan::beginFrame() {
-    uint32_t imageIndex;
-    vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, imageAvailableSem, VK_NULL_HANDLE, &imageIndex);
+    vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+    vkResetFences(device, 1, &inFlightFence);
+    
+    VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, 
+        imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &currentImageIndex);
+    
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        recreateSwapchain();
+        return;
+    }
     
     vkResetCommandBuffer(cmdBuffer, 0);
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+    int clientWidth = rect.right - rect.left;
+    int clientHeight = rect.bottom - rect.top;
+    if (clientWidth <= 0) clientWidth = width;
+    if (clientHeight <= 0) clientHeight = height;
     
     VkRenderPassBeginInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp.renderPass = renderPass;
-    rp.framebuffer = framebuffers[imageIndex];
-    rp.renderArea.extent = {(uint32_t)width, (uint32_t)height};
+    rp.framebuffer = framebuffers[currentImageIndex];
+    rp.renderArea.offset = {0, 0};
+    rp.renderArea.extent = {(uint32_t)clientWidth, (uint32_t)clientHeight};
     VkClearValue clear = {{{0.1f, 0.1f, 0.2f, 1.0f}}};
     rp.clearValueCount = 1;
     rp.pClearValues = &clear;
     vkCmdBeginRenderPass(cmdBuffer, &rp, VK_SUBPASS_CONTENTS_INLINE);
 }
 
+void Vulkan::renderUI() {
+    if (uiQuads.empty()) return;
+    
+    std::vector<UIVertex> vertices;
+    for (const auto& quad : uiQuads) {
+        float x1 = (quad.x1 / width) * 2.0f - 1.0f;
+        float y1 = 1.0f - (quad.y1 / height) * 2.0f;
+        float x2 = (quad.x2 / width) * 2.0f - 1.0f;
+        float y2 = 1.0f - (quad.y2 / height) * 2.0f;
+        
+        vertices.push_back({{x1, y1}, quad.color});
+        vertices.push_back({{x2, y1}, quad.color});
+        vertices.push_back({{x1, y2}, quad.color});
+        vertices.push_back({{x2, y2}, quad.color});
+    }
+    
+    if (!vertices.empty()) {
+        void* data;
+        vkMapMemory(device, uiVertexBufferMemory, 0, vertices.size() * sizeof(UIVertex), 0, &data);
+        memcpy(data, vertices.data(), vertices.size() * sizeof(UIVertex));
+        vkUnmapMemory(device, uiVertexBufferMemory);
+        
+        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineUI);
+        VkDeviceSize offsets = 0;
+        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &uiVertexBuffer, &offsets);
+        vkCmdDraw(cmdBuffer, vertices.size(), 1, 0, 0);
+    }
+    
+    uiQuads.clear();
+    uiTexts.clear();
+}
+
 void Vulkan::endFrame() {
-    renderUI();
+    // UI уже отрендерен в renderUI(), который вызывается из core.cpp перед endFrame
+}
+
+void Vulkan::present() {
     vkCmdEndRenderPass(cmdBuffer);
     vkEndCommandBuffer(cmdBuffer);
     
     VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &imageAvailableSem;
+    submitInfo.pWaitSemaphores = &imageAvailableSemaphores[currentFrame];
     submitInfo.pWaitDstStageMask = waitStages;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &renderFinishedSem;
-    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-}
-
-void Vulkan::present() {
+    submitInfo.pSignalSemaphores = &renderFinishedSemaphores[currentFrame];
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence);
+    
     VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &renderFinishedSem;
+    presentInfo.pWaitSemaphores = &renderFinishedSemaphores[currentFrame];
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &swapchain;
-    uint32_t imageIndex = 0;
-    presentInfo.pImageIndices = &imageIndex;
+    presentInfo.pImageIndices = &currentImageIndex;
     vkQueuePresentKHR(graphicsQueue, &presentInfo);
-    vkQueueWaitIdle(graphicsQueue);
+    
+    currentFrame = (currentFrame + 1) % 2;
 }
 
 void Vulkan::recreateSwapchain() {
@@ -701,6 +709,13 @@ void Vulkan::recreateSwapchain() {
     for (auto fb : framebuffers) vkDestroyFramebuffer(device, fb, nullptr);
     for (auto iv : swapchainImageViews) vkDestroyImageView(device, iv, nullptr);
     vkDestroySwapchainKHR(device, swapchain, nullptr);
+    
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+    width = rect.right - rect.left;
+    height = rect.bottom - rect.top;
+    if (width <= 0) width = 1280;
+    if (height <= 0) height = 720;
     
     createSwapchain();
     createFramebuffers();

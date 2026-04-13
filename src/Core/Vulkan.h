@@ -21,12 +21,10 @@ public:
     
     void setup2D(int width, int height);
     
-    // UI методы
     void drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
     void drawText(int x, int y, const std::string& text, float r, float g, float b);
     void drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b);
     
-    // 3D методы для модели
     void loadModel(const std::vector<StandardMesh>& meshes);
     void renderModel();
     void setViewMatrix(const glm::mat4& view);
@@ -48,17 +46,17 @@ private:
     int width, height;
     bool initialized;
     float modelAngle;
+    uint32_t currentFrame;
+    uint32_t currentImageIndex;
     glm::mat4 viewMat, projMat, modelMat;
     
     std::vector<UIQuad> uiQuads;
     std::vector<std::tuple<int, int, std::string, glm::vec3>> uiTexts;
     
-    // Модель
     std::vector<VertexGPU> modelVertices;
     std::vector<uint32_t> modelIndices;
     bool modelLoaded;
     
-    // Vulkan объекты
     VkInstance instance;
     VkPhysicalDevice physDevice;
     VkDevice device;
@@ -77,9 +75,11 @@ private:
     VkPipeline pipelineUI;
     VkCommandPool commandPool;
     VkCommandBuffer cmdBuffer;
-    VkSemaphore imageAvailableSem, renderFinishedSem;
     
-    // Буферы для модели
+    VkSemaphore imageAvailableSemaphores[2];
+    VkSemaphore renderFinishedSemaphores[2];
+    VkFence inFlightFence;
+    
     VkBuffer vertexBuffer, indexBuffer;
     VkDeviceMemory vertexBufferMemory, indexBufferMemory;
     VkBuffer uniformBuffer;
@@ -88,7 +88,6 @@ private:
     VkDescriptorPool descPool;
     VkDescriptorSet descSet;
     
-    // Буферы для UI
     VkBuffer uiVertexBuffer;
     VkDeviceMemory uiVertexBufferMemory;
     

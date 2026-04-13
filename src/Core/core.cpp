@@ -63,7 +63,6 @@ Core::Core() {
 
 void Core::setRenderAPI(RenderAPI api) {
     currentAPI = api;
-    std::cout << (currentAPI == RenderAPI::VULKAN ? "Switched to Vulkan\n" : "Switched to OpenGL\n");
 }
 
 void Core::initializeRender(InitialWin32* window) {
@@ -259,19 +258,21 @@ void Core::GameLoop() {
             if (clientWidth <= 0) clientWidth = 1280;
             if (clientHeight <= 0) clientHeight = 720;
 
-            if (currentAPI == RenderAPI::VULKAN && vulkan) {
-                vulkan->beginFrame();
-                
-                if (modelLoaded) {
-                    vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
-                    vulkan->setProjectionMatrix(glm::perspective(glm::radians(45.0f), (float)clientWidth/clientHeight, 0.1f, 1000.0f));
-                    vulkan->renderModel();
-                }
-                
-                g_uiManager->renderStatic();
-                vulkan->endFrame();
-                vulkan->present();
-            }
+if (currentAPI == RenderAPI::VULKAN && vulkan) {
+    vulkan->beginFrame();
+    
+    if (modelLoaded) {
+        vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
+        vulkan->setProjectionMatrix(glm::perspective(glm::radians(45.0f), (float)clientWidth/clientHeight, 0.1f, 1000.0f));
+        vulkan->renderModel();
+    }
+    
+    // UI рендерится через InterfaceManager
+    g_uiManager->renderStatic();
+    
+    vulkan->endFrame();
+    vulkan->present();
+}
             else if (currentAPI == RenderAPI::OPENGL) {
                 glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
