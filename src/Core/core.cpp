@@ -32,6 +32,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             break;
         }
+        case WM_SIZE: {
+            if (g_uiManager) {
+                int width = LOWORD(lParam);
+                int height = HIWORD(lParam);
+                if (width > 0 && height > 0) {
+                    g_uiManager->updateWindowSize(width, height);
+                }
+            }
+            break;
+        }
     }
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
@@ -69,17 +79,23 @@ void Core::initializeRender(InitialWin32* window) {
             return;
         }
         std::cout << "OpenGL renderer initialized" << std::endl;
-    } else {
+    } 
+    else {
         RECT rect;
         GetClientRect(window->getHWND(), &rect);
-        vulkan = new Vulkan(window->getHWND(), rect.right - rect.left, rect.bottom - rect.top);
-        if (!vulkan->isInitialized()) {
+        int width = rect.right - rect.left;
+        int height = rect.bottom - rect.top;
+        if (width <= 0) width = 1280;
+        if (height <= 0) height = 720;
+
+        vulkan = new Vulkan(window->getHWND(), width, height);
+        if (!vulkan || !vulkan->isInitialized()) {
             std::cerr << "Failed to initialize Vulkan renderer" << std::endl;
             delete vulkan;
             vulkan = nullptr;
             return;
         }
-        vulkan->setup2D(rect.right - rect.left, rect.bottom - rect.top);
+        vulkan->setup2D(width, height);
         std::cout << "Vulkan renderer initialized" << std::endl;
     }
     rendererInitialized = true;
@@ -94,12 +110,8 @@ void Core::renderModel(Camera& camera) {
             needsOptimize = false;
         }
         rendererw.renderModel(modelParser, shaderProgram, camera);
-    } else {
-        // 3D модели через Vulkan (пока только треугольник)
-        if (vulkan) {
-            vulkan->drawTriangle();
-        }
     }
+    // Vulkan 3D рисуется напрямую в GameLoop (drawRotatingCube)
 }
 
 void Core::cleanupRender() {
@@ -156,16 +168,12 @@ bool Core::openFileDialogAndLoadModel(HWND hwnd) {
     ofn.lpstrTitle = "Выберите 3D модель";
 
     if (GetOpenFileNameA(&ofn)) {
-        if (loadModelFromPath(ofn.lpstrFile)) {
-            return true;
-        }
+        return loadModelFromPath(ofn.lpstrFile);
     }
-
     return false;
 }
 void Core::GameLoop() {
     Application app;
-
     if (!app.createApplication()) {
         std::cerr << "Application creation failed!" << std::endl;
         return;
@@ -181,26 +189,25 @@ void Core::GameLoop() {
 
     g_uiManager = new InterfaceManager(this, currentAPI);
     g_uiManager->setWindow(win32Window);
-    
+
     RECT rect;
     GetClientRect(win32Window->getHWND(), &rect);
     int windowWidth = rect.right - rect.left;
     int windowHeight = rect.bottom - rect.top;
-    
-    if (windowWidth <= 0 || windowHeight <= 0) {
-        windowWidth = 1280;
-        windowHeight = 720;
-    }
-    
+
+    if (windowWidth <= 0) windowWidth = 1280;
+    if (windowHeight <= 0) windowHeight = 720;
+
     g_uiManager->initializeRender(win32Window->getHWND(), windowWidth, windowHeight);
-    
+
     if (currentAPI == RenderAPI::VULKAN && vulkan) {
         g_uiManager->setVulkan(vulkan);
     }
-    
+
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
 
     Input input(app, g_uiManager);
+
     POINT lastMousePos = {0, 0};
     GetCursorPos(&lastMousePos);
 
@@ -209,15 +216,22 @@ void Core::GameLoop() {
 
     while (!win32Window->shouldClose()) {
         static float lastFrame = 0.0f;
-        float currentFrame = GetTickCount() / 1000.0f;
+        float currentFrame = (float)GetTickCount() / 1000.0f;
         float deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
+        if (deltaTime > 0.033f) deltaTime = 0.033f;
+
         fpsTimer += deltaTime;
         frameCount++;
+
         if (fpsTimer >= 1.0f) {
             char title[256];
-            sprintf_s(title, "FPS: %d", frameCount);
+            if (currentAPI == RenderAPI::VULKAN)
+                sprintf_s(title, "Vulkan 3D Viewer | FPS: %d", frameCount);
+            else
+                sprintf_s(title, "OpenGL 3D Viewer | FPS: %d", frameCount);
+
             SetWindowTextA(win32Window->getHWND(), title);
             frameCount = 0;
             fpsTimer = 0.0f;
@@ -237,34 +251,31 @@ void Core::GameLoop() {
                 input.processInputWin32(deltaTime, win32Window->getHWND());
             }
 
-            if (currentAPI == RenderAPI::OPENGL) {
-                glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            }
-
             RECT clientRect;
             GetClientRect(win32Window->getHWND(), &clientRect);
             int clientWidth = clientRect.right - clientRect.left;
             int clientHeight = clientRect.bottom - clientRect.top;
+
             if (clientWidth <= 0) clientWidth = 1280;
             if (clientHeight <= 0) clientHeight = 720;
 
-            if (currentAPI == RenderAPI::VULKAN && vulkan) {
-                vulkan->setup2D(clientWidth, clientHeight);
-                vulkan->beginFrame();
-                
-                if (modelLoaded) {
-                    renderModel(app.getCamera());
-                } else {
-                    vulkan->drawTriangle();
-                }
-                g_uiManager->renderStatic();
-                
-                vulkan->drawQuad(800, 300, 1100, 500, 1.0f, 0.0f, 0.0f);
-                vulkan->endFrame();
-                vulkan->present();
-            } 
+            // ====================== VULKAN RENDER ======================
+if (currentAPI == RenderAPI::VULKAN && vulkan) {
+    vulkan->setup2D(clientWidth, clientHeight);
+    vulkan->beginFrame();
+
+    vulkan->drawRotatingCube();   // Куб рисуется
+
+    // g_uiManager->renderStatic();   // UI закомментирован
+
+    vulkan->endFrame();
+    vulkan->present();
+}
+            // ====================== OPENGL RENDER ======================
             else if (currentAPI == RenderAPI::OPENGL) {
+                glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
                 if (modelLoaded && g_uiManager) {
                     Panel* view3D = g_uiManager->getPanelManager()->get3D();
                     if (view3D && view3D->visible) {
@@ -286,11 +297,10 @@ void Core::GameLoop() {
         }
 
         lastMousePos = currentMousePos;
-        Sleep(0);
+        Sleep(1);   // небольшая задержка, чтобы не жрать 100% CPU
     }
 
     delete g_uiManager;
     g_uiManager = nullptr;
-
     cleanupRender();
 }

@@ -4,25 +4,27 @@
 #include <iostream>
 
 RenderUI::RenderUI(RenderAPIType api) 
-    : currentAPI(api), isOpenGL(api == RenderAPIType::OPENGL), glImpl(nullptr), vkImpl(nullptr)
+    : currentAPI(api), 
+      isOpenGL(api == RenderAPIType::OPENGL), 
+      glImpl(nullptr), 
+      vkImpl(nullptr)
 {
     if (isOpenGL) {
         glImpl = new RenderUI_OpenGL();
         std::cout << "RenderUI: OpenGL mode" << std::endl;
     } else {
-        // vkImpl будет установлен через setVulkan()
         std::cout << "RenderUI: Vulkan mode (waiting for Vulkan instance)" << std::endl;
     }
 }
 
 RenderUI::~RenderUI() {
     delete glImpl;
-    // vkImpl не удаляем - он принадлежит Core
+    // vkImpl не удаляем — он принадлежит Core
 }
 
 bool RenderUI::initialize(HWND hwnd, int width, int height) {
     if (isOpenGL && glImpl) return true;
-    if (vkImpl) return true;  // уже установлен
+    if (vkImpl) return true;
     return false;
 }
 
@@ -65,6 +67,8 @@ void RenderUI::restoreMatrices() {
 }
 
 void RenderUI::drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
+    // printf("[RenderUI] drawQuad: (%.0f,%.0f)-(%.0f,%.0f) rgb(%.2f,%.2f,%.2f)\n", x1, y1, x2, y2, r, g, b);
+
     if (glImpl) glImpl->drawQuad(x1, y1, x2, y2, r, g, b);
     if (vkImpl) vkImpl->drawQuad(x1, y1, x2, y2, r, g, b);
 }
