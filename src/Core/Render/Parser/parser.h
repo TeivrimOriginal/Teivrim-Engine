@@ -33,9 +33,6 @@ private:
     void processNode(void* node, void* scene);
     StandardMesh processMesh(void* mesh, void* scene);
     void createVertexBuffer(StandardMesh& mesh);
-    std::vector<Texture> loadMaterialTextures(void* mat, unsigned int texType, std::string typeName, void* scene);
-    unsigned int textureFromFile(const char* path, const std::string& directory);
-    unsigned int textureFromEmbedded(const void* embeddedTexture);
     
 public:
     ModelParser();

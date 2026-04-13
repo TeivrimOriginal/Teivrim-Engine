@@ -111,7 +111,6 @@ void Core::renderModel(Camera& camera) {
         }
         rendererw.renderModel(modelParser, shaderProgram, camera);
     }
-    // Vulkan 3D рисуется напрямую в GameLoop (drawRotatingCube)
 }
 
 void Core::cleanupRender() {
@@ -149,6 +148,10 @@ bool Core::loadModelFromPath(const std::string& path) {
     modelLoaded = true;
     needsOptimize = true;
 
+    if (currentAPI == RenderAPI::VULKAN && vulkan) {
+        vulkan->loadModel(modelParser.getMeshes());
+    }
+
     std::cout << "Модель успешно загружена: " << path << std::endl;
     return true;
 }
@@ -172,6 +175,7 @@ bool Core::openFileDialogAndLoadModel(HWND hwnd) {
     }
     return false;
 }
+
 void Core::GameLoop() {
     Application app;
     if (!app.createApplication()) {
@@ -244,12 +248,8 @@ void Core::GameLoop() {
         ScreenToClient(win32Window->getHWND(), &currentMousePos);
 
         if (!isStart) {
-            if (g_uiManager && g_uiManager->isBlockingRender()) {
-                input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
-            } else {
-                input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
-                input.processInputWin32(deltaTime, win32Window->getHWND());
-            }
+            input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
+            input.processInputWin32(deltaTime, win32Window->getHWND());
 
             RECT clientRect;
             GetClientRect(win32Window->getHWND(), &clientRect);
@@ -259,19 +259,19 @@ void Core::GameLoop() {
             if (clientWidth <= 0) clientWidth = 1280;
             if (clientHeight <= 0) clientHeight = 720;
 
-            // ====================== VULKAN RENDER ======================
-if (currentAPI == RenderAPI::VULKAN && vulkan) {
-    vulkan->setup2D(clientWidth, clientHeight);
-    vulkan->beginFrame();
-
-    vulkan->drawRotatingCube();   // Куб рисуется
-
-    // g_uiManager->renderStatic();   // UI закомментирован
-
-    vulkan->endFrame();
-    vulkan->present();
-}
-            // ====================== OPENGL RENDER ======================
+            if (currentAPI == RenderAPI::VULKAN && vulkan) {
+                vulkan->beginFrame();
+                
+                if (modelLoaded) {
+                    vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
+                    vulkan->setProjectionMatrix(glm::perspective(glm::radians(45.0f), (float)clientWidth/clientHeight, 0.1f, 1000.0f));
+                    vulkan->renderModel();
+                }
+                
+                g_uiManager->renderStatic();
+                vulkan->endFrame();
+                vulkan->present();
+            }
             else if (currentAPI == RenderAPI::OPENGL) {
                 glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -297,7 +297,7 @@ if (currentAPI == RenderAPI::VULKAN && vulkan) {
         }
 
         lastMousePos = currentMousePos;
-        Sleep(1);   // небольшая задержка, чтобы не жрать 100% CPU
+        Sleep(1);
     }
 
     delete g_uiManager;

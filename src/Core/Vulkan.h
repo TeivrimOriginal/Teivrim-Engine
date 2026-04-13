@@ -1,117 +1,112 @@
-#pragma once
+#ifndef VULKAN_H
+#define VULKAN_H
+
 #include <windows.h>
 #include <vulkan/vulkan.h>
-#include <string>
 #include <vector>
-
-struct Vertex2D {
-    float x, y;
-    float r, g, b, a;
-};
-
-struct Vertex3D {
-    float x, y, z;
-    float r, g, b, a;
-};
+#include <string>
+#include <glm/glm.hpp>
+#include "Render/Parser/parser.h"
 
 class Vulkan {
 public:
     Vulkan(HWND hwnd, int width, int height);
     ~Vulkan();
-
-    void setup2D(int width, int height);
+    
+    bool isInitialized() const { return initialized; }
+    
     void beginFrame();
     void endFrame();
     void present();
-
-    // Методы для UI
+    
+    void setup2D(int width, int height);
+    
+    // UI методы
     void drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
-    void drawQuad(int x1, int y1, int x2, int y2, float r, float g, float b);
     void drawText(int x, int y, const std::string& text, float r, float g, float b);
     void drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b);
-
-    // 3D
-    void drawRotatingCube();
-
-    bool isInitialized() const { return initialized; }
+    
+    // 3D методы для модели
+    void loadModel(const std::vector<StandardMesh>& meshes);
+    void renderModel();
+    void setViewMatrix(const glm::mat4& view);
+    void setProjectionMatrix(const glm::mat4& proj);
+    void setModelMatrix(const glm::mat4& model);
+    
+    VkDevice getDevice() const { return device; }
+    VkPhysicalDevice getPhysicalDevice() const { return physDevice; }
+    VkCommandPool getCommandPool() const { return commandPool; }
+    VkQueue getGraphicsQueue() const { return graphicsQueue; }
 
 private:
-    HWND hWnd;
-    int windowWidth = 0, windowHeight = 0;
-    uint32_t currentImageIndex = 0;
-    bool initialized = false;
-    bool recording = false;
-    float rotationAngle = 0.0f;
-
-    VkInstance instance = VK_NULL_HANDLE;
-    VkPhysicalDevice physDevice = VK_NULL_HANDLE;
-    VkDevice device = VK_NULL_HANDLE;
-    VkQueue graphicsQueue = VK_NULL_HANDLE;
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
-    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    struct VertexGPU { glm::vec3 pos; glm::vec3 color; glm::vec2 texCoord; };
+    struct UIVertex { glm::vec2 pos; glm::vec3 color; };
+    struct UniformBufferObject { glm::mat4 model; glm::mat4 view; glm::mat4 proj; };
+    struct UIQuad { float x1, y1, x2, y2; glm::vec3 color; };
+    
+    HWND hwnd;
+    int width, height;
+    bool initialized;
+    float modelAngle;
+    glm::mat4 viewMat, projMat, modelMat;
+    
+    std::vector<UIQuad> uiQuads;
+    std::vector<std::tuple<int, int, std::string, glm::vec3>> uiTexts;
+    
+    // Модель
+    std::vector<VertexGPU> modelVertices;
+    std::vector<uint32_t> modelIndices;
+    bool modelLoaded;
+    
+    // Vulkan объекты
+    VkInstance instance;
+    VkPhysicalDevice physDevice;
+    VkDevice device;
+    VkQueue graphicsQueue;
+    VkSurfaceKHR surface;
+    VkSwapchainKHR swapchain;
     VkFormat swapchainFormat;
     VkExtent2D swapchainExtent;
     std::vector<VkImage> swapchainImages;
     std::vector<VkImageView> swapchainImageViews;
     std::vector<VkFramebuffer> framebuffers;
-
-    VkCommandPool commandPool = VK_NULL_HANDLE;
-    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
-
-    VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
-    VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
-    VkFence fence = VK_NULL_HANDLE;
-    VkRenderPass renderPass = VK_NULL_HANDLE;
-
-    // 2D Pipeline (для UI)
-    VkPipelineLayout pipelineLayout2D = VK_NULL_HANDLE;
-    VkPipeline pipeline2D = VK_NULL_HANDLE;
-    VkShaderModule vertModule2D = VK_NULL_HANDLE;
-    VkShaderModule fragModule2D = VK_NULL_HANDLE;
-    VkBuffer vertexBuffer2D = VK_NULL_HANDLE;
-    VkDeviceMemory vertexBufferMemory2D = VK_NULL_HANDLE;
-
-    // 3D Pipeline
-    VkPipelineLayout pipelineLayout3D = VK_NULL_HANDLE;
-    VkPipeline pipeline3D = VK_NULL_HANDLE;
-    VkShaderModule vertModule3D = VK_NULL_HANDLE;
-    VkShaderModule fragModule3D = VK_NULL_HANDLE;
-
-    VkBuffer vertexBuffer3D = VK_NULL_HANDLE;
-    VkDeviceMemory vertexBufferMemory3D = VK_NULL_HANDLE;
-    VkBuffer indexBuffer3D = VK_NULL_HANDLE;
-    VkDeviceMemory indexBufferMemory3D = VK_NULL_HANDLE;
-
-    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
-    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
-    VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-    VkBuffer uniformBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory uniformBufferMemory = VK_NULL_HANDLE;
-    void* uniformBufferMapped = nullptr;
-
-    void createInstance();
-    void createSurface();
-    void pickPhysicalDevice();
-    void createLogicalDevice();
+    VkRenderPass renderPass;
+    VkPipelineLayout pipelineLayout3D;
+    VkPipelineLayout pipelineLayoutUI;
+    VkPipeline pipeline3D;
+    VkPipeline pipelineUI;
+    VkCommandPool commandPool;
+    VkCommandBuffer cmdBuffer;
+    VkSemaphore imageAvailableSem, renderFinishedSem;
+    
+    // Буферы для модели
+    VkBuffer vertexBuffer, indexBuffer;
+    VkDeviceMemory vertexBufferMemory, indexBufferMemory;
+    VkBuffer uniformBuffer;
+    VkDeviceMemory uniformBufferMemory;
+    VkDescriptorSetLayout descLayout;
+    VkDescriptorPool descPool;
+    VkDescriptorSet descSet;
+    
+    // Буферы для UI
+    VkBuffer uiVertexBuffer;
+    VkDeviceMemory uiVertexBufferMemory;
+    
+    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+    VkShaderModule createShaderModule(const std::string& filename);
     void createSwapchain();
-    void createImageViews();
     void createRenderPass();
-    void createPipeline2D();
-    void createPipeline3D();
     void createFramebuffers();
     void createCommandPool();
-    void createSemaphores();
-    void createVertexBuffer2D();
-    void createCubeResources();
+    void createSyncObjects();
+    void createModelBuffers();
     void createUniformBuffer();
     void createDescriptorSet();
+    void createPipelines();
+    void createUIBuffers();
     void updateUniformBuffer();
-
+    void renderUI();
     void recreateSwapchain();
-    void cleanupSwapchain();
-    void updateVertexBuffer2D(const void* data, size_t size);
-
-    VkShaderModule createShaderModule(const std::string& filename);
-    std::vector<char> readFile(const std::string& filename);
-    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 };
+
+#endif
