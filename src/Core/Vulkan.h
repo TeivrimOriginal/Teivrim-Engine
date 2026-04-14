@@ -1,3 +1,4 @@
+// Vulkan.h
 #ifndef VULKAN_H
 #define VULKAN_H
 
@@ -7,6 +8,15 @@
 #include <string>
 #include <glm/glm.hpp>
 #include "Render/Parser/parser.h"
+
+struct VulkanTexture {
+    VkImage image;
+    VkDeviceMemory memory;
+    VkImageView view;
+    VkSampler sampler;
+    int width, height;
+    bool valid;
+};
 
 class Vulkan {
 public:
@@ -54,6 +64,9 @@ private:
     
     std::vector<VertexGPU> modelVertices;
     std::vector<uint32_t> modelIndices;
+    std::vector<VulkanTexture> meshTextures;
+    std::vector<size_t> meshVertexOffsets;
+    std::vector<size_t> meshIndexOffsets;
     bool modelLoaded;
     
     VkInstance instance;
@@ -85,7 +98,7 @@ private:
     VkDeviceMemory uniformBufferMemory;
     VkDescriptorSetLayout descLayout;
     VkDescriptorPool descPool;
-    VkDescriptorSet descSet;
+    std::vector<VkDescriptorSet> descSets;
     
     VkBuffer uiVertexBuffer;
     VkDeviceMemory uiVertexBufferMemory;
@@ -99,12 +112,18 @@ private:
     void createSyncObjects();
     void createModelBuffers();
     void createUniformBuffer();
-    void createDescriptorSet();
+    void createDescriptorSetLayout();
+    void createDescriptorPoolAndSets();
     void createPipelines();
     void createUIBuffers();
     void updateUniformBuffer();
     void renderUI();
     void recreateSwapchain();
+    void cleanupTextures();
+    
+    VulkanTexture createTextureFromData(unsigned char* data, int width, int height, int channels);
+    VulkanTexture createWhiteTexture();
+    void loadEmbeddedTextures(const ModelParser& parser);
 };
 
 #endif
