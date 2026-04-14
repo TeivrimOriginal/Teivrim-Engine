@@ -188,7 +188,6 @@ void Vulkan::createSwapchain() {
     VkSurfaceFormatKHR format{VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
     swapchainFormat = format.format;
     
-    // Получаем реальные размеры окна
     RECT rect;
     GetClientRect(hwnd, &rect);
     int clientWidth = rect.right - rect.left;
@@ -196,7 +195,6 @@ void Vulkan::createSwapchain() {
     if (clientWidth <= 0) clientWidth = width;
     if (clientHeight <= 0) clientHeight = height;
     
-    // Используем currentExtent если он валидный
     if (caps.currentExtent.width != 0 && caps.currentExtent.width != 0xFFFFFFFF) {
         swapchainExtent = caps.currentExtent;
     } else {
@@ -479,7 +477,7 @@ void Vulkan::createPipelines() {
     uiVi.pVertexAttributeDescriptions = uiAttrDesc.data();
     
     VkPipelineInputAssemblyStateCreateInfo uiIa{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-    uiIa.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+    uiIa.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     
     VkPipelineColorBlendAttachmentState uiBlendAtt{};
     uiBlendAtt.blendEnable = VK_TRUE;
@@ -566,7 +564,7 @@ void Vulkan::drawQuad(float x1, float y1, float x2, float y2, float r, float g, 
 }
 
 void Vulkan::drawText(int x, int y, const std::string& text, float r, float g, float b) {
-    // TODO: реализовать рендер текста через шрифтовую атлас-текстуру
+    // TODO: реализовать рендер текста
 }
 
 void Vulkan::drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b) {
@@ -598,7 +596,9 @@ void Vulkan::loadModel(const std::vector<StandardMesh>& meshes) {
 }
 
 void Vulkan::renderModel() {
-    if (!modelLoaded) return;
+    if (!modelLoaded || modelVertices.empty()) {
+        return;
+    }
     
     updateUniformBuffer();
     
@@ -617,6 +617,8 @@ void Vulkan::setModelMatrix(const glm::mat4& model) { modelMat = model; }
 void Vulkan::renderUI() {
     if (uiQuads.empty()) return;
     
+    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineUI);
+    
     std::vector<UIVertex> vertices;
     for (const auto& quad : uiQuads) {
         float x1 = (quad.x1 / width) * 2.0f - 1.0f;
@@ -627,7 +629,9 @@ void Vulkan::renderUI() {
         vertices.push_back({{x1, y1}, quad.color});
         vertices.push_back({{x2, y1}, quad.color});
         vertices.push_back({{x1, y2}, quad.color});
+        vertices.push_back({{x2, y1}, quad.color});
         vertices.push_back({{x2, y2}, quad.color});
+        vertices.push_back({{x1, y2}, quad.color});
     }
     
     if (!vertices.empty()) {
@@ -636,7 +640,6 @@ void Vulkan::renderUI() {
         memcpy(data, vertices.data(), vertices.size() * sizeof(UIVertex));
         vkUnmapMemory(device, uiVertexBufferMemory);
         
-        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineUI);
         VkDeviceSize offsets = 0;
         vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &uiVertexBuffer, &offsets);
         vkCmdDraw(cmdBuffer, vertices.size(), 1, 0, 0);
@@ -659,36 +662,36 @@ void Vulkan::beginFrame() {
     }
     
     vkResetCommandBuffer(cmdBuffer, 0);
+    
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-    
-    // Получаем правильные размеры окна для renderArea
-    RECT rect;
-    GetClientRect(hwnd, &rect);
-    int clientWidth = rect.right - rect.left;
-    int clientHeight = rect.bottom - rect.top;
-    if (clientWidth <= 0) clientWidth = swapchainExtent.width;
-    if (clientHeight <= 0) clientHeight = swapchainExtent.height;
+    if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS) {
+        std::cerr << "Failed to begin command buffer!" << std::endl;
+        return;
+    }
     
     VkRenderPassBeginInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp.renderPass = renderPass;
     rp.framebuffer = framebuffers[currentImageIndex];
     rp.renderArea.offset = {0, 0};
-    rp.renderArea.extent = {(uint32_t)clientWidth, (uint32_t)clientHeight};
+    rp.renderArea.extent = swapchainExtent;
     VkClearValue clear = {{{0.1f, 0.1f, 0.2f, 1.0f}}};
     rp.clearValueCount = 1;
     rp.pClearValues = &clear;
+    
     vkCmdBeginRenderPass(cmdBuffer, &rp, VK_SUBPASS_CONTENTS_INLINE);
 }
 
 void Vulkan::endFrame() {
     renderUI();
+    
     vkCmdEndRenderPass(cmdBuffer);
-    vkEndCommandBuffer(cmdBuffer);
-}
-
-void Vulkan::present() {
+    
+    if (vkEndCommandBuffer(cmdBuffer) != VK_SUCCESS) {
+        std::cerr << "Failed to end command buffer!" << std::endl;
+        return;
+    }
+    
     VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     submitInfo.waitSemaphoreCount = 1;
@@ -698,14 +701,21 @@ void Vulkan::present() {
     submitInfo.pCommandBuffers = &cmdBuffer;
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
-    vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence);
     
+    if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence) != VK_SUCCESS) {
+        std::cerr << "Failed to submit queue!" << std::endl;
+        return;
+    }
+}
+
+void Vulkan::present() {
     VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores = &renderFinishedSemaphore;
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &swapchain;
     presentInfo.pImageIndices = &currentImageIndex;
+    
     vkQueuePresentKHR(graphicsQueue, &presentInfo);
 }
 
