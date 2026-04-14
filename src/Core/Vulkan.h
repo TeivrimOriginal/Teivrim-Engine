@@ -46,7 +46,6 @@ private:
     int width, height;
     bool initialized;
     float modelAngle;
-    uint32_t currentFrame;
     uint32_t currentImageIndex;
     glm::mat4 viewMat, projMat, modelMat;
     
@@ -76,8 +75,8 @@ private:
     VkCommandPool commandPool;
     VkCommandBuffer cmdBuffer;
     
-    VkSemaphore imageAvailableSemaphores[2];
-    VkSemaphore renderFinishedSemaphores[2];
+    VkSemaphore imageAvailableSemaphore;
+    VkSemaphore renderFinishedSemaphore;
     VkFence inFlightFence;
     
     VkBuffer vertexBuffer, indexBuffer;
