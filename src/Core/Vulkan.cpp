@@ -905,7 +905,6 @@ void Vulkan::renderModel() {
 void Vulkan::setViewMatrix(const glm::mat4& view) { viewMat = view; }
 void Vulkan::setProjectionMatrix(const glm::mat4& proj) { projMat = proj; projMat[1][1] *= -1; }
 void Vulkan::setModelMatrix(const glm::mat4& model) { modelMat = model; }
-
 void Vulkan::renderUI() {
     if (uiQuads.empty()) return;
     
@@ -913,16 +912,23 @@ void Vulkan::renderUI() {
     
     std::vector<UIVertex> vertices;
     for (const auto& quad : uiQuads) {
+        // Преобразование координат: Y инвертирован для Vulkan NDC
         float x1 = (quad.x1 / width) * 2.0f - 1.0f;
-        float y1 = 1.0f - (quad.y1 / height) * 2.0f;
+        float y1 = (quad.y1 / height) * 2.0f - 1.0f;
         float x2 = (quad.x2 / width) * 2.0f - 1.0f;
-        float y2 = 1.0f - (quad.y2 / height) * 2.0f;
+        float y2 = (quad.y2 / height) * 2.0f - 1.0f;
         
+        // Верхний левый
         vertices.push_back({{x1, y1}, quad.color});
+        // Верхний правый
         vertices.push_back({{x2, y1}, quad.color});
+        // Нижний левый
         vertices.push_back({{x1, y2}, quad.color});
+        // Верхний правый
         vertices.push_back({{x2, y1}, quad.color});
+        // Нижний правый
         vertices.push_back({{x2, y2}, quad.color});
+        // Нижний левый
         vertices.push_back({{x1, y2}, quad.color});
     }
     
