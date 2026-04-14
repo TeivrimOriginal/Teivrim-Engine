@@ -42,6 +42,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             break;
         }
+        case WM_DESTROY: {
+            std::cout << "[CORE] Window destroyed" << std::endl;
+            PostQuitMessage(0);
+            break;
+        }
+        case WM_CLOSE: {
+            std::cout << "[CORE] Window close requested" << std::endl;
+            DestroyWindow(hwnd);
+            break;
+        }
     }
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
@@ -120,8 +130,12 @@ void Core::cleanupRender() {
             shaderProgram = 0;
         }
     } else {
-        delete vulkan;
-        vulkan = nullptr;
+        if (vulkan) {
+            // Ждём завершения всех операций Vulkan перед удалением
+            vkDeviceWaitIdle(vulkan->getDevice());
+            delete vulkan;
+            vulkan = nullptr;
+        }
     }
 }
 
@@ -170,7 +184,8 @@ bool Core::openFileDialogAndLoadModel(HWND hwnd) {
     ofn.lpstrTitle = "Выберите 3D модель";
 
     if (GetOpenFileNameA(&ofn)) {
-        return loadModelFromPath(ofn.lpstrFile);
+        bool result = loadModelFromPath(ofn.lpstrFile);
+        return result;
     }
     return false;
 }
@@ -210,31 +225,40 @@ void Core::GameLoop() {
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
 
     Input input(app, g_uiManager);
+    input.EnableDebug(false);  // Отключаем отладку для чистоты
 
     POINT lastMousePos = {0, 0};
     GetCursorPos(&lastMousePos);
 
     int frameCount = 0;
     float fpsTimer = 0.0f;
+    
+    LARGE_INTEGER frequency, lastTime, currentTime;
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&lastTime);
+
+    std::cout << "[CORE] GameLoop started" << std::endl;
+    std::cout << "[CORE] Controls: RMB to capture mouse, WASD to move, Shift to sprint, R to reset camera" << std::endl;
 
     while (!win32Window->shouldClose()) {
-        static float lastFrame = 0.0f;
-        float currentFrame = (float)GetTickCount() / 1000.0f;
-        float deltaTime = currentFrame - lastFrame;
-        lastFrame = currentFrame;
-
+        QueryPerformanceCounter(&currentTime);
+        float deltaTime = (float)(currentTime.QuadPart - lastTime.QuadPart) / frequency.QuadPart;
         if (deltaTime > 0.033f) deltaTime = 0.033f;
+        lastTime = currentTime;
 
         fpsTimer += deltaTime;
         frameCount++;
-
         if (fpsTimer >= 1.0f) {
             char title[256];
-            if (currentAPI == RenderAPI::VULKAN)
-                sprintf_s(title, "Vulkan 3D Viewer | FPS: %d", frameCount);
-            else
-                sprintf_s(title, "OpenGL 3D Viewer | FPS: %d", frameCount);
-
+            if (currentAPI == RenderAPI::VULKAN && vulkan) {
+                const auto& camPos = app.getCamera().GetPosition();
+                sprintf_s(title, "Vulkan 3D Viewer | FPS: %d | Cam: %.1f, %.1f, %.1f", 
+                         frameCount, camPos.x, camPos.y, camPos.z);
+            } else {
+                const auto& camPos = app.getCamera().GetPosition();
+                sprintf_s(title, "OpenGL 3D Viewer | FPS: %d | Cam: %.1f, %.1f, %.1f", 
+                         frameCount, camPos.x, camPos.y, camPos.z);
+            }
             SetWindowTextA(win32Window->getHWND(), title);
             frameCount = 0;
             fpsTimer = 0.0f;
@@ -249,6 +273,7 @@ void Core::GameLoop() {
         if (!isStart) {
             input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
             input.processInputWin32(deltaTime, win32Window->getHWND());
+            input.Update(deltaTime);
 
             RECT clientRect;
             GetClientRect(win32Window->getHWND(), &clientRect);
@@ -258,21 +283,21 @@ void Core::GameLoop() {
             if (clientWidth <= 0) clientWidth = 1280;
             if (clientHeight <= 0) clientHeight = 720;
 
-if (currentAPI == RenderAPI::VULKAN && vulkan) {
-    vulkan->beginFrame();
-    
-    if (modelLoaded) {
-        vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
-        vulkan->setProjectionMatrix(glm::perspective(glm::radians(45.0f), (float)clientWidth/clientHeight, 0.1f, 1000.0f));
-        vulkan->renderModel();
-    }
-    
-    // UI рендерится через InterfaceManager
-    g_uiManager->renderStatic();
-    
-    vulkan->endFrame();
-    vulkan->present();
-}
+            if (currentAPI == RenderAPI::VULKAN && vulkan) {
+                vulkan->beginFrame();
+                
+                if (modelLoaded) {
+                    vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
+                    vulkan->setProjectionMatrix(glm::perspective(glm::radians(app.getCamera().GetZoom()), 
+                                                (float)clientWidth/clientHeight, 0.1f, 1000.0f));
+                    vulkan->renderModel();
+                }
+                
+                g_uiManager->renderStatic();
+                
+                vulkan->endFrame();
+                vulkan->present();
+            }
             else if (currentAPI == RenderAPI::OPENGL) {
                 glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -298,10 +323,18 @@ if (currentAPI == RenderAPI::VULKAN && vulkan) {
         }
 
         lastMousePos = currentMousePos;
-        Sleep(1);
+        
+        if (deltaTime < 0.016f) {
+            Sleep(1);
+        }
     }
 
+    std::cout << "[CORE] GameLoop exiting" << std::endl;
+    
+    // Очистка
     delete g_uiManager;
     g_uiManager = nullptr;
     cleanupRender();
+    
+    std::cout << "[CORE] Cleanup complete" << std::endl;
 }
