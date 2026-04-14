@@ -40,6 +40,7 @@ public:
     void setModelMatrix(const glm::mat4& model);
     
     VkDevice getDevice() const { return device; }
+    bool isWindowValid() const { return hwnd && IsWindow(hwnd); }
 
 private:
     struct VertexGPU { glm::vec3 pos; glm::vec3 color; glm::vec2 texCoord; };
@@ -96,7 +97,7 @@ private:
     VkDescriptorPool descPool;
     std::vector<VkDescriptorSet> descSets;
     
-    // Per-frame resources (AAA style)
+    // Per-frame resources
     FrameResources frames[MAX_FRAMES_IN_FLIGHT];
     
     // Shared buffers

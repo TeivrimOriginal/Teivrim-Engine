@@ -122,8 +122,8 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     createRenderPass();
     createFramebuffers();
     createCommandPool();
-    createUniformBuffers();      // Creates MAX_FRAMES_IN_FLIGHT uniform buffers
-    createSyncObjects();         // Creates per-frame semaphores and fences
+    createUniformBuffers();
+    createSyncObjects();
     createDescriptorSetLayout();
     createPipelines();
     createUIBuffers();
@@ -140,7 +140,7 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
         frames[i].cmdBuffer = cmdBuffers[i];
     }
     
-    viewMat = glm::lookAt(glm::vec3(0.0f, 50.0f, 200.0f), glm::vec3(0, 50, 0), glm::vec3(0, 1, 0));
+    viewMat = glm::lookAt(glm::vec3(0.0f, 50.0f, 150.0f), glm::vec3(0, 50, 0), glm::vec3(0, 1, 0));
     projMat = glm::perspective(glm::radians(45.0f), (float)width/height, 0.1f, 1000.0f);
     projMat[1][1] *= -1;
     modelMat = glm::mat4(1.0f);
@@ -502,8 +502,7 @@ void Vulkan::createDescriptorPoolAndSets() {
         VulkanTexture& tex = (i < meshTextures.size() && meshTextures[i].valid) ? meshTextures[i] : meshTextures[0];
         VkDescriptorImageInfo imageInfo{tex.sampler, tex.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         
-        // Note: For simplicity, we bind uniform buffer for frame 0.
-        // In a full AAA implementation, you'd have per-frame descriptor sets.
+        // Use uniform buffer for current frame
         VkDescriptorBufferInfo bufInfo{frames[0].uniformBuffer, 0, sizeof(UniformBufferObject)};
         
         std::array<VkWriteDescriptorSet, 2> descriptorWrites = {};
@@ -867,6 +866,10 @@ void Vulkan::renderUI() {
 }
 
 void Vulkan::beginFrame() {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+    
     vkWaitForFences(device, 1, &frames[currentFrame].inFlightFence, VK_TRUE, UINT64_MAX);
     vkResetFences(device, 1, &frames[currentFrame].inFlightFence);
     
@@ -897,6 +900,10 @@ void Vulkan::beginFrame() {
 }
 
 void Vulkan::endFrame() {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+    
     updateUniformBuffer(currentFrame);
     renderModel();
     renderUI();
@@ -918,6 +925,10 @@ void Vulkan::endFrame() {
 }
 
 void Vulkan::present() {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+    
     VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores = &frames[currentFrame].renderFinishedSemaphore;
@@ -931,18 +942,29 @@ void Vulkan::present() {
 }
 
 void Vulkan::recreateSwapchain() {
+    if (!hwnd || !IsWindow(hwnd)) {
+        std::cout << "[Vulkan] Window destroyed, skipping swapchain recreation" << std::endl;
+        return;
+    }
+    
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+    int newWidth = rect.right - rect.left;
+    int newHeight = rect.bottom - rect.top;
+    
+    if (newWidth <= 0 || newHeight <= 0) {
+        std::cout << "[Vulkan] Invalid window size (" << newWidth << "x" << newHeight << "), skipping swapchain recreation" << std::endl;
+        return;
+    }
+    
     vkDeviceWaitIdle(device);
     
     for (auto fb : framebuffers) vkDestroyFramebuffer(device, fb, nullptr);
     for (auto iv : swapchainImageViews) vkDestroyImageView(device, iv, nullptr);
     vkDestroySwapchainKHR(device, swapchain, nullptr);
     
-    RECT rect;
-    GetClientRect(hwnd, &rect);
-    width = rect.right - rect.left;
-    height = rect.bottom - rect.top;
-    if (width <= 0) width = 1280;
-    if (height <= 0) height = 720;
+    width = newWidth;
+    height = newHeight;
     
     createSwapchain();
     createFramebuffers();
