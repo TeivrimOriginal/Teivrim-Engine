@@ -51,10 +51,27 @@ public:
     bool isWindowValid() const { return hwnd && IsWindow(hwnd); }
 
 private:
-    struct VertexGPU { glm::vec3 pos; glm::vec3 color; glm::vec2 texCoord; };
-    struct UIVertex { glm::vec2 pos; glm::vec3 color; };
-    struct UniformBufferObject { glm::mat4 model; glm::mat4 view; glm::mat4 proj; };
-    struct UIQuad { float x1, y1, x2, y2; glm::vec3 color; };
+    struct VertexGPU { 
+        glm::vec3 pos; 
+        glm::vec3 color; 
+        glm::vec2 texCoord; 
+    };
+    
+    struct UIVertex { 
+        glm::vec2 pos; 
+        glm::vec3 color; 
+    };
+    
+    struct UniformBufferObject { 
+        glm::mat4 model; 
+        glm::mat4 view; 
+        glm::mat4 proj; 
+    };
+    
+    struct UIQuad { 
+        float x1, y1, x2, y2; 
+        glm::vec3 color; 
+    };
     
     struct FrameResources {
         VkCommandBuffer cmdBuffer;
@@ -67,21 +84,31 @@ private:
     
     static const int MAX_FRAMES_IN_FLIGHT = 2;
     
+    // Window and state
     HWND hwnd;
     int width, height;
     bool initialized;
     int currentFrame;
     uint32_t currentImageIndex;
     
+    // Camera matrices
     glm::mat4 viewMat, projMat, modelMat;
     
+    // UI data
     std::vector<UIQuad> uiQuads;
+    
+    // Model data
     std::vector<VertexGPU> modelVertices;
     std::vector<uint32_t> modelIndices;
     std::vector<VulkanTexture> meshTextures;
     std::vector<size_t> meshVertexOffsets;
     std::vector<size_t> meshIndexOffsets;
     bool modelLoaded;
+    
+    // Depth buffer
+    VkImage depthImage;
+    VkDeviceMemory depthImageMemory;
+    VkImageView depthImageView;
     
     // Vulkan objects (shared)
     VkInstance instance;
@@ -115,7 +142,7 @@ private:
     VkBuffer uiVertexBuffer;
     VkDeviceMemory uiVertexBufferMemory;
     
-    // Methods
+    // Private methods
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     VkShaderModule createShaderModule(const std::string& filename);
     void createSwapchain();

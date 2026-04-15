@@ -44,6 +44,7 @@ bool Vulkan::initializeFont() {
 
 Vulkan::Vulkan(HWND hwnd, int width, int height) 
     : hwnd(hwnd), width(width), height(height), initialized(false), currentFrame(0), currentImageIndex(0), modelLoaded(false),
+      depthImage(VK_NULL_HANDLE), depthImageMemory(VK_NULL_HANDLE), depthImageView(VK_NULL_HANDLE),
       instance(VK_NULL_HANDLE), physDevice(VK_NULL_HANDLE), device(VK_NULL_HANDLE),
       graphicsQueue(VK_NULL_HANDLE), surface(VK_NULL_HANDLE), swapchain(VK_NULL_HANDLE),
       renderPass(VK_NULL_HANDLE), pipelineLayout3D(VK_NULL_HANDLE), pipelineLayoutUI(VK_NULL_HANDLE),
@@ -151,7 +152,7 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     modelMat = glm::mat4(1.0f);
     
     initialized = true;
-    std::cout << "Vulkan initialized successfully" << std::endl;
+    std::cout << "Vulkan initialized successfully with depth buffer" << std::endl;
 }
 
 Vulkan::~Vulkan() {
@@ -174,6 +175,11 @@ Vulkan::~Vulkan() {
         vkFreeMemory(device, indexBufferMemory, nullptr);
         vkDestroyBuffer(device, uiVertexBuffer, nullptr);
         vkFreeMemory(device, uiVertexBufferMemory, nullptr);
+        
+        // Destroy depth resources
+        vkDestroyImageView(device, depthImageView, nullptr);
+        vkDestroyImage(device, depthImage, nullptr);
+        vkFreeMemory(device, depthImageMemory, nullptr);
         
         cleanupTextures();
         
@@ -373,11 +379,12 @@ void Vulkan::loadModel(const std::vector<StandardMesh>& meshes) {
     modelIndices.clear();
     meshVertexOffsets.clear();
     meshIndexOffsets.clear();
+    meshTextures.clear();
     
     size_t currVertexOffset = 0;
     size_t currIndexOffset = 0;
     
-    // Сначала собираем все вершины и индексы
+    // Собираем все вершины и индексы
     for (const auto& mesh : meshes) {
         meshVertexOffsets.push_back(currVertexOffset);
         meshIndexOffsets.push_back(currIndexOffset);
@@ -403,27 +410,24 @@ void Vulkan::loadModel(const std::vector<StandardMesh>& meshes) {
         return;
     }
     
-    // Очищаем старые текстуры
-    cleanupTextures();
-    
-    // Загружаем текстуры для каждого меша
-    std::cout << "\n=== LOADING TEXTURES ===" << std::endl;
+    // Загружаем текстуры для каждого меша из данных парсера
+    std::cout << "\n=== LOADING TEXTURES FROM PARSER DATA ===" << std::endl;
     for (size_t i = 0; i < meshes.size(); i++) {
         const auto& mesh = meshes[i];
         bool textureLoaded = false;
         
         // Ищем диффузную текстуру
-        for (const auto& tex : mesh.textures) {
-            if (tex.type == "texture_diffuse" && tex.rawData.isValid && tex.rawData.data) {
-                std::cout << "Loading diffuse texture for mesh " << i 
-                          << ": " << tex.rawData.width << "x" << tex.rawData.height 
-                          << ", path: " << tex.rawData.path << std::endl;
+        for (const auto& texData : mesh.textures) {
+            if (texData.type == "texture_diffuse" && texData.rawData.isValid && texData.rawData.data) {
+                std::cout << "Loading texture for mesh " << i 
+                          << ": " << texData.rawData.width << "x" << texData.rawData.height 
+                          << " channels=" << texData.rawData.channels << std::endl;
                 
                 VulkanTexture vulkanTex = createTextureFromData(
-                    tex.rawData.data,
-                    tex.rawData.width,
-                    tex.rawData.height,
-                    tex.rawData.channels
+                    texData.rawData.data,
+                    texData.rawData.width,
+                    texData.rawData.height,
+                    texData.rawData.channels
                 );
                 
                 if (vulkanTex.valid) {
@@ -451,7 +455,6 @@ void Vulkan::loadModel(const std::vector<StandardMesh>& meshes) {
               << modelIndices.size() << " indices, " 
               << meshTextures.size() << " textures" << std::endl;
 }
-
 void Vulkan::createModelBuffers() {
     if (modelVertices.empty()) return;
     
@@ -625,34 +628,89 @@ void Vulkan::createSwapchain() {
 }
 
 void Vulkan::createRenderPass() {
-    VkAttachmentDescription colorAtt{};
-    colorAtt.format = swapchainFormat;
-    colorAtt.samples = VK_SAMPLE_COUNT_1_BIT;
-    colorAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    colorAtt.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    // Два attachment'а: цвет и глубина
+    VkAttachmentDescription attachments[2];
     
-    VkAttachmentReference colorRef{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    // Цветовой attachment
+    attachments[0].format = swapchainFormat;
+    attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachments[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    
+    // Depth attachment
+    attachments[1].format = VK_FORMAT_D32_SFLOAT;
+    attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    
+    VkAttachmentReference colorRef = {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    VkAttachmentReference depthRef = {1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+    
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorRef;
+    subpass.pDepthStencilAttachment = &depthRef;
     
     VkRenderPassCreateInfo rpInfo{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
-    rpInfo.attachmentCount = 1;
-    rpInfo.pAttachments = &colorAtt;
+    rpInfo.attachmentCount = 2;
+    rpInfo.pAttachments = attachments;
     rpInfo.subpassCount = 1;
     rpInfo.pSubpasses = &subpass;
+    
     vkCreateRenderPass(device, &rpInfo, nullptr, &renderPass);
 }
 
 void Vulkan::createFramebuffers() {
+    // Создаём depth image
+    VkImageCreateInfo depthInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    depthInfo.imageType = VK_IMAGE_TYPE_2D;
+    depthInfo.extent.width = swapchainExtent.width;
+    depthInfo.extent.height = swapchainExtent.height;
+    depthInfo.extent.depth = 1;
+    depthInfo.mipLevels = 1;
+    depthInfo.arrayLayers = 1;
+    depthInfo.format = VK_FORMAT_D32_SFLOAT;
+    depthInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    depthInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    depthInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    vkCreateImage(device, &depthInfo, nullptr, &depthImage);
+    
+    VkMemoryRequirements memReq;
+    vkGetImageMemoryRequirements(device, depthImage, &memReq);
+    VkMemoryAllocateInfo memAlloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    memAlloc.allocationSize = memReq.size;
+    memAlloc.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    vkAllocateMemory(device, &memAlloc, nullptr, &depthImageMemory);
+    vkBindImageMemory(device, depthImage, depthImageMemory, 0);
+    
+    VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    viewInfo.image = depthImage;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = VK_FORMAT_D32_SFLOAT;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.layerCount = 1;
+    vkCreateImageView(device, &viewInfo, nullptr, &depthImageView);
+    
+    // Создаём framebuffer'ы с depth attachment
     framebuffers.resize(swapchainImageViews.size());
     for (size_t i = 0; i < swapchainImageViews.size(); i++) {
+        std::array<VkImageView, 2> attachments = {swapchainImageViews[i], depthImageView};
+        
         VkFramebufferCreateInfo fbInfo{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
         fbInfo.renderPass = renderPass;
-        fbInfo.attachmentCount = 1;
-        fbInfo.pAttachments = &swapchainImageViews[i];
+        fbInfo.attachmentCount = 2;
+        fbInfo.pAttachments = attachments.data();
         fbInfo.width = swapchainExtent.width;
         fbInfo.height = swapchainExtent.height;
         fbInfo.layers = 1;
@@ -710,11 +768,19 @@ void Vulkan::createPipelines() {
     
     VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
     raster.polygonMode = VK_POLYGON_MODE_FILL;
-    raster.cullMode = VK_CULL_MODE_NONE;
+    raster.cullMode = VK_CULL_MODE_NONE;  // Отключаем culling
+    raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     raster.lineWidth = 1.0f;
     
     VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
     ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    
+    VkPipelineDepthStencilStateCreateInfo depthStencil{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.stencilTestEnable = VK_FALSE;
     
     VkPipelineColorBlendAttachmentState blendAtt{};
     blendAtt.colorWriteMask = 0xF;
@@ -746,6 +812,7 @@ void Vulkan::createPipelines() {
     pipelineInfo.pViewportState = &vpState;
     pipelineInfo.pRasterizationState = &raster;
     pipelineInfo.pMultisampleState = &ms;
+    pipelineInfo.pDepthStencilState = &depthStencil;
     pipelineInfo.pColorBlendState = &cb;
     pipelineInfo.layout = pipelineLayout3D;
     pipelineInfo.renderPass = renderPass;
@@ -945,9 +1012,13 @@ void Vulkan::beginFrame() {
     rp.framebuffer = framebuffers[currentImageIndex];
     rp.renderArea.offset = {0, 0};
     rp.renderArea.extent = swapchainExtent;
-    VkClearValue clear = {{{0.1f, 0.1f, 0.2f, 1.0f}}};
-    rp.clearValueCount = 1;
-    rp.pClearValues = &clear;
+    
+    VkClearValue clearValues[2];
+    clearValues[0].color = {{0.1f, 0.1f, 0.2f, 1.0f}};
+    clearValues[1].depthStencil = {1.0f, 0};
+    
+    rp.clearValueCount = 2;
+    rp.pClearValues = clearValues;
     
     vkCmdBeginRenderPass(frames[currentFrame].cmdBuffer, &rp, VK_SUBPASS_CONTENTS_INLINE);
     
@@ -1014,13 +1085,15 @@ void Vulkan::recreateSwapchain() {
     for (auto iv : swapchainImageViews) vkDestroyImageView(device, iv, nullptr);
     vkDestroySwapchainKHR(device, swapchain, nullptr);
     
+    // Destroy old depth resources
+    vkDestroyImageView(device, depthImageView, nullptr);
+    vkDestroyImage(device, depthImage, nullptr);
+    vkFreeMemory(device, depthImageMemory, nullptr);
+    
     width = newWidth;
     height = newHeight;
     
     createSwapchain();
-    createFramebuffers();
-    
-    vkDestroyPipeline(device, pipeline3D, nullptr);
-    vkDestroyPipeline(device, pipelineUI, nullptr);
+    createFramebuffers();  // This will recreate depth resources
     createPipelines();
 }
