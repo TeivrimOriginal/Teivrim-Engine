@@ -9,6 +9,12 @@
 #include "../../../Control/camera.h"
 #include "../../../Application/WindowAPIsupport/Win32/InitialWin32.h"
 
+struct OpenGLTexture {
+    unsigned int id;
+    std::string type;
+    std::string path;
+};
+
 class RendererW {
 public:
     RendererW();
@@ -30,7 +36,6 @@ public:
     GLuint initShaders();
     void optimize(const ModelParser& model, GLuint shaderProgram);
     
-    // Публичные переменные (лучше бы сделать приватными, но оставлю как есть)
     InitialWin32* window;
     std::vector<GLuint> VAOs;
     std::vector<GLuint> VBOs;
@@ -42,16 +47,14 @@ public:
     static const char* fragmentShaderSource;
 
 private:
-    // СТРУКТУРА ДЛЯ ОПТИМИЗИРОВАННЫХ БУФЕРОВ
     struct MeshBuffers {
         GLuint vao = 0;
         GLuint vbo = 0;
         GLuint ebo = 0;
         int indexCount = 0;
-        std::vector<Texture> textures;
+        std::vector<OpenGLTexture> textures;
     };
     
-    // КЭШИРОВАННЫЕ ДАННЫЕ
     std::vector<MeshBuffers> meshVAOs;
     GLuint cachedShaderProgram = 0;
     GLint cachedModelLoc = -1;
@@ -62,6 +65,9 @@ private:
     GLint cachedViewPosLoc = -1;
     GLint cachedUseTextureLoc = -1;
     GLint cachedObjectColorLoc = -1;
+    
+    unsigned int textureFromRawData(const RawTextureData& rawData);
+    unsigned int createWhiteTexture();
 };
 
 #endif

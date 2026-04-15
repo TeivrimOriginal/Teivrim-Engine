@@ -3,9 +3,10 @@
 #include <windows.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include "stb_image.h"
+
 using namespace std;
 
-// Шейдеры (исправлены - убран discard и альфа-тест)
 const char* RendererW::vertexShaderSource = 
 "#version 330 core\n"
 "layout (location = 0) in vec3 aPos;\n"
@@ -45,12 +46,6 @@ const char* RendererW::fragmentShaderSource =
 "\n"
 "void main() {\n"
 "    vec4 texColor = texture(texture_diffuse1, TexCoords);\n"
-"    \n"
-"    // УБРАЛ DISCARD - теперь альфа-канал не удаляет пиксели\n"
-"    // if(texColor.a < 0.1) {\n"
-"    //     discard;\n"
-"    // }\n"
-"    \n"
 "    vec3 color = useTexture ? texColor.rgb : objectColor;\n"
 "    \n"
 "    float ambientStrength = 0.3;\n"
@@ -70,6 +65,43 @@ const char* RendererW::fragmentShaderSource =
 "    vec3 result = (ambient + diffuse + specular) * color;\n"
 "    FragColor = vec4(result, 1.0);\n"
 "}\n";
+
+unsigned int RendererW::textureFromRawData(const RawTextureData& rawData) {
+    if (!rawData.isValid || !rawData.data) {
+        return createWhiteTexture();
+    }
+    
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    
+    GLenum format = GL_RGBA;
+    glTexImage2D(GL_TEXTURE_2D, 0, format, rawData.width, rawData.height, 0, format, GL_UNSIGNED_BYTE, rawData.data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
+    cout << "OpenGL texture created: " << rawData.width << "x" << rawData.height << endl;
+    
+    return textureID;
+}
+
+unsigned int RendererW::createWhiteTexture() {
+    unsigned char white[] = {255, 255, 255, 255};
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    return textureID;
+}
 
 RendererW::RendererW() 
     : window(nullptr), 
@@ -104,11 +136,7 @@ bool RendererW::initialize(InitialWin32* win) {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glDepthMask(GL_TRUE);
-    
-    // ОТКЛЮЧАЕМ БЛЕНДИНГ ДЛЯ МОДЕЛЕЙ (включаем только для UI)
     glDisable(GL_BLEND);
-    
-    // ОТКЛЮЧАЕМ CULLING (исправляет проблему с вывернутыми нормалями)
     glDisable(GL_CULL_FACE);
     
     cout << "OpenGL version: " << glGetString(GL_VERSION) << endl;
@@ -139,8 +167,7 @@ void RendererW::cleanup() {
     meshVAOs.clear();
 }
 
-void RendererW::beginFrame() {
-}
+void RendererW::beginFrame() {}
 
 void RendererW::endFrame() {
     window->swapBuffers();
@@ -185,7 +212,27 @@ void RendererW::optimize(const ModelParser& model, GLuint shaderProgram) {
         glBindVertexArray(0);
         
         buffers.indexCount = mesh.indices.size();
-        buffers.textures = mesh.textures;
+        
+        // Загружаем текстуры из сырых данных
+        for (const auto& texData : mesh.textures) {
+            if (texData.type == "texture_diffuse" && texData.rawData.isValid) {
+                OpenGLTexture tex;
+                tex.id = textureFromRawData(texData.rawData);
+                tex.type = texData.type;
+                tex.path = texData.rawData.path;
+                buffers.textures.push_back(tex);
+            }
+        }
+        
+        // Если нет текстур, создаём белую
+        if (buffers.textures.empty()) {
+            OpenGLTexture whiteTex;
+            whiteTex.id = createWhiteTexture();
+            whiteTex.type = "texture_diffuse";
+            whiteTex.path = "white";
+            buffers.textures.push_back(whiteTex);
+        }
+        
         meshVAOs.push_back(buffers);
         
         VAOs.push_back(buffers.vao);
@@ -209,7 +256,6 @@ void RendererW::optimize(const ModelParser& model, GLuint shaderProgram) {
 void RendererW::renderModel(const ModelParser& model, GLuint shaderProgram, Camera& camera) {
     glUseProgram(shaderProgram);
     
-    // ПЕРЕД РЕНДЕРОМ - отключаем всё что мешает
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -268,12 +314,9 @@ void RendererW::renderModel(const ModelParser& model, GLuint shaderProgram, Came
             glm::vec3 colors[] = {
                 glm::vec3(0.8f, 0.3f, 0.2f),
                 glm::vec3(0.2f, 0.8f, 0.3f),
-                glm::vec3(0.3f, 0.2f, 0.8f),
-                glm::vec3(0.8f, 0.8f, 0.2f),
-                glm::vec3(0.8f, 0.2f, 0.8f),
-                glm::vec3(0.2f, 0.8f, 0.8f)
+                glm::vec3(0.3f, 0.2f, 0.8f)
             };
-            glm::vec3 color = colors[i % 6];
+            glm::vec3 color = colors[i % 3];
             if (cachedObjectColorLoc != -1)
                 glUniform3f(cachedObjectColorLoc, color.r, color.g, color.b);
         } else {

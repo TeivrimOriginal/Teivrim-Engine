@@ -8,12 +8,22 @@
 #include <cstring>
 #include <filesystem>
 
-// Для OpenGL текстур - только если определено USE_OPENGL_TEX
-#ifdef USE_OPENGL_TEX
-#include <GL/glew.h>
-#endif
-
 ModelParser::ModelParser() {}
+
+ModelParser::~ModelParser() {
+    cleanupTextures();
+}
+
+void ModelParser::cleanupTextures() {
+    for (auto& mesh : meshes) {
+        for (auto& tex : mesh.textures) {
+            if (tex.rawData.data) {
+                delete[] tex.rawData.data;
+                tex.rawData.data = nullptr;
+            }
+        }
+    }
+}
 
 bool ModelParser::loadModel(const std::string& path) {
     Assimp::Importer import;
@@ -110,17 +120,14 @@ StandardMesh ModelParser::processMesh(void* mesh_ptr, void* scene_ptr) {
     for(unsigned int i = 0; i < mesh->mNumVertices; i++) {
         StandardVertex vertex;
         
-        // Позиция
         if (mesh->mVertices) {
             vertex.position[0] = mesh->mVertices[i].x;
             vertex.position[1] = mesh->mVertices[i].y;
             vertex.position[2] = mesh->mVertices[i].z;
         } else {
-            std::cout << "ERROR: No vertex positions in mesh!" << std::endl;
             vertex.position[0] = vertex.position[1] = vertex.position[2] = 0.0f;
         }
         
-        // Нормали
         if (mesh->HasNormals() && mesh->mNormals) {
             vertex.normal[0] = mesh->mNormals[i].x;
             vertex.normal[1] = mesh->mNormals[i].y;
@@ -131,7 +138,6 @@ StandardMesh ModelParser::processMesh(void* mesh_ptr, void* scene_ptr) {
             vertex.normal[2] = 0.0f;
         }
         
-        // Текстурные координаты
         if(mesh->mTextureCoords[0]) {
             vertex.texCoords[0] = mesh->mTextureCoords[0][i].x; 
             vertex.texCoords[1] = mesh->mTextureCoords[0][i].y;
@@ -151,29 +157,27 @@ StandardMesh ModelParser::processMesh(void* mesh_ptr, void* scene_ptr) {
                 for(unsigned int j = 0; j < face.mNumIndices; j++) {
                     standardMesh.indices.push_back(face.mIndices[j]);
                 }
-            } else {
-                std::cout << "ERROR: Face has null indices!" << std::endl;
             }
         }
-    } else {
-        std::cout << "ERROR: Mesh has no faces!" << std::endl;
     }
     
-    // Материалы и текстуры
+    // Текстуры
     if(mesh->mMaterialIndex >= 0) {
         aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
         
-        // Диффузные текстуры
-        std::vector<Texture> diffuseMaps = loadMaterialTextures(
+        std::vector<TextureData> diffuseMaps = loadMaterialTextures(
             material, aiTextureType_DIFFUSE, "texture_diffuse", (void*)scene);
-        standardMesh.textures.insert(standardMesh.textures.end(), 
-            diffuseMaps.begin(), diffuseMaps.end());
         
-        // Спекулярные текстуры
-        std::vector<Texture> specularMaps = loadMaterialTextures(
+        for (auto& tex : diffuseMaps) {
+            standardMesh.textures.push_back(std::move(tex));
+        }
+        
+        std::vector<TextureData> specularMaps = loadMaterialTextures(
             material, aiTextureType_SPECULAR, "texture_specular", (void*)scene);
-        standardMesh.textures.insert(standardMesh.textures.end(), 
-            specularMaps.begin(), specularMaps.end());
+        
+        for (auto& tex : specularMaps) {
+            standardMesh.textures.push_back(std::move(tex));
+        }
     }
     
     createVertexBuffer(standardMesh);
@@ -185,12 +189,12 @@ StandardMesh ModelParser::processMesh(void* mesh_ptr, void* scene_ptr) {
     return standardMesh;
 }
 
-std::vector<Texture> ModelParser::loadMaterialTextures(void* mat_ptr, 
+std::vector<TextureData> ModelParser::loadMaterialTextures(void* mat_ptr, 
     unsigned int texType, std::string typeName, void* scene_ptr) {
     
     aiMaterial* mat = (aiMaterial*)mat_ptr;
     const aiScene* scene = (const aiScene*)scene_ptr;
-    std::vector<Texture> textures;
+    std::vector<TextureData> textures;
     
     for(unsigned int i = 0; i < mat->GetTextureCount((aiTextureType)texType); i++) {
         aiString str;
@@ -198,9 +202,8 @@ std::vector<Texture> ModelParser::loadMaterialTextures(void* mat_ptr,
         
         // Проверяем, не загружали ли уже эту текстуру
         bool skip = false;
-        for(unsigned int j = 0; j < textures_loaded.size(); j++) {
-            if(std::strcmp(textures_loaded[j].path.c_str(), str.C_Str()) == 0) {
-                textures.push_back(textures_loaded[j]);
+        for(auto& existingTex : textures) {
+            if(existingTex.rawData.path == str.C_Str()) {
                 skip = true;
                 break;
             }
@@ -209,8 +212,6 @@ std::vector<Texture> ModelParser::loadMaterialTextures(void* mat_ptr,
         if(!skip) {
             // Ищем встроенную текстуру
             const aiTexture* embeddedTexture = nullptr;
-            
-            // Проверяем все встроенные текстуры в сцене
             for(unsigned int j = 0; j < scene->mNumTextures; j++) {
                 if(scene->mTextures[j]->mFilename.C_Str() == std::string(str.C_Str())) {
                     embeddedTexture = scene->mTextures[j];
@@ -218,122 +219,88 @@ std::vector<Texture> ModelParser::loadMaterialTextures(void* mat_ptr,
                 }
             }
             
-            Texture texture;
+            TextureData textureData;
+            textureData.type = typeName;
+            
             if(embeddedTexture) {
-                // ВСТРОЕННАЯ ТЕКСТУРА
-                std::cout << "Загружаем встроенную текстуру: " << str.C_Str() << std::endl;
-                texture.id = textureFromEmbedded(embeddedTexture);
-                if(texture.id != 0) {
-                    texture.type = typeName;
-                    texture.path = str.C_Str();
-                    textures.push_back(texture);
-                    textures_loaded.push_back(texture);
-                }
+                std::cout << "Loading embedded texture: " << str.C_Str() << std::endl;
+                textureData.rawData = textureFromEmbedded(embeddedTexture);
             } else {
-                // ВНЕШНЯЯ ТЕКСТУРА
-                std::cout << "Загружаем внешнюю текстуру: " << str.C_Str() << std::endl;
-                texture.id = textureFromFile(str.C_Str(), directory);
-                if(texture.id != 0) {
-                    texture.type = typeName;
-                    texture.path = str.C_Str();
-                    textures.push_back(texture);
-                    textures_loaded.push_back(texture);
-                }
+                std::cout << "Loading external texture: " << str.C_Str() << std::endl;
+                textureData.rawData = textureFromFile(str.C_Str(), directory);
+            }
+            
+            if(textureData.rawData.isValid) {
+                textureData.rawData.path = str.C_Str();
+                textures.push_back(std::move(textureData));
             }
         }
     }
     return textures;
 }
 
-unsigned int ModelParser::textureFromEmbedded(const void* embeddedTexture_ptr) {
-#ifdef USE_OPENGL_TEX
+RawTextureData ModelParser::textureFromEmbedded(const void* embeddedTexture_ptr) {
     const aiTexture* embeddedTexture = (const aiTexture*)embeddedTexture_ptr;
-    unsigned int textureID;
-    glGenTextures(1, &textureID);
+    RawTextureData result;
     
-    int width, height, nrComponents;
+    int width, height, channels;
     unsigned char* data = nullptr;
     
     if(embeddedTexture->mHeight == 0) {
-        // Сжатый формат (JPEG, PNG и т.д.)
-        std::cout << "Текстура сжатая, размер: " << embeddedTexture->mWidth << " байт" << std::endl;
+        // Сжатый формат (JPEG, PNG)
+        std::cout << "Compressed embedded texture, size: " << embeddedTexture->mWidth << " bytes" << std::endl;
         data = stbi_load_from_memory(
-            reinterpret_cast<unsigned char*>(embeddedTexture->pcData),
+            reinterpret_cast<const unsigned char*>(embeddedTexture->pcData),
             embeddedTexture->mWidth,
             &width,
             &height,
-            &nrComponents,
-            0
+            &channels,
+            4  // force RGBA
         );
     } else {
         // Несжатый ARGB формат
-        std::cout << "Текстура несжатая, размер: " 
+        std::cout << "Uncompressed embedded texture: " 
                   << embeddedTexture->mWidth << "x" << embeddedTexture->mHeight << std::endl;
-        // Конвертируем из ARGB в RGBA
-        data = new unsigned char[embeddedTexture->mWidth * embeddedTexture->mHeight * 4];
-        for(unsigned int i = 0; i < embeddedTexture->mWidth * embeddedTexture->mHeight; ++i) {
+        width = embeddedTexture->mWidth;
+        height = embeddedTexture->mHeight;
+        channels = 4;
+        data = new unsigned char[width * height * 4];
+        for(unsigned int i = 0; i < width * height; ++i) {
             data[i*4] = embeddedTexture->pcData[i].b;
             data[i*4+1] = embeddedTexture->pcData[i].g;
             data[i*4+2] = embeddedTexture->pcData[i].r;
             data[i*4+3] = embeddedTexture->pcData[i].a;
         }
-        width = embeddedTexture->mWidth;
-        height = embeddedTexture->mHeight;
-        nrComponents = 4;
     }
     
     if(data) {
-        GLenum format;
-        if(nrComponents == 1)
-            format = GL_RED;
-        else if(nrComponents == 3)
-            format = GL_RGB;
-        else if(nrComponents == 4)
-            format = GL_RGBA;
-        
-        glBindTexture(GL_TEXTURE_2D, textureID);
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-        
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        
-        std::cout << "Текстура загружена: " << width << "x" << height 
-                  << ", каналов: " << nrComponents << std::endl;
-        
-        if(embeddedTexture->mHeight == 0) {
-            stbi_image_free(data);
-        } else {
-            delete[] data;
-        }
+        result.data = data;
+        result.width = width;
+        result.height = height;
+        result.channels = 4;
+        result.isValid = true;
+        std::cout << "Texture loaded: " << width << "x" << height << ", channels: 4" << std::endl;
     } else {
-        std::cout << "Не удалось загрузить встроенную текстуру" << std::endl;
-        glDeleteTextures(1, &textureID);
-        return 0;
+        std::cout << "Failed to load embedded texture" << std::endl;
     }
     
-    return textureID;
-#else
-    return 0;
-#endif
+    return result;
 }
 
-unsigned int ModelParser::textureFromFile(const char* path, const std::string& directory) {
-#ifdef USE_OPENGL_TEX
+RawTextureData ModelParser::textureFromFile(const char* path, const std::string& directory) {
     std::string filename = std::string(path);
+    RawTextureData result;
     
+    int width, height, channels;
     unsigned char* data = nullptr;
-    int width, height, nrComponents;
     
     // 1. Пробуем как абсолютный путь
-    data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 4);
+    data = stbi_load(filename.c_str(), &width, &height, &channels, 4);
     
     if(!data && !directory.empty()) {
         // 2. Пробуем относительно директории модели
         filename = directory + '/' + std::string(path);
-        data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 4);
+        data = stbi_load(filename.c_str(), &width, &height, &channels, 4);
     }
     
     if(!data) {
@@ -343,37 +310,21 @@ unsigned int ModelParser::textureFromFile(const char* path, const std::string& d
         if(pos != std::string::npos) {
             simpleName = simpleName.substr(pos + 1);
         }
-        data = stbi_load(simpleName.c_str(), &width, &height, &nrComponents, 4);
+        data = stbi_load(simpleName.c_str(), &width, &height, &channels, 4);
     }
     
-    if(!data) {
-        std::cout << "Текстура не загружена: " << path << std::endl;
-        return 0;
+    if(data) {
+        result.data = data;
+        result.width = width;
+        result.height = height;
+        result.channels = 4;
+        result.isValid = true;
+        std::cout << "Texture loaded from file: " << width << "x" << height << std::endl;
+    } else {
+        std::cout << "Failed to load texture: " << path << std::endl;
     }
     
-    unsigned int textureID;
-    glGenTextures(1, &textureID);
-    
-    // ВСЕГДА ИСПОЛЬЗУЕМ GL_RGBA
-    GLenum format = GL_RGBA;
-    
-    glBindTexture(GL_TEXTURE_2D, textureID);
-    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    
-    stbi_image_free(data);
-    
-    std::cout << "Текстура загружена: " << width << "x" << height << ", каналов: 4 (RGBA)" << std::endl;
-    
-    return textureID;
-#else
-    return 0;
-#endif
+    return result;
 }
 
 void ModelParser::createVertexBuffer(StandardMesh& mesh) {

@@ -38,6 +38,10 @@ static void compileShaders() {
     system("glslc autoshadertest/ui_frag.frag -o autoshadertest/ui_frag.spv");
 }
 
+bool Vulkan::initializeFont() {
+    return true;
+}
+
 Vulkan::Vulkan(HWND hwnd, int width, int height) 
     : hwnd(hwnd), width(width), height(height), initialized(false), currentFrame(0), currentImageIndex(0), modelLoaded(false),
       instance(VK_NULL_HANDLE), physDevice(VK_NULL_HANDLE), device(VK_NULL_HANDLE),
@@ -117,7 +121,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     
     vkGetDeviceQueue(device, queueFamily, 0, &graphicsQueue);
     
-    // Create all Vulkan objects
     createSwapchain();
     createRenderPass();
     createFramebuffers();
@@ -140,13 +143,15 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
         frames[i].cmdBuffer = cmdBuffers[i];
     }
     
+    initializeFont();
+    
     viewMat = glm::lookAt(glm::vec3(0.0f, 50.0f, 150.0f), glm::vec3(0, 50, 0), glm::vec3(0, 1, 0));
     projMat = glm::perspective(glm::radians(45.0f), (float)width/height, 0.1f, 1000.0f);
     projMat[1][1] *= -1;
     modelMat = glm::mat4(1.0f);
     
     initialized = true;
-    std::cout << "Vulkan initialized successfully (AAA mode: " << MAX_FRAMES_IN_FLIGHT << " frames in flight)" << std::endl;
+    std::cout << "Vulkan initialized successfully" << std::endl;
 }
 
 Vulkan::~Vulkan() {
@@ -275,7 +280,6 @@ VulkanTexture Vulkan::createTextureFromData(unsigned char* data, int width, int 
     vkAllocateMemory(device, &allocInfo, nullptr, &tex.memory);
     vkBindImageMemory(device, tex.image, tex.memory, 0);
     
-    // Copy buffer to image via command buffer
     VkCommandBufferAllocateInfo cmdAllocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     cmdAllocInfo.commandPool = commandPool;
     cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -354,6 +358,7 @@ VulkanTexture Vulkan::createTextureFromData(unsigned char* data, int width, int 
     vkCreateSampler(device, &samplerInfo, nullptr, &tex.sampler);
     
     tex.valid = true;
+    std::cout << "Texture created: " << width << "x" << height << std::endl;
     return tex;
 }
 
@@ -363,6 +368,7 @@ VulkanTexture Vulkan::createWhiteTexture() {
 }
 
 void Vulkan::loadModel(const std::vector<StandardMesh>& meshes) {
+    // Очищаем старые данные
     modelVertices.clear();
     modelIndices.clear();
     meshVertexOffsets.clear();
@@ -371,6 +377,7 @@ void Vulkan::loadModel(const std::vector<StandardMesh>& meshes) {
     size_t currVertexOffset = 0;
     size_t currIndexOffset = 0;
     
+    // Сначала собираем все вершины и индексы
     for (const auto& mesh : meshes) {
         meshVertexOffsets.push_back(currVertexOffset);
         meshIndexOffsets.push_back(currIndexOffset);
@@ -391,23 +398,64 @@ void Vulkan::loadModel(const std::vector<StandardMesh>& meshes) {
         currIndexOffset += mesh.indices.size();
     }
     
-    if (modelVertices.empty()) return;
-    
-    cleanupTextures();
-    for (size_t i = 0; i < meshes.size(); i++) {
-        meshTextures.push_back(createWhiteTexture());
+    if (modelVertices.empty()) {
+        std::cerr << "No vertices in model!" << std::endl;
+        return;
     }
     
+    // Очищаем старые текстуры
+    cleanupTextures();
+    
+    // Загружаем текстуры для каждого меша
+    std::cout << "\n=== LOADING TEXTURES ===" << std::endl;
+    for (size_t i = 0; i < meshes.size(); i++) {
+        const auto& mesh = meshes[i];
+        bool textureLoaded = false;
+        
+        // Ищем диффузную текстуру
+        for (const auto& tex : mesh.textures) {
+            if (tex.type == "texture_diffuse" && tex.rawData.isValid && tex.rawData.data) {
+                std::cout << "Loading diffuse texture for mesh " << i 
+                          << ": " << tex.rawData.width << "x" << tex.rawData.height 
+                          << ", path: " << tex.rawData.path << std::endl;
+                
+                VulkanTexture vulkanTex = createTextureFromData(
+                    tex.rawData.data,
+                    tex.rawData.width,
+                    tex.rawData.height,
+                    tex.rawData.channels
+                );
+                
+                if (vulkanTex.valid) {
+                    meshTextures.push_back(vulkanTex);
+                    textureLoaded = true;
+                    break;
+                }
+            }
+        }
+        
+        // Если текстура не загружена, используем белую
+        if (!textureLoaded) {
+            std::cout << "No valid texture for mesh " << i << ", using white texture" << std::endl;
+            meshTextures.push_back(createWhiteTexture());
+        }
+    }
+    std::cout << "=== TEXTURES LOADED: " << meshTextures.size() << " ===\n" << std::endl;
+    
+    // Создаём буферы
     createModelBuffers();
     createDescriptorPoolAndSets();
     
     modelLoaded = true;
-    std::cout << "Model loaded: " << modelVertices.size() << " vertices, " << modelIndices.size() << " indices" << std::endl;
+    std::cout << "Model loaded: " << modelVertices.size() << " vertices, " 
+              << modelIndices.size() << " indices, " 
+              << meshTextures.size() << " textures" << std::endl;
 }
 
 void Vulkan::createModelBuffers() {
     if (modelVertices.empty()) return;
     
+    // Создаём вершинный буфер
     VkDeviceSize vertSize = sizeof(VertexGPU) * modelVertices.size();
     VkBufferCreateInfo bufInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     bufInfo.size = vertSize;
@@ -427,6 +475,7 @@ void Vulkan::createModelBuffers() {
     memcpy(data, modelVertices.data(), vertSize);
     vkUnmapMemory(device, vertexBufferMemory);
     
+    // Создаём индексный буфер
     VkDeviceSize idxSize = sizeof(uint32_t) * modelIndices.size();
     bufInfo.size = idxSize;
     bufInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
@@ -502,7 +551,6 @@ void Vulkan::createDescriptorPoolAndSets() {
         VulkanTexture& tex = (i < meshTextures.size() && meshTextures[i].valid) ? meshTextures[i] : meshTextures[0];
         VkDescriptorImageInfo imageInfo{tex.sampler, tex.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         
-        // Use uniform buffer for current frame
         VkDescriptorBufferInfo bufInfo{frames[0].uniformBuffer, 0, sizeof(UniformBufferObject)};
         
         std::array<VkWriteDescriptorSet, 2> descriptorWrites = {};
@@ -802,8 +850,13 @@ void Vulkan::drawQuad(float x1, float y1, float x2, float y2, float r, float g, 
     uiQuads.push_back(quad);
 }
 
-void Vulkan::drawText(int x, int y, const std::string& text, float r, float g, float b) {}
-void Vulkan::drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b) {}
+void Vulkan::drawText(int x, int y, const std::string& text, float r, float g, float b) {
+    // Заглушка
+}
+
+void Vulkan::drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b) {
+    // Заглушка
+}
 
 void Vulkan::renderModel() {
     if (!modelLoaded || modelVertices.empty()) return;
@@ -839,9 +892,9 @@ void Vulkan::renderUI() {
     std::vector<UIVertex> vertices;
     for (const auto& quad : uiQuads) {
         float x1 = (quad.x1 / width) * 2.0f - 1.0f;
-        float y1 = (quad.y1 / height) * 2.0f - 1.0f;
+        float y1 = 1.0f - (quad.y1 / height) * 2.0f;
         float x2 = (quad.x2 / width) * 2.0f - 1.0f;
-        float y2 = (quad.y2 / height) * 2.0f - 1.0f;
+        float y2 = 1.0f - (quad.y2 / height) * 2.0f;
         
         vertices.push_back({{x1, y1}, quad.color});
         vertices.push_back({{x2, y1}, quad.color});
@@ -897,12 +950,6 @@ void Vulkan::beginFrame() {
     rp.pClearValues = &clear;
     
     vkCmdBeginRenderPass(frames[currentFrame].cmdBuffer, &rp, VK_SUBPASS_CONTENTS_INLINE);
-}
-
-void Vulkan::endFrame() {
-    if (!hwnd || !IsWindow(hwnd)) {
-        return;
-    }
     
     updateUniformBuffer(currentFrame);
     renderModel();
@@ -910,6 +957,12 @@ void Vulkan::endFrame() {
     
     vkCmdEndRenderPass(frames[currentFrame].cmdBuffer);
     vkEndCommandBuffer(frames[currentFrame].cmdBuffer);
+}
+
+void Vulkan::endFrame() {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
     
     VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
@@ -943,7 +996,6 @@ void Vulkan::present() {
 
 void Vulkan::recreateSwapchain() {
     if (!hwnd || !IsWindow(hwnd)) {
-        std::cout << "[Vulkan] Window destroyed, skipping swapchain recreation" << std::endl;
         return;
     }
     
@@ -953,7 +1005,6 @@ void Vulkan::recreateSwapchain() {
     int newHeight = rect.bottom - rect.top;
     
     if (newWidth <= 0 || newHeight <= 0) {
-        std::cout << "[Vulkan] Invalid window size (" << newWidth << "x" << newHeight << "), skipping swapchain recreation" << std::endl;
         return;
     }
     

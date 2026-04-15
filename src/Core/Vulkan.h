@@ -5,8 +5,10 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <string>
+#include <map>
 #include <glm/glm.hpp>
 #include "Render/Parser/parser.h"
+#include "stb_truetype.h"
 
 struct VulkanTexture {
     VkImage image;
@@ -15,6 +17,12 @@ struct VulkanTexture {
     VkSampler sampler;
     int width, height;
     bool valid;
+};
+
+struct CharInfo {
+    float u1, v1, u2, v2;
+    int advance;
+    int width, height;
 };
 
 class Vulkan {
@@ -127,6 +135,7 @@ private:
     void cleanupTextures();
     void cleanupFrameResources();
     
+    bool initializeFont();
     VulkanTexture createTextureFromData(unsigned char* data, int width, int height, int channels);
     VulkanTexture createWhiteTexture();
 };
