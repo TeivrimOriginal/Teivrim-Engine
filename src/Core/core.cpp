@@ -4,6 +4,7 @@
 #include "../Interface/InterfaceManager.h"
 #include "Render/Parser/parser.h"
 #include "../Control/Input.h"
+#include "SecondComplexity/Project/ProjectManager.h"
 #include <iostream>
 #include <string>
 #include <GL/glew.h>
@@ -18,6 +19,25 @@ InterfaceManager* g_uiManager = nullptr;
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
+        case WM_COMMAND:
+            std::cout << "[WndProc] WM_COMMAND received, ID: " << LOWORD(wParam) << std::endl;
+            if (LOWORD(wParam) == 1) {
+                std::cout << "[WndProc] New Project clicked - opening ProjectManager dialog" << std::endl;
+                ProjectManager::Instance().ShowCreateProjectDialog(hwnd);
+                return 0;
+            }
+            else if (LOWORD(wParam) == 2) {
+                std::cout << "[WndProc] Open Project clicked" << std::endl;
+                // TODO: Open project dialog
+                return 0;
+            }
+            else if (LOWORD(wParam) == 3) {
+                std::cout << "[WndProc] Exit clicked" << std::endl;
+                DestroyWindow(hwnd);
+                return 0;
+            }
+            break;
+            
         case WM_LBUTTONDOWN:
         case WM_LBUTTONUP:
         case WM_MOUSEMOVE: {
@@ -69,6 +89,8 @@ Core::Core() {
     std::cin >> choice;
     currentAPI = (choice == 2) ? RenderAPI::VULKAN : RenderAPI::OPENGL;
     std::cout << (currentAPI == RenderAPI::VULKAN ? "Vulkan selected\n" : "OpenGL selected\n");
+    
+    ProjectManager::Instance().SetRenderAPI(currentAPI == RenderAPI::VULKAN ? 1 : 0);
 }
 
 void Core::setRenderAPI(RenderAPI api) {
@@ -77,6 +99,37 @@ void Core::setRenderAPI(RenderAPI api) {
 
 void Core::initializeRender(InitialWin32* window) {
     currentWindow = window;
+    
+    // Устанавливаем callback'и меню (запасной вариант, основной в WndProc)
+    window->onNewProject = [this, window]() {
+        std::cout << "[Core] onNewProject callback called" << std::endl;
+        ProjectManager::Instance().ShowCreateProjectDialog(window->getHWND(), 
+            [this](const std::string& name) {
+                std::cout << "[CORE] Project created: " << name << std::endl;
+                modelLoaded = false; // Сбрасываем текущую модель при создании нового проекта
+            });
+    };
+    
+    window->onOpenProject = [this, window]() {
+        std::cout << "[Core] onOpenProject callback called" << std::endl;
+        OPENFILENAMEA ofn;
+        CHAR szFile[MAX_PATH] = "";
+        ZeroMemory(&ofn, sizeof(ofn));
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = window->getHWND();
+        ofn.lpstrFile = szFile;
+        ofn.nMaxFile = sizeof(szFile);
+        ofn.lpstrFilter = "Project Files (*.json)\0*.json\0All Files\0*.*\0";
+        ofn.nFilterIndex = 1;
+        ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+        ofn.lpstrTitle = "Open Project";
+        
+        if (GetOpenFileNameA(&ofn)) {
+            std::cout << "[CORE] Opening project: " << ofn.lpstrFile << std::endl;
+            // TODO: Load project
+        }
+    };
+    
     if (currentAPI == RenderAPI::OPENGL) {
         if (!rendererw.initialize(window)) {
             std::cerr << "Failed to initialize OpenGL renderer" << std::endl;
@@ -131,7 +184,6 @@ void Core::cleanupRender() {
         }
     } else {
         if (vulkan) {
-            // Ждём завершения всех операций Vulkan перед удалением
             vkDeviceWaitIdle(vulkan->getDevice());
             delete vulkan;
             vulkan = nullptr;
@@ -225,7 +277,7 @@ void Core::GameLoop() {
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
 
     Input input(app, g_uiManager);
-    input.EnableDebug(false);  // Отключаем отладку для чистоты
+    input.EnableDebug(false);
 
     POINT lastMousePos = {0, 0};
     GetCursorPos(&lastMousePos);
@@ -331,7 +383,6 @@ void Core::GameLoop() {
 
     std::cout << "[CORE] GameLoop exiting" << std::endl;
     
-    // Очистка
     delete g_uiManager;
     g_uiManager = nullptr;
     cleanupRender();

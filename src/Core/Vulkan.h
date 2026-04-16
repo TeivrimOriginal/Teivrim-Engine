@@ -17,12 +17,15 @@ struct VulkanTexture {
     VkSampler sampler;
     int width, height;
     bool valid;
+    VulkanTexture() : image(VK_NULL_HANDLE), memory(VK_NULL_HANDLE), view(VK_NULL_HANDLE), 
+                      sampler(VK_NULL_HANDLE), width(0), height(0), valid(false) {}
 };
 
 struct CharInfo {
     float u1, v1, u2, v2;
     int advance;
     int width, height;
+    float xoff, yoff;
 };
 
 class Vulkan {
@@ -85,23 +88,30 @@ private:
         glm::vec3 color;
     };
     
-    struct FrameResources {
+    struct FrameData {
+        VkCommandPool commandPool;
         VkCommandBuffer cmdBuffer;
         VkSemaphore imageAvailableSemaphore;
         VkSemaphore renderFinishedSemaphore;
         VkFence inFlightFence;
         VkBuffer uniformBuffer;
         VkDeviceMemory uniformBufferMemory;
+        
+        FrameData() : commandPool(VK_NULL_HANDLE), cmdBuffer(VK_NULL_HANDLE),
+                      imageAvailableSemaphore(VK_NULL_HANDLE), renderFinishedSemaphore(VK_NULL_HANDLE),
+                      inFlightFence(VK_NULL_HANDLE), uniformBuffer(VK_NULL_HANDLE),
+                      uniformBufferMemory(VK_NULL_HANDLE) {}
     };
     
-    static const int MAX_FRAMES_IN_FLIGHT = 2;
+    static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
     
     // Window and state
     HWND hwnd;
     int width, height;
     bool initialized;
-    int currentFrame;
+    uint32_t currentFrame;
     uint32_t currentImageIndex;
+    uint32_t swapchainImageCount;
     
     // Camera matrices
     glm::mat4 viewMat, projMat, modelMat;
@@ -148,7 +158,6 @@ private:
     VkPipeline pipeline3D;
     VkPipeline pipelineUI;
     VkPipeline pipelineUIText;
-    VkCommandPool commandPool;
     VkDescriptorSetLayout descLayout;
     VkDescriptorSetLayout descLayoutUIEmpty;
     VkDescriptorSetLayout descLayoutUIText;
@@ -156,12 +165,14 @@ private:
     std::vector<VkDescriptorSet> descSets;
     VkDescriptorSet descSetUIText;
     
-    // Per-frame resources
-    FrameResources frames[MAX_FRAMES_IN_FLIGHT];
+    // Per-frame resources (AAA: отдельный набор для каждого кадра в буфере)
+    std::vector<FrameData> frames;
     
     // Shared buffers
-    VkBuffer vertexBuffer, indexBuffer;
-    VkDeviceMemory vertexBufferMemory, indexBufferMemory;
+    VkBuffer vertexBuffer;
+    VkBuffer indexBuffer;
+    VkDeviceMemory vertexBufferMemory;
+    VkDeviceMemory indexBufferMemory;
     
     VkBuffer uiVertexBuffer;
     VkDeviceMemory uiVertexBufferMemory;
@@ -174,9 +185,11 @@ private:
     VkShaderModule createShaderModule(const std::string& filename);
     void createMainDescriptorPool();
     void createSwapchain();
+    void cleanupSwapchain();
+    void recreateSwapchain();
     void createRenderPass();
     void createFramebuffers();
-    void createCommandPool();
+    void createCommandPools();
     void createSyncObjects();
     void createUniformBuffers();
     void createModelBuffers();
@@ -187,10 +200,9 @@ private:
     void createPipelines();
     void createUIBuffers();
     void createUITextBuffers();
-    void updateUniformBuffer(int frameIndex);
+    void updateUniformBuffer(uint32_t frameIndex);
     void renderUI();
     void renderUIText();
-    void recreateSwapchain();
     void cleanupTextures();
     void cleanupFrameResources();
     

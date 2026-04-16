@@ -4,6 +4,8 @@
 #include <windows.h>
 #include <vector>
 #include <string>
+#include <functional>
+#include <iostream>
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.h>
@@ -20,31 +22,39 @@ private:
     int windowHeight;
 
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-        InitialWin32* pThis = nullptr;
-        
-        if (msg == WM_NCCREATE) {
-            CREATESTRUCT* pCreate = reinterpret_cast<CREATESTRUCT*>(lParam);
-            pThis = reinterpret_cast<InitialWin32*>(pCreate->lpCreateParams);
-            SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pThis));
-        } else {
-            pThis = reinterpret_cast<InitialWin32*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-        }
+        InitialWin32* pThis = (InitialWin32*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
         
         if (pThis) {
             switch(msg) {
+                case WM_COMMAND:
+                    std::cout << "[WindowProc] WM_COMMAND received, ID: " << LOWORD(wParam) << std::endl;
+                    if (LOWORD(wParam) == 1) {
+                        std::cout << "[WindowProc] New Project clicked" << std::endl;
+                        if (pThis->onNewProject) {
+                            pThis->onNewProject();
+                        }
+                    }
+                    else if (LOWORD(wParam) == 2) {
+                        std::cout << "[WindowProc] Open Project clicked" << std::endl;
+                        if (pThis->onOpenProject) {
+                            pThis->onOpenProject();
+                        }
+                    }
+                    else if (LOWORD(wParam) == 3) {
+                        std::cout << "[WindowProc] Exit clicked" << std::endl;
+                        DestroyWindow(hwnd);
+                    }
+                    break;
                 case WM_SIZE:
                     pThis->windowWidth = LOWORD(lParam);
                     pThis->windowHeight = HIWORD(lParam);
                     break;
-                case WM_COMMAND:
-                    if (LOWORD(wParam) == 1) {
-                        MessageBox(hwnd, "New Panel Added", "Window", MB_OK);
-                    }
-                    break;
                 case WM_CLOSE:
+                    std::cout << "[WindowProc] WM_CLOSE" << std::endl;
                     DestroyWindow(hwnd);
                     break;
                 case WM_DESTROY:
+                    std::cout << "[WindowProc] WM_DESTROY" << std::endl;
                     PostQuitMessage(0);
                     break;
             }
@@ -55,7 +65,8 @@ private:
 public:
     InitialWin32() : hwnd(nullptr), hdc(nullptr), hrc(nullptr), 
                      hMenu(nullptr), hInstance(nullptr), 
-                     windowWidth(800), windowHeight(600) {}
+                     windowWidth(800), windowHeight(600),
+                     onNewProject(nullptr), onOpenProject(nullptr) {}
     
     HWND getHWND() { return hwnd; }
     HDC getHDC() const { return hdc; }
@@ -63,6 +74,9 @@ public:
     HMENU getMenu() const { return hMenu; }
     int getWidth() const { return windowWidth; }
     int getHeight() const { return windowHeight; }
+    
+    std::function<void()> onNewProject;
+    std::function<void()> onOpenProject;
     
     static InitialWin32* createWindow(int width, int height, const char* title);
     
@@ -85,7 +99,6 @@ public:
         return PeekMessage(&msg, 0, WM_QUIT, WM_QUIT, PM_NOREMOVE);
     }
     
-    // ТОЛЬКО ОДИН метод getFramebufferSize (удали дубликат)
     void getFramebufferSize(int* width, int* height) {
         *width = windowWidth;
         *height = windowHeight;

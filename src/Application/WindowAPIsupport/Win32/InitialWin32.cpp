@@ -1,4 +1,6 @@
 #include "InitialWin32.h"
+#include <iostream>
+
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_win32.h>
@@ -16,8 +18,8 @@ InitialWin32* InitialWin32::createWindow(int width, int height, const char* titl
     HMENU hEditMenu = CreatePopupMenu();
     HMENU hWindowMenu = CreatePopupMenu();
     
-    AppendMenuA(hFileMenu, MF_STRING, 1, "New");
-    AppendMenuA(hFileMenu, MF_STRING, 2, "Open");
+    AppendMenuA(hFileMenu, MF_STRING, 1, "New Project");
+    AppendMenuA(hFileMenu, MF_STRING, 2, "Open Project");
     AppendMenuA(hFileMenu, MF_SEPARATOR, 0, NULL);
     AppendMenuA(hFileMenu, MF_STRING, 3, "Exit");
     
@@ -55,6 +57,9 @@ InitialWin32* InitialWin32::createWindow(int width, int height, const char* titl
         return nullptr;
     }
     
+    // Сохраняем указатель на объект в GWLP_USERDATA
+    SetWindowLongPtr(win->hwnd, GWLP_USERDATA, (LONG_PTR)win);
+    
     win->hdc = GetDC(win->hwnd);
     
     PIXELFORMATDESCRIPTOR pfd = {
@@ -82,10 +87,11 @@ InitialWin32* InitialWin32::createWindow(int width, int height, const char* titl
     ShowWindow(win->hwnd, SW_SHOW);
     UpdateWindow(win->hwnd);
     
+    std::cout << "[InitialWin32] Window created successfully" << std::endl;
+    
     return win;
 }
 
-// Реализация функции
 bool InitialWin32::createVulkanSurface(VkInstance instance, VkSurfaceKHR* surface) {
 #ifdef VK_USE_PLATFORM_WIN32_KHR
     VkWin32SurfaceCreateInfoKHR createInfo{};
