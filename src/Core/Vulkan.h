@@ -62,6 +62,12 @@ private:
         glm::vec3 color; 
     };
     
+    struct UITextVertex {
+        glm::vec2 pos;
+        glm::vec2 texCoord;
+        glm::vec3 color;
+    };
+    
     struct UniformBufferObject { 
         glm::mat4 model; 
         glm::mat4 view; 
@@ -71,6 +77,12 @@ private:
     struct UIQuad { 
         float x1, y1, x2, y2; 
         glm::vec3 color; 
+    };
+    
+    struct UITextQuad {
+        float x1, y1, x2, y2;
+        float u1, v1, u2, v2;
+        glm::vec3 color;
     };
     
     struct FrameResources {
@@ -96,6 +108,7 @@ private:
     
     // UI data
     std::vector<UIQuad> uiQuads;
+    std::vector<UITextQuad> uiTextQuads;
     
     // Model data
     std::vector<VertexGPU> modelVertices;
@@ -104,6 +117,12 @@ private:
     std::vector<size_t> meshVertexOffsets;
     std::vector<size_t> meshIndexOffsets;
     bool modelLoaded;
+    
+    // Font data
+    VulkanTexture fontTexture;
+    stbtt_bakedchar glyphs[96];
+    bool fontInitialized;
+    std::map<char, CharInfo> charMap;
     
     // Depth buffer
     VkImage depthImage;
@@ -125,12 +144,17 @@ private:
     VkRenderPass renderPass;
     VkPipelineLayout pipelineLayout3D;
     VkPipelineLayout pipelineLayoutUI;
+    VkPipelineLayout pipelineLayoutUIText;
     VkPipeline pipeline3D;
     VkPipeline pipelineUI;
+    VkPipeline pipelineUIText;
     VkCommandPool commandPool;
     VkDescriptorSetLayout descLayout;
+    VkDescriptorSetLayout descLayoutUIEmpty;
+    VkDescriptorSetLayout descLayoutUIText;
     VkDescriptorPool descPool;
     std::vector<VkDescriptorSet> descSets;
+    VkDescriptorSet descSetUIText;
     
     // Per-frame resources
     FrameResources frames[MAX_FRAMES_IN_FLIGHT];
@@ -142,9 +166,13 @@ private:
     VkBuffer uiVertexBuffer;
     VkDeviceMemory uiVertexBufferMemory;
     
+    VkBuffer uiTextVertexBuffer;
+    VkDeviceMemory uiTextVertexBufferMemory;
+    
     // Private methods
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     VkShaderModule createShaderModule(const std::string& filename);
+    void createMainDescriptorPool();
     void createSwapchain();
     void createRenderPass();
     void createFramebuffers();
@@ -153,11 +181,15 @@ private:
     void createUniformBuffers();
     void createModelBuffers();
     void createDescriptorSetLayout();
-    void createDescriptorPoolAndSets();
+    void createEmptyDescriptorSetLayout();
+    void createDescriptorSetLayoutUIText();
+    void createDescriptorSetsForModel();
     void createPipelines();
     void createUIBuffers();
+    void createUITextBuffers();
     void updateUniformBuffer(int frameIndex);
     void renderUI();
+    void renderUIText();
     void recreateSwapchain();
     void cleanupTextures();
     void cleanupFrameResources();
@@ -165,6 +197,7 @@ private:
     bool initializeFont();
     VulkanTexture createTextureFromData(unsigned char* data, int width, int height, int channels);
     VulkanTexture createWhiteTexture();
+    float getTextWidth(const std::string& text);
 };
 
 #endif
