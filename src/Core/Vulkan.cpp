@@ -47,13 +47,11 @@ static void compileShaders() {
 bool Vulkan::initializeFont() {
     if (fontInitialized) return true;
     
-    // Получаем путь к исполняемому файлу
     char exePath[MAX_PATH];
     GetModuleFileNameA(NULL, exePath, MAX_PATH);
     char* lastSlash = strrchr(exePath, '\\');
     if (lastSlash) *lastSlash = '\0';
     
-    // Пути к шрифтам (локальные и системные)
     char fontPath1[MAX_PATH], fontPath2[MAX_PATH], fontPath3[MAX_PATH], fontPath4[MAX_PATH];
     char fontPath5[MAX_PATH], fontPath6[MAX_PATH], fontPath7[MAX_PATH], fontPath8[MAX_PATH];
     char fontPath9[MAX_PATH], fontPath10[MAX_PATH];
@@ -145,7 +143,6 @@ bool Vulkan::initializeFont() {
     delete[] atlasBitmap;
     delete[] rgbaBitmap;
     
-    // Создаём descriptor set для текста сразу после загрузки шрифта
     if (descPool != VK_NULL_HANDLE && descLayoutUIText != VK_NULL_HANDLE && fontTexture.valid) {
         VkDescriptorSetAllocateInfo descAlloc{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
         descAlloc.descriptorPool = descPool;
@@ -205,7 +202,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     
     compileShaders();
     
-    // Instance
     VkApplicationInfo appInfo{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     appInfo.apiVersion = VK_API_VERSION_1_0;
     
@@ -220,7 +216,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
         return;
     }
     
-    // Surface
     VkWin32SurfaceCreateInfoKHR surfInfo{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
     surfInfo.hinstance = GetModuleHandle(NULL);
     surfInfo.hwnd = hwnd;
@@ -229,7 +224,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
         return;
     }
     
-    // Physical device
     uint32_t deviceCount;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
     if (deviceCount == 0) {
@@ -240,7 +234,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
     physDevice = devices[0];
     
-    // Device
     uint32_t queueFamily = 0;
     VkDeviceQueueCreateInfo queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
     queueInfo.queueFamilyIndex = queueFamily;
@@ -266,10 +259,7 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     createRenderPass();
     createFramebuffers();
     createCommandPool();
-    
-    // Создаём descriptor pool ДО всего остального
     createMainDescriptorPool();
-    
     createUniformBuffers();
     createSyncObjects();
     createDescriptorSetLayout();
@@ -278,7 +268,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     createPipelines();
     createUIBuffers();
     
-    // Allocate command buffers
     VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     allocInfo.commandPool = commandPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -290,7 +279,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
         frames[i].cmdBuffer = cmdBuffers[i];
     }
     
-    // Инициализируем шрифт (теперь descPool уже существует)
     initializeFont();
     
     viewMat = glm::lookAt(glm::vec3(0.0f, 50.0f, 150.0f), glm::vec3(0, 50, 0), glm::vec3(0, 1, 0));
@@ -1226,9 +1214,9 @@ void Vulkan::renderUI() {
     std::vector<UIVertex> vertices;
     for (const auto& quad : uiQuads) {
         float x1 = (quad.x1 / width) * 2.0f - 1.0f;
-        float y1 = 1.0f - (quad.y1 / height) * 2.0f;
+        float y1 = (quad.y1 / height) * 2.0f - 1.0f;
         float x2 = (quad.x2 / width) * 2.0f - 1.0f;
-        float y2 = 1.0f - (quad.y2 / height) * 2.0f;
+        float y2 = (quad.y2 / height) * 2.0f - 1.0f;
         
         vertices.push_back({{x1, y1}, quad.color});
         vertices.push_back({{x2, y1}, quad.color});
@@ -1264,9 +1252,9 @@ void Vulkan::renderUIText() {
     std::vector<UITextVertex> vertices;
     for (const auto& quad : uiTextQuads) {
         float x1 = (quad.x1 / width) * 2.0f - 1.0f;
-        float y1 = 1.0f - (quad.y1 / height) * 2.0f;
+        float y1 = (quad.y1 / height) * 2.0f - 1.0f;
         float x2 = (quad.x2 / width) * 2.0f - 1.0f;
-        float y2 = 1.0f - (quad.y2 / height) * 2.0f;
+        float y2 = (quad.y2 / height) * 2.0f - 1.0f;
         
         vertices.push_back({{x1, y1}, {quad.u1, quad.v1}, quad.color});
         vertices.push_back({{x2, y1}, {quad.u2, quad.v1}, quad.color});
