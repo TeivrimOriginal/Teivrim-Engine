@@ -1,9 +1,9 @@
 #include "InterfaceManager.h"
-#include "../Core/core.h"  // нужно добавить для использования RenderAPI
+#include "../Core/core.h"
 #include "../Core/Vulkan.h"
+#include "../Core/SecondComplexity/Asset/AssetManager.h"
+#include "BufferLayer.h"
 #include <iostream>
-
-// ... остальной код без изменений ...
 
 InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api) 
     : window(nullptr), core(corePtr), currentAPI(api), startupActive(false),
@@ -17,7 +17,7 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
     panels->add("Hierarchy", 0, 40, 220, sh - 40);
     panels->add("Inspector", sw - 260, 40, 260, sh - 40);
     panels->add("3D Viewport", 220, 40, sw - 480, sh - 40, true);
-    panels->add("Console", 220, sh - 150, sw - 220, 150);
+    panels->add("Asset Browser", 220, sh - 200, sw - 480, 200);
     
     panels->registerCallback("Load Model", [this]() { 
         if (core) core->openFileDialogAndLoadModel(getHWND()); 
@@ -27,30 +27,6 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
     });
     panels->registerCallback("Stop", [this]() { 
         if (core) SwapFlag(*core); 
-    });
-    panels->registerCallback("Create Empty", []() { 
-        std::cout << "Create Empty" << std::endl; 
-    });
-    panels->registerCallback("Create Cube", []() { 
-        std::cout << "Create Cube" << std::endl; 
-    });
-    panels->registerCallback("Create Sphere", []() { 
-        std::cout << "Create Sphere" << std::endl; 
-    });
-    panels->registerCallback("Apply", []() { 
-        std::cout << "Apply" << std::endl; 
-    });
-    panels->registerCallback("Reset", []() { 
-        std::cout << "Reset" << std::endl; 
-    });
-    panels->registerCallback("Wireframe", []() { 
-        std::cout << "Wireframe" << std::endl; 
-    });
-    panels->registerCallback("Solid", []() { 
-        std::cout << "Solid" << std::endl; 
-    });
-    panels->registerCallback("Clear", []() { 
-        std::cout << "Clear" << std::endl; 
     });
     
     auto top = panels->getPanel("TopBar");
@@ -74,11 +50,7 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
         hierarchy->addButton("Create Cube", 10, 65, 100, 24, 0.4f, 0.4f, 0.5f, []() { 
             std::cout << "Create Cube" << std::endl; 
         });
-        hierarchy->addButton("Create Sphere", 10, 95, 100, 24, 0.4f, 0.4f, 0.5f, []() { 
-            std::cout << "Create Sphere" << std::endl; 
-        });
         hierarchy->addLabel("Objects: 0", 10, 130, 12, false, 0.7f, 0.7f, 0.7f);
-        hierarchy->addLabel("Selected: None", 10, 150, 12, false, 0.7f, 0.7f, 0.7f);
     }
     
     auto inspector = panels->getPanel("Inspector");
@@ -86,12 +58,8 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
         inspector->addButton("Apply", 10, 35, 80, 24, 0.4f, 0.5f, 0.4f, []() { 
             std::cout << "Apply" << std::endl; 
         });
-        inspector->addButton("Reset", 100, 35, 80, 24, 0.5f, 0.4f, 0.4f, []() { 
-            std::cout << "Reset" << std::endl; 
-        });
         inspector->addLabel("Position: 0,0,0", 10, 70, 12, false, 0.8f, 0.8f, 0.8f);
         inspector->addLabel("Rotation: 0,0,0", 10, 90, 12, false, 0.8f, 0.8f, 0.8f);
-        inspector->addLabel("Scale: 1,1,1", 10, 110, 12, false, 0.8f, 0.8f, 0.8f);
     }
     
     auto view3D = panels->getPanel("3D Viewport");
@@ -99,17 +67,30 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
         view3D->addButton("Wireframe", 10, 35, 80, 24, 0.4f, 0.4f, 0.5f, []() { 
             std::cout << "Wireframe" << std::endl; 
         });
-        view3D->addButton("Solid", 100, 35, 80, 24, 0.4f, 0.4f, 0.5f, []() { 
-            std::cout << "Solid" << std::endl; 
-        });
     }
     
-    auto console = panels->getPanel("Console");
-    if (console) {
-        console->addButton("Clear", 10, 35, 60, 24, 0.4f, 0.4f, 0.5f, []() { 
-            std::cout << "Clear" << std::endl; 
+    auto assetBrowser = panels->getPanel("Asset Browser");
+    if (assetBrowser) {
+        assetBrowser->addLabel("Path: /", 10, 35, 12, false, 0.7f, 0.8f, 0.7f);
+        assetBrowser->pathLabelIndex = (int)assetBrowser->labels.size() - 1;
+        
+        assetBrowser->addButton("<", 10, 55, 30, 20, 0.4f, 0.4f, 0.5f, [this]() {
+            BufferLayer::Instance().NavigateBack();
         });
-        console->addLabel("> Ready", 10, 70, 12, false, 0.7f, 0.8f, 0.7f);
+        assetBrowser->addButton(">", 45, 55, 30, 20, 0.4f, 0.4f, 0.5f, []() {});
+        assetBrowser->addButton("Up", 80, 55, 30, 20, 0.4f, 0.4f, 0.5f, []() {
+            BufferLayer::Instance().NavigateUp();
+        });
+        assetBrowser->addButton("Refresh", 120, 55, 60, 20, 0.4f, 0.5f, 0.4f, []() {
+            Asset* root = AssetManager::Instance().GetRootAsset();
+            if (root) {
+                std::string rootPath = AssetManager::Instance().GetProjectRoot();
+                if (!rootPath.empty()) {
+                    AssetManager::Instance().LoadProject(rootPath);
+                    BufferLayer::Instance().ResetNavigation();
+                }
+            }
+        });
     }
     
     panels->loadLayout("Config/WindowSettings.json");
@@ -172,6 +153,34 @@ void InterfaceManager::renderStatic() {
         panels->render(renderer);
         objectUI.render(renderer, d.width, d.height, *panels);
         
+        Panel* assetPanel = panels->getPanel("Asset Browser");
+        if (assetPanel && assetPanel->visible && !assetPanel->collapsed) {
+            Asset* root = AssetManager::Instance().GetRootAsset();
+            if (root) {
+                Asset* currentDir = BufferLayer::Instance().GetCurrentDirectory();
+                if (!currentDir) currentDir = root;
+                
+                if (assetPanel->pathLabelIndex >= 0 && assetPanel->pathLabelIndex < (int)assetPanel->labels.size()) {
+                    std::string displayPath = currentDir->path;
+                    std::string rootPath = AssetManager::Instance().GetProjectRoot();
+                    if (!rootPath.empty() && displayPath.find(rootPath) == 0) {
+                        displayPath = "/" + displayPath.substr(rootPath.length());
+                    }
+                    if (displayPath.length() > 60) {
+                        displayPath = "..." + displayPath.substr(displayPath.length() - 57);
+                    }
+                    assetPanel->labels[assetPanel->pathLabelIndex].text = "Path: " + displayPath;
+                }
+                
+                int contentX = assetPanel->getX() + 10;
+                int contentY = assetPanel->getY() + 85;
+                int contentW = assetPanel->getW() - 20;
+                int contentH = assetPanel->getH() - 95;
+                
+                BufferLayer::Instance().VivodAsset(renderer, contentX, contentY, contentW, contentH);
+            }
+        }
+        
         renderer.drawText(10, d.height - 25, "3D Viewer", 1.0f, 1.0f, 1.0f);
         if (core && core->modelLoaded) {
             std::string s = "Model: " + core->modelPath.substr(core->modelPath.find_last_of("/\\") + 1);
@@ -183,12 +192,39 @@ void InterfaceManager::renderStatic() {
         renderer.restoreMatrices();
         renderer.restoreState(prog, vp, dt);
     } else {
-        // Для Vulkan - только вызовы draw, без beginFrame/endFrame
         renderer.setup2D(d.width, d.height);
         
         panels->update(d.width, d.height);
         panels->render(renderer);
         objectUI.render(renderer, d.width, d.height, *panels);
+        
+        Panel* assetPanel = panels->getPanel("Asset Browser");
+        if (assetPanel && assetPanel->visible && !assetPanel->collapsed) {
+            Asset* root = AssetManager::Instance().GetRootAsset();
+            if (root) {
+                Asset* currentDir = BufferLayer::Instance().GetCurrentDirectory();
+                if (!currentDir) currentDir = root;
+                
+                if (assetPanel->pathLabelIndex >= 0 && assetPanel->pathLabelIndex < (int)assetPanel->labels.size()) {
+                    std::string displayPath = currentDir->path;
+                    std::string rootPath = AssetManager::Instance().GetProjectRoot();
+                    if (!rootPath.empty() && displayPath.find(rootPath) == 0) {
+                        displayPath = "/" + displayPath.substr(rootPath.length());
+                    }
+                    if (displayPath.length() > 60) {
+                        displayPath = "..." + displayPath.substr(displayPath.length() - 57);
+                    }
+                    assetPanel->labels[assetPanel->pathLabelIndex].text = "Path: " + displayPath;
+                }
+                
+                int contentX = assetPanel->getX() + 10;
+                int contentY = assetPanel->getY() + 85;
+                int contentW = assetPanel->getW() - 20;
+                int contentH = assetPanel->getH() - 95;
+                
+                BufferLayer::Instance().VivodAsset(renderer, contentX, contentY, contentW, contentH);
+            }
+        }
         
         renderer.drawText(10, d.height - 25, "3D Viewer (Vulkan)", 1.0f, 1.0f, 1.0f);
         if (core && core->modelLoaded) {
@@ -216,6 +252,30 @@ void InterfaceManager::renderDynamic() {
 
 void InterfaceManager::handleClick(int x, int y) {
     isClick = true;
+    
+    Panel* assetPanel = panels->getPanel("Asset Browser");
+    if (assetPanel && assetPanel->visible && !assetPanel->collapsed) {
+        int contentX = assetPanel->getX() + 10;
+        int contentY = assetPanel->getY() + 85;
+        int contentW = assetPanel->getW() - 20;
+        int contentH = assetPanel->getH() - 95;
+        
+        if (x >= contentX && x <= contentX + contentW && y >= contentY && y <= contentY + contentH) {
+            Asset* clicked = BufferLayer::Instance().GetAssetAtPosition(x, y);
+            if (clicked) {
+                if (clicked->isFolder) {
+                    BufferLayer::Instance().NavigateTo(clicked);
+                    std::cout << "[UI] Navigated to: " << clicked->name << std::endl;
+                } else {
+                    std::cout << "[UI] Selected file: " << clicked->name << " (" << clicked->type << ")" << std::endl;
+                    if (core && (clicked->type == "obj" || clicked->type == "fbx" || clicked->type == "gltf" || clicked->type == "glb")) {
+                        core->loadModelFromPath(clicked->path);
+                    }
+                }
+                return;
+            }
+        }
+    }
 }
 
 void InterfaceManager::handleMouseDown(int x, int y) { 
@@ -268,7 +328,6 @@ void InterfaceManager::setWindow(InitialWin32* win) {
 
 void InterfaceManager::initializeRender(HWND hwnd, int width, int height) {
     renderer.initialize(hwnd, width, height);
-    // Vulkan будет передан через setVulkan из Core
 }
 
 void InterfaceManager::updateWindowSize(int width, int height) {

@@ -5,6 +5,8 @@
 #include "Render/Parser/parser.h"
 #include "../Control/Input.h"
 #include "SecondComplexity/Project/ProjectManager.h"
+#include "SecondComplexity/Asset/AssetManager.h"
+#include "../Interface/BufferLayer.h"
 #include <iostream>
 #include <string>
 #include <GL/glew.h>
@@ -22,34 +24,73 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_COMMAND:
             std::cout << "[WndProc] WM_COMMAND received, ID: " << LOWORD(wParam) << std::endl;
             if (LOWORD(wParam) == 1) {
-                std::cout << "[WndProc] New Project clicked - opening ProjectManager dialog" << std::endl;
+                std::cout << "[WndProc] New Project clicked" << std::endl;
                 ProjectManager::Instance().ShowCreateProjectDialog(hwnd);
                 return 0;
             }
             else if (LOWORD(wParam) == 2) {
                 std::cout << "[WndProc] Open Project clicked" << std::endl;
-                // TODO: Open project dialog
+                OPENFILENAMEA ofn;
+                CHAR szFile[MAX_PATH] = "";
+                ZeroMemory(&ofn, sizeof(ofn));
+                ofn.lStructSize = sizeof(ofn);
+                ofn.hwndOwner = hwnd;
+                ofn.lpstrFile = szFile;
+                ofn.nMaxFile = sizeof(szFile);
+                ofn.lpstrFilter = "Project Files (*.json)\0*.json\0All Files\0*.*\0";
+                ofn.nFilterIndex = 1;
+                ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+                ofn.lpstrTitle = "Open Project";
+                
+                if (GetOpenFileNameA(&ofn)) {
+                    std::cout << "[WndProc] Opening: " << ofn.lpstrFile << std::endl;
+                    std::string projectFile = ofn.lpstrFile;
+                    size_t pos = projectFile.find_last_of("\\/");
+                    if (pos != std::string::npos) {
+                        std::string projectDir = projectFile.substr(0, pos);
+                        AssetManager::Instance().LoadProject(projectDir);
+                    }
+                }
                 return 0;
             }
             else if (LOWORD(wParam) == 3) {
-                std::cout << "[WndProc] Exit clicked" << std::endl;
                 DestroyWindow(hwnd);
                 return 0;
             }
             break;
             
-        case WM_LBUTTONDOWN:
-        case WM_LBUTTONUP:
+        case WM_LBUTTONDOWN: {
+            int x = LOWORD(lParam), y = HIWORD(lParam);
+            
+            // Сначала проверяем клик по ассетам
+            Asset* clicked = BufferLayer::Instance().GetAssetAtPosition(x, y);
+            if (clicked) {
+                if (clicked->isFolder) {
+                    BufferLayer::Instance().NavigateTo(clicked);
+                    std::cout << "[CORE] Navigated to: " << clicked->name << std::endl;
+                } else {
+                    std::cout << "[CORE] Selected file: " << clicked->name << " (" << clicked->type << ")" << std::endl;
+                    // Здесь можно загрузить модель если это 3D файл
+                    if (clicked->type == "obj" || clicked->type == "fbx" || clicked->type == "gltf" || clicked->type == "glb") {
+                        // Загрузка модели будет здесь
+                    }
+                }
+            }
+            
+            if (g_uiManager) {
+                g_uiManager->handleMouseDown(x, y);
+                g_uiManager->handleClick(x, y);
+            }
+            break;
+        }
+        case WM_LBUTTONUP: {
+            int x = LOWORD(lParam), y = HIWORD(lParam);
+            if (g_uiManager) g_uiManager->handleMouseUp(x, y);
+            break;
+        }
         case WM_MOUSEMOVE: {
             int x = LOWORD(lParam), y = HIWORD(lParam);
-            if (g_uiManager) {
-                if (msg == WM_LBUTTONDOWN) {
-                    g_uiManager->handleMouseDown(x, y);
-                    g_uiManager->handleClick(x, y);
-                }
-                else if (msg == WM_LBUTTONUP) g_uiManager->handleMouseUp(x, y);
-                else g_uiManager->handleMouseMove(x, y);
-            }
+            if (g_uiManager) g_uiManager->handleMouseMove(x, y);
             break;
         }
         case WM_SIZE: {
@@ -91,6 +132,7 @@ Core::Core() {
     std::cout << (currentAPI == RenderAPI::VULKAN ? "Vulkan selected\n" : "OpenGL selected\n");
     
     ProjectManager::Instance().SetRenderAPI(currentAPI == RenderAPI::VULKAN ? 1 : 0);
+    BufferLayer::Instance().SetIconDirectory("System\\Data\\Interface");
 }
 
 void Core::setRenderAPI(RenderAPI api) {
@@ -100,18 +142,15 @@ void Core::setRenderAPI(RenderAPI api) {
 void Core::initializeRender(InitialWin32* window) {
     currentWindow = window;
     
-    // Устанавливаем callback'и меню (запасной вариант, основной в WndProc)
     window->onNewProject = [this, window]() {
-        std::cout << "[Core] onNewProject callback called" << std::endl;
         ProjectManager::Instance().ShowCreateProjectDialog(window->getHWND(), 
             [this](const std::string& name) {
                 std::cout << "[CORE] Project created: " << name << std::endl;
-                modelLoaded = false; // Сбрасываем текущую модель при создании нового проекта
+                modelLoaded = false;
             });
     };
     
     window->onOpenProject = [this, window]() {
-        std::cout << "[Core] onOpenProject callback called" << std::endl;
         OPENFILENAMEA ofn;
         CHAR szFile[MAX_PATH] = "";
         ZeroMemory(&ofn, sizeof(ofn));
@@ -125,8 +164,12 @@ void Core::initializeRender(InitialWin32* window) {
         ofn.lpstrTitle = "Open Project";
         
         if (GetOpenFileNameA(&ofn)) {
-            std::cout << "[CORE] Opening project: " << ofn.lpstrFile << std::endl;
-            // TODO: Load project
+            std::string projectFile = ofn.lpstrFile;
+            size_t pos = projectFile.find_last_of("\\/");
+            if (pos != std::string::npos) {
+                std::string projectDir = projectFile.substr(0, pos);
+                AssetManager::Instance().LoadProject(projectDir);
+            }
         }
     };
     
@@ -200,12 +243,12 @@ void Core::ParserToRender() {
 
 bool Core::loadModelFromPath(const std::string& path) {
     if (path.empty()) {
-        std::cerr << "Путь к модели пустой" << std::endl;
+        std::cerr << "Model path empty" << std::endl;
         return false;
     }
 
     if (!modelParser.loadModel(path)) {
-        std::cerr << "Ошибка загрузки модели: " << path << std::endl;
+        std::cerr << "Failed to load model: " << path << std::endl;
         return false;
     }
 
@@ -217,7 +260,7 @@ bool Core::loadModelFromPath(const std::string& path) {
         vulkan->loadModel(modelParser.getMeshes());
     }
 
-    std::cout << "Модель успешно загружена: " << path << std::endl;
+    std::cout << "Model loaded: " << path << std::endl;
     return true;
 }
 
@@ -233,11 +276,10 @@ bool Core::openFileDialogAndLoadModel(HWND hwnd) {
     ofn.lpstrFilter = "3D Models (OBJ, FBX, DAE, GLTF, GLB)\0*.obj;*.fbx;*.dae;*.gltf;*.glb\0All Files\0*.*\0";
     ofn.nFilterIndex = 1;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-    ofn.lpstrTitle = "Выберите 3D модель";
+    ofn.lpstrTitle = "Select 3D Model";
 
     if (GetOpenFileNameA(&ofn)) {
-        bool result = loadModelFromPath(ofn.lpstrFile);
-        return result;
+        return loadModelFromPath(ofn.lpstrFile);
     }
     return false;
 }
@@ -302,15 +344,10 @@ void Core::GameLoop() {
         frameCount++;
         if (fpsTimer >= 1.0f) {
             char title[256];
-            if (currentAPI == RenderAPI::VULKAN && vulkan) {
-                const auto& camPos = app.getCamera().GetPosition();
-                sprintf_s(title, "Vulkan 3D Viewer | FPS: %d | Cam: %.1f, %.1f, %.1f", 
-                         frameCount, camPos.x, camPos.y, camPos.z);
-            } else {
-                const auto& camPos = app.getCamera().GetPosition();
-                sprintf_s(title, "OpenGL 3D Viewer | FPS: %d | Cam: %.1f, %.1f, %.1f", 
-                         frameCount, camPos.x, camPos.y, camPos.z);
-            }
+            const auto& camPos = app.getCamera().GetPosition();
+            sprintf_s(title, "%s 3D Viewer | FPS: %d | Cam: %.1f, %.1f, %.1f", 
+                     currentAPI == RenderAPI::VULKAN ? "Vulkan" : "OpenGL",
+                     frameCount, camPos.x, camPos.y, camPos.z);
             SetWindowTextA(win32Window->getHWND(), title);
             frameCount = 0;
             fpsTimer = 0.0f;
@@ -347,6 +384,11 @@ void Core::GameLoop() {
                 
                 g_uiManager->renderStatic();
                 
+                // Рендерим ассеты через BufferLayer
+                Asset* currentDir = BufferLayer::Instance().GetCurrentDirectory();
+                if (currentDir && AssetManager::Instance().GetRootAsset()) {
+BufferLayer::Instance().VivodAsset(g_uiManager->getRenderer(), 220, 200, clientWidth - 480, clientHeight - 350);                }
+                
                 vulkan->endFrame();
                 vulkan->present();
             }
@@ -370,6 +412,12 @@ void Core::GameLoop() {
                     }
                 }
                 g_uiManager->renderStatic();
+                
+                // Рендерим ассеты через BufferLayer
+                Asset* currentDir = BufferLayer::Instance().GetCurrentDirectory();
+                if (currentDir && AssetManager::Instance().GetRootAsset()) {
+BufferLayer::Instance().VivodAsset(g_uiManager->getRenderer(), 220, 200, clientWidth - 480, clientHeight - 350);}
+                
                 win32Window->swapBuffers();
             }
         }

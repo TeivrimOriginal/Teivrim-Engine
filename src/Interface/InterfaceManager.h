@@ -8,7 +8,7 @@
 
 class Core;
 class Vulkan;
-enum class RenderAPI;  // только объявление, не определение
+enum class RenderAPI;
 
 class InterfaceManager {
 public:
@@ -27,6 +27,7 @@ public:
     void setWindow(class InitialWin32* window);
     void setVulkan(class Vulkan* vk);
     PanelManager* getPanelManager() { return panels; }
+    RenderUI& getRenderer() { return renderer; }
     void SwapFlag(Core &A);
     HWND getHWND() const;
     void BlockMoveToMainWindow(int x, int y);

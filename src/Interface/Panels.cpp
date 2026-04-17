@@ -2,7 +2,7 @@
 #include <sstream>
 
 Panel::Panel(const std::string& n, int _x, int _y, int _w, int _h, bool _3D)
-    : name(n), visible(true), collapsed(false), is3D(_3D) {
+    : name(n), visible(true), collapsed(false), is3D(_3D), showTypeMenu(false), pathLabelIndex(-1) {
     r.x = _x; r.y = _y; r.w = _w; r.h = _h;
     r.update();
 }
@@ -57,6 +57,11 @@ bool Panel::onMenuBtn(int px, int py) const {
     int cx = r.right - 80, cy = r.y + 5;
     return px >= cx && px <= cx + 12 && py >= cy && py <= cy + 12;
 }
+bool Panel::onTypeSwitchButton(int px, int py) const {
+    if (!visible) return false;
+    int bx = r.x + 5, by = r.y + 5;
+    return px >= bx && px <= bx + 12 && py >= by && py <= by + 12;
+}
 
 int Panel::getEdge(int px, int py, int s) const {
     if (!visible) return -1;
@@ -84,43 +89,30 @@ bool Panel::onClickButton(int px, int py) {
 void Panel::render(RenderUI& render) {
     if (!visible) return;
 
-    // 1. Фон панели (тёмно-серый)
     if (!is3D) {
         render.drawQuad(r.x, r.y, r.right, r.bottom, 0.18f, 0.18f, 0.22f);
     }
 
-    // 2. Заголовок (светлее)
     render.drawQuad(r.x, r.y, r.right, r.y + 25, 0.28f, 0.28f, 0.35f);
 
-    // 3. Рамка (светлые линии)
-    render.drawQuad(r.x, r.y, r.right, r.y + 1, 0.40f, 0.40f, 0.45f);     // верх
-    render.drawQuad(r.x, r.bottom - 1, r.right, r.bottom, 0.40f, 0.40f, 0.45f); // низ
-    render.drawQuad(r.x, r.y, r.x + 1, r.bottom, 0.40f, 0.40f, 0.45f);     // левая
-    render.drawQuad(r.right - 1, r.y, r.right, r.bottom, 0.40f, 0.40f, 0.45f); // правая
+    render.drawQuad(r.x, r.y, r.right, r.y + 1, 0.40f, 0.40f, 0.45f);
+    render.drawQuad(r.x, r.bottom - 1, r.right, r.bottom, 0.40f, 0.40f, 0.45f);
+    render.drawQuad(r.x, r.y, r.x + 1, r.bottom, 0.40f, 0.40f, 0.45f);
+    render.drawQuad(r.right - 1, r.y, r.right, r.bottom, 0.40f, 0.40f, 0.45f);
 
-    // 4. Заголовок текста (название панели)
     render.drawText(r.x + 8, r.y + 6, name, 0.9f, 0.9f, 0.9f);
 
-    // 5. Кнопки в заголовке (Collapse, Close)
-    // Collapse кнопка
     render.drawQuad(r.right - 58, r.y + 6, r.right - 46, r.y + 18, 0.5f, 0.5f, 0.6f);
     render.drawText(r.right - 56, r.y + 7, "-", 1.0f, 1.0f, 1.0f);
 
-    // Close кнопка
     render.drawQuad(r.right - 38, r.y + 6, r.right - 26, r.y + 18, 0.7f, 0.3f, 0.3f);
-    render.drawText(r.right - 35, r.y + 6, "×", 1.0f, 1.0f, 1.0f);
+    render.drawText(r.right - 35, r.y + 6, "x", 1.0f, 1.0f, 1.0f);
 
-    // 6. УДАЛЯЕМ ЖЁЛТЫЙ ТЕСТОВЫЙ КВАДРАТ (он больше не нужен)
-    // render.drawQuad(r.x + 10, r.y + 10, r.x + 200, r.y + 200, 1.0f, 1.0f, 0.0f);
-
-    // 7. Содержимое панели (кнопки и лейблы)
     if (!collapsed) {
         for (auto& btn : buttons) {
             int bx = r.x + btn.x;
             int by = r.y + btn.y;
-            // Кнопка
             render.drawQuad(bx, by, bx + btn.w, by + btn.h, btn.r, btn.g, btn.b);
-            // Текст кнопки
             render.drawTextCentered(bx, by, btn.w, btn.h, btn.name, 1.0f, 1.0f, 1.0f);
         }
 
@@ -130,7 +122,7 @@ void Panel::render(RenderUI& render) {
     }
 }
 
-// PanelManager implementation (unchanged except render method)
+// PanelManager
 PanelManager::PanelManager() : dragging(nullptr), dragPartner(nullptr), dragX(0), dragY(0), 
     dragW1(0), dragH1(0), dragW2(0), dragH2(0), dragX1(0), dragY1(0), dragX2(0), dragY2(0),
     dragEdge(-1), isDrag(false), isResizing(false), isDoubleEdge(false), menuOpen(false), screenW(1280), screenH(720) {}
@@ -172,21 +164,13 @@ void PanelManager::registerCallback(const std::string& name, std::function<void(
     globalCallbacks[name] = cb;
 }
 
-void PanelManager::loadUIFromJSON(const std::string& filename) {
-    // ... existing code ...
-}
-
-void PanelManager::loadConfig(const std::string& filename) {
-    loadUIFromJSON(filename);
-}
-
 void PanelManager::update(int sw, int sh) {
     screenW = sw; screenH = sh;
     int topH = 0, leftW = 220, rightW = 260, consoleH = 150;
     
     for (auto p : panels) {
         if (p->name == "TopBar") topH = p->getH();
-        if (p->name == "Console") consoleH = p->getH();
+        if (p->name == "Asset Browser") consoleH = p->getH();
         if (p->name == "Hierarchy") leftW = p->getW();
         if (p->name == "Inspector") rightW = p->getW();
     }
@@ -195,7 +179,7 @@ void PanelManager::update(int sw, int sh) {
         if (p->name == "TopBar") {
             p->setPos(0, 0);
             p->setSize(sw, std::max(30, std::min(400, p->getH())));
-        } else if (p->name == "Console") {
+        } else if (p->name == "Asset Browser") {
             p->setPos(leftW, sh - consoleH);
             p->setSize(sw - leftW - rightW, consoleH);
         } else if (p->name == "Hierarchy") {
@@ -333,18 +317,6 @@ void PanelManager::onMouseDown(int x, int y) {
         
         if (p->onCloseBtn(x, y)) { p->visible = false; return; }
         if (p->onCollapseBtn(x, y)) { p->collapsed = !p->collapsed; return; }
-        if (p->onMenuBtn(x, y)) {
-            menuOpen = true;
-            menuX = x; menuY = y + 15;
-            menuItems = {"Close", "Collapse", "Reset"};
-            menuCallback = [this, p](int idx) {
-                if (idx == 0) p->visible = false;
-                else if (idx == 1) p->collapsed = !p->collapsed;
-                else if (idx == 2) { p->setPos(220, 40); p->setSize(400, 300); }
-                closeMenu();
-            };
-            return;
-        }
         if (p->onClickButton(x, y)) return;
         if (p->onHeader(x, y)) {
             dragging = p;
@@ -357,12 +329,6 @@ void PanelManager::onMouseDown(int x, int y) {
             SetCapture(GetForegroundWindow());
             return;
         }
-    }
-    
-    if (menuOpen) {
-        int idx = (y - menuY) / 20;
-        if (idx >= 0 && idx < (int)menuItems.size() && menuCallback) menuCallback(idx);
-        closeMenu();
     }
 }
 
@@ -443,7 +409,7 @@ void PanelManager::onMouseMove(int x, int y) {
                     if (newY >= dragging->getH()) other->setPos(other->getX(), newY);
                 }
             }
-            else if (dragging->name == "Console" && dragEdge == 3) {
+            else if (dragging->name == "Asset Browser" && dragEdge == 3) {
                 int newH = dragging->getH();
                 if (newH >= 100 && newH <= 400) {
                     dragging->setPos(dragging->getX(), screenH - newH);
@@ -495,15 +461,11 @@ void PanelManager::onMouseUp(int x, int y) {
 bool PanelManager::isDragging() const { return isDrag; }
 
 void PanelManager::render(RenderUI& render) {
-    // printf("[PANELMANAGER] render() called, %d panels\n", (int)panels.size());  // закомментировать для减少 спама
-    
     for (auto p : panels) {
         if (p->visible) {
             p->render(render);
         }
     }
-    
-    // ВТОРОЙ ПРОХОД УДАЛЁН
     
     if (menuOpen) {
         int w = 100, h = menuItems.size() * 20;
