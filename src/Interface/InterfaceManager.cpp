@@ -28,6 +28,30 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
     panels->registerCallback("Stop", [this]() { 
         if (core) SwapFlag(*core); 
     });
+    panels->registerCallback("Create Empty", []() { 
+        std::cout << "Create Empty" << std::endl; 
+    });
+    panels->registerCallback("Create Cube", []() { 
+        std::cout << "Create Cube" << std::endl; 
+    });
+    panels->registerCallback("Create Sphere", []() { 
+        std::cout << "Create Sphere" << std::endl; 
+    });
+    panels->registerCallback("Apply", []() { 
+        std::cout << "Apply" << std::endl; 
+    });
+    panels->registerCallback("Reset", []() { 
+        std::cout << "Reset" << std::endl; 
+    });
+    panels->registerCallback("Wireframe", []() { 
+        std::cout << "Wireframe" << std::endl; 
+    });
+    panels->registerCallback("Solid", []() { 
+        std::cout << "Solid" << std::endl; 
+    });
+    panels->registerCallback("Clear", []() { 
+        std::cout << "Clear" << std::endl; 
+    });
     
     auto top = panels->getPanel("TopBar");
     if (top) {
@@ -50,7 +74,11 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
         hierarchy->addButton("Create Cube", 10, 65, 100, 24, 0.4f, 0.4f, 0.5f, []() { 
             std::cout << "Create Cube" << std::endl; 
         });
+        hierarchy->addButton("Create Sphere", 10, 95, 100, 24, 0.4f, 0.4f, 0.5f, []() { 
+            std::cout << "Create Sphere" << std::endl; 
+        });
         hierarchy->addLabel("Objects: 0", 10, 130, 12, false, 0.7f, 0.7f, 0.7f);
+        hierarchy->addLabel("Selected: None", 10, 150, 12, false, 0.7f, 0.7f, 0.7f);
     }
     
     auto inspector = panels->getPanel("Inspector");
@@ -58,14 +86,21 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
         inspector->addButton("Apply", 10, 35, 80, 24, 0.4f, 0.5f, 0.4f, []() { 
             std::cout << "Apply" << std::endl; 
         });
+        inspector->addButton("Reset", 100, 35, 80, 24, 0.5f, 0.4f, 0.4f, []() { 
+            std::cout << "Reset" << std::endl; 
+        });
         inspector->addLabel("Position: 0,0,0", 10, 70, 12, false, 0.8f, 0.8f, 0.8f);
         inspector->addLabel("Rotation: 0,0,0", 10, 90, 12, false, 0.8f, 0.8f, 0.8f);
+        inspector->addLabel("Scale: 1,1,1", 10, 110, 12, false, 0.8f, 0.8f, 0.8f);
     }
     
     auto view3D = panels->getPanel("3D Viewport");
     if (view3D) {
         view3D->addButton("Wireframe", 10, 35, 80, 24, 0.4f, 0.4f, 0.5f, []() { 
             std::cout << "Wireframe" << std::endl; 
+        });
+        view3D->addButton("Solid", 100, 35, 80, 24, 0.4f, 0.4f, 0.5f, []() { 
+            std::cout << "Solid" << std::endl; 
         });
     }
     
@@ -91,6 +126,10 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
                 }
             }
         });
+        assetBrowser->addButton("Clear", 190, 55, 50, 20, 0.5f, 0.4f, 0.4f, []() { 
+            std::cout << "Clear" << std::endl; 
+        });
+        assetBrowser->addLabel("> Ready", 10, 85, 12, false, 0.7f, 0.8f, 0.7f);
     }
     
     panels->loadLayout("Config/WindowSettings.json");
@@ -173,11 +212,13 @@ void InterfaceManager::renderStatic() {
                 }
                 
                 int contentX = assetPanel->getX() + 10;
-                int contentY = assetPanel->getY() + 85;
+                int contentY = assetPanel->getY() + 105;
                 int contentW = assetPanel->getW() - 20;
-                int contentH = assetPanel->getH() - 95;
+                int contentH = assetPanel->getH() - 115;
                 
-                BufferLayer::Instance().VivodAsset(renderer, contentX, contentY, contentW, contentH);
+                if (contentW > 0 && contentH > 0) {
+                    BufferLayer::Instance().VivodAsset(renderer, contentX, contentY, contentW, contentH);
+                }
             }
         }
         
@@ -218,11 +259,13 @@ void InterfaceManager::renderStatic() {
                 }
                 
                 int contentX = assetPanel->getX() + 10;
-                int contentY = assetPanel->getY() + 85;
+                int contentY = assetPanel->getY() + 105;
                 int contentW = assetPanel->getW() - 20;
-                int contentH = assetPanel->getH() - 95;
+                int contentH = assetPanel->getH() - 115;
                 
-                BufferLayer::Instance().VivodAsset(renderer, contentX, contentY, contentW, contentH);
+                if (contentW > 0 && contentH > 0) {
+                    BufferLayer::Instance().VivodAsset(renderer, contentX, contentY, contentW, contentH);
+                }
             }
         }
         
@@ -250,34 +293,65 @@ void InterfaceManager::renderDynamic() {
     }
 }
 
+void InterfaceManager::handleRightClick(int x, int y) {
+    Panel* assetPanel = panels->getPanel("Asset Browser");
+    if (assetPanel && assetPanel->visible && !assetPanel->collapsed) {
+        int contentX = assetPanel->getX() + 10;
+        int contentY = assetPanel->getY() + 105;
+        int contentW = assetPanel->getW() - 20;
+        int contentH = assetPanel->getH() - 115;
+        
+        if (x >= contentX && x <= contentX + contentW && y >= contentY && y <= contentY + contentH) {
+            Asset* clicked = BufferLayer::Instance().GetAssetAtPosition(x, y);
+            
+            BufferLayer::Instance().showContextMenu = true;
+            BufferLayer::Instance().menuX = x;
+            BufferLayer::Instance().menuY = y;
+            BufferLayer::Instance().selectedAsset = clicked;
+            
+            if (clicked) {
+                std::cout << "[UI] Right-click on: " << clicked->name << std::endl;
+            } else {
+                std::cout << "[UI] Right-click on empty space" << std::endl;
+            }
+        }
+    }
+}
 void InterfaceManager::handleClick(int x, int y) {
     isClick = true;
     
     Panel* assetPanel = panels->getPanel("Asset Browser");
     if (assetPanel && assetPanel->visible && !assetPanel->collapsed) {
+        if (assetPanel->onClickButton(x, y)) {
+            return;
+        }
+        
         int contentX = assetPanel->getX() + 10;
-        int contentY = assetPanel->getY() + 85;
+        int contentY = assetPanel->getY() + 105;
         int contentW = assetPanel->getW() - 20;
-        int contentH = assetPanel->getH() - 95;
+        int contentH = assetPanel->getH() - 115;
         
         if (x >= contentX && x <= contentX + contentW && y >= contentY && y <= contentY + contentH) {
             Asset* clicked = BufferLayer::Instance().GetAssetAtPosition(x, y);
+            
+            // Проверяем было ли это двойным кликом (можно добавить позже)
+            static auto lastClick = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
+            bool doubleClick = (now - lastClick) < std::chrono::milliseconds(300);
+            lastClick = now;
+            
             if (clicked) {
-                if (clicked->isFolder) {
-                    BufferLayer::Instance().NavigateTo(clicked);
-                    std::cout << "[UI] Navigated to: " << clicked->name << std::endl;
-                } else {
-                    std::cout << "[UI] Selected file: " << clicked->name << " (" << clicked->type << ")" << std::endl;
-                    if (core && (clicked->type == "obj" || clicked->type == "fbx" || clicked->type == "gltf" || clicked->type == "glb")) {
-                        core->loadModelFromPath(clicked->path);
+                if (doubleClick) {
+                    if (clicked->isFolder) {
+                        BufferLayer::Instance().NavigateTo(clicked);
+                    } else {
+                        BufferLayer::Instance().OpenAssetExternal(clicked);
                     }
                 }
-                return;
             }
         }
     }
 }
-
 void InterfaceManager::handleMouseDown(int x, int y) { 
     panels->onMouseDown(x, y); 
 }

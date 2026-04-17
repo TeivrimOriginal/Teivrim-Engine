@@ -19,6 +19,7 @@ public:
     void renderStatic();
     void renderDynamic();
     void handleClick(int x, int y);
+    void handleRightClick(int x, int y);
     void handleMouseMove(int x, int y);
     void handleMouseDown(int x, int y);
     void handleMouseUp(int x, int y);

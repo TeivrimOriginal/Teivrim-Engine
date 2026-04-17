@@ -76,7 +76,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     }
                 }
             }
-            
+            if (BufferLayer::Instance().showContextMenu) {
+                BufferLayer::Instance().HandleContextMenuClick(x, y);
+            }
+                
             if (g_uiManager) {
                 g_uiManager->handleMouseDown(x, y);
                 g_uiManager->handleClick(x, y);
@@ -113,6 +116,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             DestroyWindow(hwnd);
             break;
         }
+        case WM_RBUTTONDOWN: {
+            int x = LOWORD(lParam), y = HIWORD(lParam);
+            if (g_uiManager) {
+                g_uiManager->handleRightClick(x, y);
+            }
+            break;
+        }
     }
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
@@ -139,72 +149,6 @@ void Core::setRenderAPI(RenderAPI api) {
     currentAPI = api;
 }
 
-void Core::initializeRender(InitialWin32* window) {
-    currentWindow = window;
-    
-    window->onNewProject = [this, window]() {
-        ProjectManager::Instance().ShowCreateProjectDialog(window->getHWND(), 
-            [this](const std::string& name) {
-                std::cout << "[CORE] Project created: " << name << std::endl;
-                modelLoaded = false;
-            });
-    };
-    
-    window->onOpenProject = [this, window]() {
-        OPENFILENAMEA ofn;
-        CHAR szFile[MAX_PATH] = "";
-        ZeroMemory(&ofn, sizeof(ofn));
-        ofn.lStructSize = sizeof(ofn);
-        ofn.hwndOwner = window->getHWND();
-        ofn.lpstrFile = szFile;
-        ofn.nMaxFile = sizeof(szFile);
-        ofn.lpstrFilter = "Project Files (*.json)\0*.json\0All Files\0*.*\0";
-        ofn.nFilterIndex = 1;
-        ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-        ofn.lpstrTitle = "Open Project";
-        
-        if (GetOpenFileNameA(&ofn)) {
-            std::string projectFile = ofn.lpstrFile;
-            size_t pos = projectFile.find_last_of("\\/");
-            if (pos != std::string::npos) {
-                std::string projectDir = projectFile.substr(0, pos);
-                AssetManager::Instance().LoadProject(projectDir);
-            }
-        }
-    };
-    
-    if (currentAPI == RenderAPI::OPENGL) {
-        if (!rendererw.initialize(window)) {
-            std::cerr << "Failed to initialize OpenGL renderer" << std::endl;
-            return;
-        }
-        shaderProgram = rendererw.initShaders();
-        if (shaderProgram == 0) {
-            std::cerr << "Failed to create shader program" << std::endl;
-            return;
-        }
-        std::cout << "OpenGL renderer initialized" << std::endl;
-    } 
-    else {
-        RECT rect;
-        GetClientRect(window->getHWND(), &rect);
-        int width = rect.right - rect.left;
-        int height = rect.bottom - rect.top;
-        if (width <= 0) width = 1280;
-        if (height <= 0) height = 720;
-
-        vulkan = new Vulkan(window->getHWND(), width, height);
-        if (!vulkan || !vulkan->isInitialized()) {
-            std::cerr << "Failed to initialize Vulkan renderer" << std::endl;
-            delete vulkan;
-            vulkan = nullptr;
-            return;
-        }
-        vulkan->setup2D(width, height);
-        std::cout << "Vulkan renderer initialized" << std::endl;
-    }
-    rendererInitialized = true;
-}
 
 void Core::renderModel(Camera& camera) {
     if (!rendererInitialized || !modelLoaded) return;
@@ -283,7 +227,76 @@ bool Core::openFileDialogAndLoadModel(HWND hwnd) {
     }
     return false;
 }
+void Core::initializeRender(InitialWin32* window) {
+    currentWindow = window;
+    
+    // Устанавливаем parent HWND для BufferLayer
+    BufferLayer::Instance().SetParentHWND(window->getHWND());
+    
+    window->onNewProject = [this, window]() {
+        ProjectManager::Instance().ShowCreateProjectDialog(window->getHWND(), 
+            [this](const std::string& name) {
+                std::cout << "[CORE] Project created: " << name << std::endl;
+                modelLoaded = false;
+            });
+    };
+    
+    window->onOpenProject = [this, window]() {
+        OPENFILENAMEA ofn;
+        CHAR szFile[MAX_PATH] = "";
+        ZeroMemory(&ofn, sizeof(ofn));
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = window->getHWND();
+        ofn.lpstrFile = szFile;
+        ofn.nMaxFile = sizeof(szFile);
+        ofn.lpstrFilter = "Project Files (*.json)\0*.json\0All Files\0*.*\0";
+        ofn.nFilterIndex = 1;
+        ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+        ofn.lpstrTitle = "Open Project";
+        
+        if (GetOpenFileNameA(&ofn)) {
+            std::string projectFile = ofn.lpstrFile;
+            size_t pos = projectFile.find_last_of("\\/");
+            if (pos != std::string::npos) {
+                std::string projectDir = projectFile.substr(0, pos);
+                AssetManager::Instance().LoadProject(projectDir);
+                BufferLayer::Instance().ResetNavigation();
+            }
+        }
+    };
+    
+    if (currentAPI == RenderAPI::OPENGL) {
+        if (!rendererw.initialize(window)) {
+            std::cerr << "Failed to initialize OpenGL renderer" << std::endl;
+            return;
+        }
+        shaderProgram = rendererw.initShaders();
+        if (shaderProgram == 0) {
+            std::cerr << "Failed to create shader program" << std::endl;
+            return;
+        }
+        std::cout << "OpenGL renderer initialized" << std::endl;
+    } 
+    else {
+        RECT rect;
+        GetClientRect(window->getHWND(), &rect);
+        int width = rect.right - rect.left;
+        int height = rect.bottom - rect.top;
+        if (width <= 0) width = 1280;
+        if (height <= 0) height = 720;
 
+        vulkan = new Vulkan(window->getHWND(), width, height);
+        if (!vulkan || !vulkan->isInitialized()) {
+            std::cerr << "Failed to initialize Vulkan renderer" << std::endl;
+            delete vulkan;
+            vulkan = nullptr;
+            return;
+        }
+        vulkan->setup2D(width, height);
+        std::cout << "Vulkan renderer initialized" << std::endl;
+    }
+    rendererInitialized = true;
+}
 void Core::GameLoop() {
     Application app;
     if (!app.createApplication()) {
@@ -384,11 +397,6 @@ void Core::GameLoop() {
                 
                 g_uiManager->renderStatic();
                 
-                // Рендерим ассеты через BufferLayer
-                Asset* currentDir = BufferLayer::Instance().GetCurrentDirectory();
-                if (currentDir && AssetManager::Instance().GetRootAsset()) {
-BufferLayer::Instance().VivodAsset(g_uiManager->getRenderer(), 220, 200, clientWidth - 480, clientHeight - 350);                }
-                
                 vulkan->endFrame();
                 vulkan->present();
             }
@@ -412,12 +420,6 @@ BufferLayer::Instance().VivodAsset(g_uiManager->getRenderer(), 220, 200, clientW
                     }
                 }
                 g_uiManager->renderStatic();
-                
-                // Рендерим ассеты через BufferLayer
-                Asset* currentDir = BufferLayer::Instance().GetCurrentDirectory();
-                if (currentDir && AssetManager::Instance().GetRootAsset()) {
-BufferLayer::Instance().VivodAsset(g_uiManager->getRenderer(), 220, 200, clientWidth - 480, clientHeight - 350);}
-                
                 win32Window->swapBuffers();
             }
         }
