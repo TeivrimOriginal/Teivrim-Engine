@@ -1,88 +1,59 @@
 #include "RenderUI.h"
-#include "GraphicsApiSupport/RenderUI_OpenGL.h"
 #include "../../Vulkan.h"
-#include <iostream>
 
-RenderUI::RenderUI(RenderAPIType api) 
-    : currentAPI(api), 
-      isOpenGL(api == RenderAPIType::OPENGL), 
-      glImpl(nullptr), 
-      vkImpl(nullptr)
-{
-    if (isOpenGL) {
-        glImpl = new RenderUI_OpenGL();
-        std::cout << "RenderUI: OpenGL mode" << std::endl;
-    } else {
-        std::cout << "RenderUI: Vulkan mode (waiting for Vulkan instance)" << std::endl;
+RenderUI::RenderUI(RenderAPIType type) : apiType(type), vulkan(nullptr), screenWidth(0), screenHeight(0), shaderProgram(0), vao(0), vbo(0) {}
+
+RenderUI::~RenderUI() {}
+
+void RenderUI::setVulkan(Vulkan* vk) { vulkan = vk; }
+
+void RenderUI::initialize(HWND hwnd, int width, int height) {
+    screenWidth = width;
+    screenHeight = height;
+    
+    if (apiType == RenderAPIType::VULKAN && vulkan) {
+        vulkan->setup2D(width, height);
     }
 }
 
-RenderUI::~RenderUI() {
-    delete glImpl;
-    // vkImpl не удаляем — он принадлежит Core
-}
-
-bool RenderUI::initialize(HWND hwnd, int width, int height) {
-    if (isOpenGL && glImpl) return true;
-    if (vkImpl) return true;
-    return false;
-}
-
-void RenderUI::setVulkan(Vulkan* vk) {
-    vkImpl = vk;
-    std::cout << "RenderUI: Vulkan instance set" << std::endl;
-}
-
-void RenderUI::cleanup() {
-    // ничего не делаем
-}
-
-void RenderUI::beginFrame() {
-    if (vkImpl) vkImpl->beginFrame();
-}
-
-void RenderUI::endFrame() {
-    if (vkImpl) vkImpl->endFrame();
-}
-
-void RenderUI::present() {
-    if (vkImpl) vkImpl->present();
-}
-
-void RenderUI::saveState(GLint& prog, GLint vp[4], GLboolean& dt) {
-    if (glImpl) glImpl->saveState(prog, vp, dt);
-}
-
-void RenderUI::restoreState(GLint prog, GLint vp[4], GLboolean dt) {
-    if (glImpl) glImpl->restoreState(prog, vp, dt);
-}
-
 void RenderUI::setup2D(int width, int height) {
-    if (glImpl) glImpl->setup2D(width, height);
-    if (vkImpl) vkImpl->setup2D(width, height);
-}
-
-void RenderUI::restoreMatrices() {
-    if (glImpl) glImpl->restoreMatrices();
+    screenWidth = width;
+    screenHeight = height;
+    
+    if (apiType == RenderAPIType::VULKAN && vulkan) {
+        vulkan->setup2D(width, height);
+    }
 }
 
 void RenderUI::drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
-    // printf("[RenderUI] drawQuad: (%.0f,%.0f)-(%.0f,%.0f) rgb(%.2f,%.2f,%.2f)\n", x1, y1, x2, y2, r, g, b);
-
-    if (glImpl) glImpl->drawQuad(x1, y1, x2, y2, r, g, b);
-    if (vkImpl) vkImpl->drawQuad(x1, y1, x2, y2, r, g, b);
-}
-
-void RenderUI::drawQuad(int x1, int y1, int x2, int y2, float r, float g, float b) {
-    drawQuad((float)x1, (float)y1, (float)x2, (float)y2, r, g, b);
+    if (apiType == RenderAPIType::VULKAN && vulkan) {
+        vulkan->drawQuad(x1, y1, x2, y2, r, g, b);
+    }
 }
 
 void RenderUI::drawText(int x, int y, const std::string& text, float r, float g, float b) {
-    if (glImpl) glImpl->drawText(x, y, text, r, g, b);
-    if (vkImpl) vkImpl->drawText(x, y, text, r, g, b);
+    if (apiType == RenderAPIType::VULKAN && vulkan) {
+        vulkan->drawText(x, y, text, r, g, b);
+    }
 }
 
 void RenderUI::drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b) {
-    if (glImpl) glImpl->drawTextCentered(x, y, w, h, text, r, g, b);
-    if (vkImpl) vkImpl->drawTextCentered(x, y, w, h, text, r, g, b);
+    if (apiType == RenderAPIType::VULKAN && vulkan) {
+        vulkan->drawTextCentered(x, y, w, h, text, r, g, b);
+    }
 }
+
+void RenderUI::drawImage(int x, int y, int w, int h, void* texture) {
+    if (apiType == RenderAPIType::VULKAN && vulkan && texture) {
+        VulkanTexture* tex = (VulkanTexture*)texture;
+        vulkan->drawImage(x, y, x + w, y + h, tex);
+    }
+}
+
+GLuint RenderUI::loadTextureFromFile(const std::string& path) { return 0; }
+
+void RenderUI::saveState(GLint& prog, GLint vp[4], GLboolean& dt) {}
+
+void RenderUI::restoreState(GLint prog, GLint vp[4], GLboolean dt) {}
+
+void RenderUI::restoreMatrices() {}

@@ -28,6 +28,12 @@ struct CharInfo {
     float xoff, yoff;
 };
 
+struct UIImageQuad {
+    float x1, y1, x2, y2;
+    float u1, v1, u2, v2;
+    VulkanTexture* texture;
+};
+
 class Vulkan {
 public:
     Vulkan(HWND hwnd, int width, int height);
@@ -43,6 +49,13 @@ public:
     void drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
     void drawText(int x, int y, const std::string& text, float r, float g, float b);
     void drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b);
+    
+    void drawImage(float x1, float y1, float x2, float y2, VulkanTexture* texture);
+    void drawImageUV(float x1, float y1, float x2, float y2, VulkanTexture* texture, 
+                     float u1, float v1, float u2, float v2);
+    
+    VulkanTexture* loadUIImage(const std::string& filepath);
+    void freeUIImage(VulkanTexture* texture);
     
     void loadModel(const std::vector<StandardMesh>& meshes);
     void renderModel();
@@ -69,6 +82,11 @@ private:
         glm::vec2 pos;
         glm::vec2 texCoord;
         glm::vec3 color;
+    };
+    
+    struct UIImageVertex {
+        glm::vec2 pos;
+        glm::vec2 texCoord;
     };
     
     struct UniformBufferObject { 
@@ -105,7 +123,6 @@ private:
     
     static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
     
-    // Window and state
     HWND hwnd;
     int width, height;
     bool initialized;
@@ -113,14 +130,13 @@ private:
     uint32_t currentImageIndex;
     uint32_t swapchainImageCount;
     
-    // Camera matrices
     glm::mat4 viewMat, projMat, modelMat;
     
-    // UI data
     std::vector<UIQuad> uiQuads;
     std::vector<UITextQuad> uiTextQuads;
+    std::vector<UIImageQuad> uiImageQuads;
+    std::vector<VulkanTexture*> loadedUITextures;
     
-    // Model data
     std::vector<VertexGPU> modelVertices;
     std::vector<uint32_t> modelIndices;
     std::vector<VulkanTexture> meshTextures;
@@ -128,18 +144,15 @@ private:
     std::vector<size_t> meshIndexOffsets;
     bool modelLoaded;
     
-    // Font data
     VulkanTexture fontTexture;
     stbtt_bakedchar glyphs[96];
     bool fontInitialized;
     std::map<char, CharInfo> charMap;
     
-    // Depth buffer
     VkImage depthImage;
     VkDeviceMemory depthImageMemory;
     VkImageView depthImageView;
     
-    // Vulkan objects (shared)
     VkInstance instance;
     VkPhysicalDevice physDevice;
     VkDevice device;
@@ -155,20 +168,21 @@ private:
     VkPipelineLayout pipelineLayout3D;
     VkPipelineLayout pipelineLayoutUI;
     VkPipelineLayout pipelineLayoutUIText;
+    VkPipelineLayout pipelineLayoutUIImage;
     VkPipeline pipeline3D;
     VkPipeline pipelineUI;
     VkPipeline pipelineUIText;
+    VkPipeline pipelineUIImage;
     VkDescriptorSetLayout descLayout;
     VkDescriptorSetLayout descLayoutUIEmpty;
     VkDescriptorSetLayout descLayoutUIText;
+    VkDescriptorSetLayout descLayoutUIImage;
     VkDescriptorPool descPool;
     std::vector<VkDescriptorSet> descSets;
     VkDescriptorSet descSetUIText;
     
-    // Per-frame resources (AAA: отдельный набор для каждого кадра в буфере)
     std::vector<FrameData> frames;
     
-    // Shared buffers
     VkBuffer vertexBuffer;
     VkBuffer indexBuffer;
     VkDeviceMemory vertexBufferMemory;
@@ -180,7 +194,9 @@ private:
     VkBuffer uiTextVertexBuffer;
     VkDeviceMemory uiTextVertexBufferMemory;
     
-    // Private methods
+    VkBuffer uiImageVertexBuffer;
+    VkDeviceMemory uiImageVertexBufferMemory;
+    
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     VkShaderModule createShaderModule(const std::string& filename);
     void createMainDescriptorPool();
@@ -196,15 +212,20 @@ private:
     void createDescriptorSetLayout();
     void createEmptyDescriptorSetLayout();
     void createDescriptorSetLayoutUIText();
+    void createDescriptorSetLayoutUIImage();
     void createDescriptorSetsForModel();
     void createPipelines();
+    void createUIImagePipeline();
     void createUIBuffers();
     void createUITextBuffers();
+    void createUIImageBuffers();
     void updateUniformBuffer(uint32_t frameIndex);
     void renderUI();
     void renderUIText();
+    void renderUIImage();
     void cleanupTextures();
     void cleanupFrameResources();
+    void cleanupUITextures();
     
     bool initializeFont();
     VulkanTexture createTextureFromData(unsigned char* data, int width, int height, int channels);

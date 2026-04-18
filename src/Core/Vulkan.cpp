@@ -28,6 +28,8 @@ static void compileShaders() {
     const char* uiFragCode = "#version 450\nlayout(location = 0) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { outColor = vec4(fragColor, 1.0); }";
     const char* uiTextVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec2 inTexCoord; layout(location = 2) in vec3 inColor; layout(location = 0) out vec2 fragTexCoord; layout(location = 1) out vec3 fragColor; void main() { gl_Position = vec4(inPos, 0.0, 1.0); fragTexCoord = inTexCoord; fragColor = inColor; }";
     const char* uiTextFragCode = "#version 450\nlayout(binding = 0) uniform sampler2D fontSampler; layout(location = 0) in vec2 fragTexCoord; layout(location = 1) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { vec4 texColor = texture(fontSampler, fragTexCoord); outColor = vec4(fragColor, texColor.a); }";
+    const char* uiImageVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec2 inTexCoord; layout(location = 0) out vec2 fragTexCoord; void main() { gl_Position = vec4(inPos, 0.0, 1.0); fragTexCoord = inTexCoord; }";
+    const char* uiImageFragCode = "#version 450\nlayout(binding = 0) uniform sampler2D imageSampler; layout(location = 0) in vec2 fragTexCoord; layout(location = 0) out vec4 outColor; void main() { outColor = texture(imageSampler, fragTexCoord); }";
     
     std::ofstream vertFile("autoshadertest/vert.vert"); vertFile << vertCode; vertFile.close();
     std::ofstream fragFile("autoshadertest/frag.frag"); fragFile << fragCode; fragFile.close();
@@ -35,6 +37,8 @@ static void compileShaders() {
     std::ofstream uiFragFile("autoshadertest/ui_frag.frag"); uiFragFile << uiFragCode; uiFragFile.close();
     std::ofstream uiTextVertFile("autoshadertest/ui_text_vert.vert"); uiTextVertFile << uiTextVertCode; uiTextVertFile.close();
     std::ofstream uiTextFragFile("autoshadertest/ui_text_frag.frag"); uiTextFragFile << uiTextFragCode; uiTextFragFile.close();
+    std::ofstream uiImageVertFile("autoshadertest/ui_image_vert.vert"); uiImageVertFile << uiImageVertCode; uiImageVertFile.close();
+    std::ofstream uiImageFragFile("autoshadertest/ui_image_frag.frag"); uiImageFragFile << uiImageFragCode; uiImageFragFile.close();
     
     system("glslc autoshadertest/vert.vert -o autoshadertest/vert.spv");
     system("glslc autoshadertest/frag.frag -o autoshadertest/frag.spv");
@@ -42,6 +46,8 @@ static void compileShaders() {
     system("glslc autoshadertest/ui_frag.frag -o autoshadertest/ui_frag.spv");
     system("glslc autoshadertest/ui_text_vert.vert -o autoshadertest/ui_text_vert.spv");
     system("glslc autoshadertest/ui_text_frag.frag -o autoshadertest/ui_text_frag.spv");
+    system("glslc autoshadertest/ui_image_vert.vert -o autoshadertest/ui_image_vert.spv");
+    system("glslc autoshadertest/ui_image_frag.frag -o autoshadertest/ui_image_frag.spv");
 }
 
 bool Vulkan::initializeFont() {
@@ -177,14 +183,17 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
       instance(VK_NULL_HANDLE), physDevice(VK_NULL_HANDLE), device(VK_NULL_HANDLE),
       graphicsQueue(VK_NULL_HANDLE), surface(VK_NULL_HANDLE), swapchain(VK_NULL_HANDLE),
       renderPass(VK_NULL_HANDLE), pipelineLayout3D(VK_NULL_HANDLE), pipelineLayoutUI(VK_NULL_HANDLE),
-      pipelineLayoutUIText(VK_NULL_HANDLE), pipeline3D(VK_NULL_HANDLE), pipelineUI(VK_NULL_HANDLE),
-      pipelineUIText(VK_NULL_HANDLE),
-      descLayout(VK_NULL_HANDLE), descLayoutUIEmpty(VK_NULL_HANDLE), descLayoutUIText(VK_NULL_HANDLE), 
+      pipelineLayoutUIText(VK_NULL_HANDLE), pipelineLayoutUIImage(VK_NULL_HANDLE),
+      pipeline3D(VK_NULL_HANDLE), pipelineUI(VK_NULL_HANDLE),
+      pipelineUIText(VK_NULL_HANDLE), pipelineUIImage(VK_NULL_HANDLE),
+      descLayout(VK_NULL_HANDLE), descLayoutUIEmpty(VK_NULL_HANDLE), descLayoutUIText(VK_NULL_HANDLE),
+      descLayoutUIImage(VK_NULL_HANDLE),
       descPool(VK_NULL_HANDLE), descSetUIText(VK_NULL_HANDLE),
       vertexBuffer(VK_NULL_HANDLE), indexBuffer(VK_NULL_HANDLE),
       vertexBufferMemory(VK_NULL_HANDLE), indexBufferMemory(VK_NULL_HANDLE),
       uiVertexBuffer(VK_NULL_HANDLE), uiVertexBufferMemory(VK_NULL_HANDLE),
       uiTextVertexBuffer(VK_NULL_HANDLE), uiTextVertexBufferMemory(VK_NULL_HANDLE),
+      uiImageVertexBuffer(VK_NULL_HANDLE), uiImageVertexBufferMemory(VK_NULL_HANDLE),
       fontInitialized(false) {
     
     memset(&fontTexture, 0, sizeof(fontTexture));
@@ -192,7 +201,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     
     compileShaders();
     
-    // Instance
     VkApplicationInfo appInfo{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     appInfo.apiVersion = VK_API_VERSION_1_0;
     
@@ -207,7 +215,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
         return;
     }
     
-    // Surface
     VkWin32SurfaceCreateInfoKHR surfInfo{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
     surfInfo.hinstance = GetModuleHandle(NULL);
     surfInfo.hwnd = hwnd;
@@ -216,7 +223,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
         return;
     }
     
-    // Physical device
     uint32_t deviceCount;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
     if (deviceCount == 0) {
@@ -227,7 +233,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
     physDevice = devices[0];
     
-    // Device
     uint32_t queueFamily = 0;
     VkDeviceQueueCreateInfo queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
     queueInfo.queueFamilyIndex = queueFamily;
@@ -256,16 +261,18 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     createDescriptorSetLayout();
     createEmptyDescriptorSetLayout();
     createDescriptorSetLayoutUIText();
+    createDescriptorSetLayoutUIImage();
     createPipelines();
+    createUIImagePipeline();
     createUIBuffers();
+    createUITextBuffers();
+    createUIImageBuffers();
     
-    // Создаём ресурсы для MAX_FRAMES_IN_FLIGHT кадров
     frames.resize(MAX_FRAMES_IN_FLIGHT);
     createCommandPools();
     createUniformBuffers();
     createSyncObjects();
     
-    // Аллоцируем командные буферы
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
         allocInfo.commandPool = frames[i].commandPool;
@@ -282,7 +289,7 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     modelMat = glm::mat4(1.0f);
     
     initialized = true;
-    std::cout << "Vulkan initialized successfully (AAA sync)" << std::endl;
+    std::cout << "Vulkan initialized successfully" << std::endl;
 }
 
 Vulkan::~Vulkan() {
@@ -290,6 +297,7 @@ Vulkan::~Vulkan() {
         vkDeviceWaitIdle(device);
         
         cleanupFrameResources();
+        cleanupUITextures();
         
         for (auto& frame : frames) {
             vkDestroyCommandPool(device, frame.commandPool, nullptr);
@@ -298,14 +306,17 @@ Vulkan::~Vulkan() {
         vkDestroyPipeline(device, pipeline3D, nullptr);
         vkDestroyPipeline(device, pipelineUI, nullptr);
         vkDestroyPipeline(device, pipelineUIText, nullptr);
+        vkDestroyPipeline(device, pipelineUIImage, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout3D, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayoutUI, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayoutUIText, nullptr);
+        vkDestroyPipelineLayout(device, pipelineLayoutUIImage, nullptr);
         vkDestroyRenderPass(device, renderPass, nullptr);
         vkDestroyDescriptorPool(device, descPool, nullptr);
         vkDestroyDescriptorSetLayout(device, descLayout, nullptr);
         vkDestroyDescriptorSetLayout(device, descLayoutUIEmpty, nullptr);
         vkDestroyDescriptorSetLayout(device, descLayoutUIText, nullptr);
+        vkDestroyDescriptorSetLayout(device, descLayoutUIImage, nullptr);
         vkDestroyBuffer(device, vertexBuffer, nullptr);
         vkFreeMemory(device, vertexBufferMemory, nullptr);
         vkDestroyBuffer(device, indexBuffer, nullptr);
@@ -314,6 +325,8 @@ Vulkan::~Vulkan() {
         vkFreeMemory(device, uiVertexBufferMemory, nullptr);
         vkDestroyBuffer(device, uiTextVertexBuffer, nullptr);
         vkFreeMemory(device, uiTextVertexBufferMemory, nullptr);
+        vkDestroyBuffer(device, uiImageVertexBuffer, nullptr);
+        vkFreeMemory(device, uiImageVertexBufferMemory, nullptr);
         
         vkDestroyImageView(device, depthImageView, nullptr);
         vkDestroyImage(device, depthImage, nullptr);
@@ -378,6 +391,19 @@ void Vulkan::cleanupTextures() {
         vkDestroySampler(device, fontTexture.sampler, nullptr);
         fontTexture.valid = false;
     }
+}
+
+void Vulkan::cleanupUITextures() {
+    for (auto tex : loadedUITextures) {
+        if (tex && tex->valid) {
+            vkDestroyImageView(device, tex->view, nullptr);
+            vkDestroyImage(device, tex->image, nullptr);
+            vkFreeMemory(device, tex->memory, nullptr);
+            vkDestroySampler(device, tex->sampler, nullptr);
+            delete tex;
+        }
+    }
+    loadedUITextures.clear();
 }
 
 uint32_t Vulkan::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
@@ -452,7 +478,6 @@ VulkanTexture Vulkan::createTextureFromData(unsigned char* data, int width, int 
     vkAllocateMemory(device, &allocInfo, nullptr, &tex.memory);
     vkBindImageMemory(device, tex.image, tex.memory, 0);
     
-    // Используем command pool первого кадра для загрузки текстур
     VkCommandBufferAllocateInfo cmdAllocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     cmdAllocInfo.commandPool = frames[0].commandPool;
     cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -530,6 +555,274 @@ VulkanTexture Vulkan::createTextureFromData(unsigned char* data, int width, int 
 VulkanTexture Vulkan::createWhiteTexture() {
     unsigned char white[] = {255, 255, 255, 255};
     return createTextureFromData(white, 1, 1, 4);
+}
+
+VulkanTexture* Vulkan::loadUIImage(const std::string& filepath) {
+    int width, height, channels;
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char* data = stbi_load(filepath.c_str(), &width, &height, &channels, 4);
+    
+    if (!data) {
+        std::cerr << "Failed to load image: " << filepath << std::endl;
+        return nullptr;
+    }
+    
+    VulkanTexture* texture = new VulkanTexture();
+    *texture = createTextureFromData(data, width, height, 4);
+    stbi_image_free(data);
+    
+    if (texture->valid) {
+        loadedUITextures.push_back(texture);
+        std::cout << "Loaded UI image: " << filepath << " (" << width << "x" << height << ")" << std::endl;
+        return texture;
+    }
+    
+    delete texture;
+    return nullptr;
+}
+
+void Vulkan::freeUIImage(VulkanTexture* texture) {
+    if (!texture) return;
+    
+    auto it = std::find(loadedUITextures.begin(), loadedUITextures.end(), texture);
+    if (it != loadedUITextures.end()) {
+        loadedUITextures.erase(it);
+    }
+    
+    if (texture->valid) {
+        vkDeviceWaitIdle(device);
+        vkDestroyImageView(device, texture->view, nullptr);
+        vkDestroyImage(device, texture->image, nullptr);
+        vkFreeMemory(device, texture->memory, nullptr);
+        vkDestroySampler(device, texture->sampler, nullptr);
+    }
+    delete texture;
+}
+
+void Vulkan::drawImage(float x1, float y1, float x2, float y2, VulkanTexture* texture) {
+    if (!texture || !texture->valid) return;
+    drawImageUV(x1, y1, x2, y2, texture, 0.0f, 0.0f, 1.0f, 1.0f);
+}
+
+void Vulkan::drawImageUV(float x1, float y1, float x2, float y2, VulkanTexture* texture, 
+                         float u1, float v1, float u2, float v2) {
+    if (!texture || !texture->valid) return;
+    
+    UIImageQuad quad;
+    quad.x1 = x1;
+    quad.y1 = y1;
+    quad.x2 = x2;
+    quad.y2 = y2;
+    quad.u1 = u1;
+    quad.v1 = v1;
+    quad.u2 = u2;
+    quad.v2 = v2;
+    quad.texture = texture;
+    uiImageQuads.push_back(quad);
+}
+
+void Vulkan::createDescriptorSetLayoutUIImage() {
+    VkDescriptorSetLayoutBinding samplerBinding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+    
+    VkDescriptorSetLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &samplerBinding;
+    vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descLayoutUIImage);
+}
+
+void Vulkan::createUIImagePipeline() {
+    VkShaderModule vertModule = createShaderModule("autoshadertest/ui_image_vert.spv");
+    VkShaderModule fragModule = createShaderModule("autoshadertest/ui_image_frag.spv");
+    
+    if (vertModule == VK_NULL_HANDLE || fragModule == VK_NULL_HANDLE) {
+        std::cerr << "Failed to load UI image shaders" << std::endl;
+        if (vertModule) vkDestroyShaderModule(device, vertModule, nullptr);
+        if (fragModule) vkDestroyShaderModule(device, fragModule, nullptr);
+        return;
+    }
+    
+    auto bindingDesc = VkVertexInputBindingDescription{0, sizeof(UIImageVertex), VK_VERTEX_INPUT_RATE_VERTEX};
+    auto attrDesc = std::array<VkVertexInputAttributeDescription, 2>{
+        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(UIImageVertex, pos)},
+        VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(UIImageVertex, texCoord)}
+    };
+    
+    VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    vi.vertexBindingDescriptionCount = 1;
+    vi.pVertexBindingDescriptions = &bindingDesc;
+    vi.vertexAttributeDescriptionCount = (uint32_t)attrDesc.size();
+    vi.pVertexAttributeDescriptions = attrDesc.data();
+    
+    VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    
+    VkViewport vp{0, 0, (float)swapchainExtent.width, (float)swapchainExtent.height, 0, 1};
+    VkRect2D scissor{{0, 0}, {swapchainExtent.width, swapchainExtent.height}};
+    VkPipelineViewportStateCreateInfo vpState{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+    vpState.viewportCount = 1;
+    vpState.pViewports = &vp;
+    vpState.scissorCount = 1;
+    vpState.pScissors = &scissor;
+    
+    VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    raster.polygonMode = VK_POLYGON_MODE_FILL;
+    raster.cullMode = VK_CULL_MODE_NONE;
+    raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    raster.lineWidth = 1.0f;
+    
+    VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    
+    VkPipelineDepthStencilStateCreateInfo depthStencil{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    depthStencil.depthTestEnable = VK_FALSE;
+    depthStencil.depthWriteEnable = VK_FALSE;
+    
+    VkPipelineColorBlendAttachmentState blendAtt{};
+    blendAtt.blendEnable = VK_TRUE;
+    blendAtt.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    blendAtt.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    blendAtt.colorBlendOp = VK_BLEND_OP_ADD;
+    blendAtt.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    blendAtt.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    blendAtt.alphaBlendOp = VK_BLEND_OP_ADD;
+    blendAtt.colorWriteMask = 0xF;
+    
+    VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+    cb.attachmentCount = 1;
+    cb.pAttachments = &blendAtt;
+    
+    VkPipelineLayoutCreateInfo plInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    plInfo.setLayoutCount = 1;
+    plInfo.pSetLayouts = &descLayoutUIImage;
+    vkCreatePipelineLayout(device, &plInfo, nullptr, &pipelineLayoutUIImage);
+    
+    VkPipelineShaderStageCreateInfo stages[2] = {
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}
+    };
+    stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    stages[0].module = vertModule;
+    stages[0].pName = "main";
+    stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    stages[1].module = fragModule;
+    stages[1].pName = "main";
+    
+    VkGraphicsPipelineCreateInfo pipelineInfo{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = stages;
+    pipelineInfo.pVertexInputState = &vi;
+    pipelineInfo.pInputAssemblyState = &ia;
+    pipelineInfo.pViewportState = &vpState;
+    pipelineInfo.pRasterizationState = &raster;
+    pipelineInfo.pMultisampleState = &ms;
+    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.pColorBlendState = &cb;
+    pipelineInfo.layout = pipelineLayoutUIImage;
+    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.subpass = 0;
+    vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipelineUIImage);
+    
+    vkDestroyShaderModule(device, vertModule, nullptr);
+    vkDestroyShaderModule(device, fragModule, nullptr);
+    
+    std::cout << "UI Image pipeline created" << std::endl;
+}
+
+void Vulkan::createUIImageBuffers() {
+    VkDeviceSize bufferSize = sizeof(UIImageVertex) * 65536;
+    
+    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    vkCreateBuffer(device, &bufferInfo, nullptr, &uiImageVertexBuffer);
+    
+    VkMemoryRequirements memReq;
+    vkGetBufferMemoryRequirements(device, uiImageVertexBuffer, &memReq);
+    VkMemoryAllocateInfo memAlloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    memAlloc.allocationSize = memReq.size;
+    memAlloc.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    vkAllocateMemory(device, &memAlloc, nullptr, &uiImageVertexBufferMemory);
+    vkBindBufferMemory(device, uiImageVertexBuffer, uiImageVertexBufferMemory, 0);
+}
+
+void Vulkan::renderUIImage() {
+    if (uiImageQuads.empty()) return;
+    
+    vkCmdBindPipeline(frames[currentFrame].cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineUIImage);
+    
+    std::vector<UIImageVertex> vertices;
+    VulkanTexture* currentTexture = nullptr;
+    std::vector<std::pair<VulkanTexture*, std::vector<UIImageVertex>>> batches;
+    
+    for (const auto& quad : uiImageQuads) {
+        float x1 = (quad.x1 / width) * 2.0f - 1.0f;
+        float y1 = (quad.y1 / height) * 2.0f - 1.0f;
+        float x2 = (quad.x2 / width) * 2.0f - 1.0f;
+        float y2 = (quad.y2 / height) * 2.0f - 1.0f;
+        
+        std::vector<UIImageVertex> quadVerts = {
+            {{x1, y1}, {quad.u1, quad.v1}},
+            {{x2, y1}, {quad.u2, quad.v1}},
+            {{x1, y2}, {quad.u1, quad.v2}},
+            {{x2, y1}, {quad.u2, quad.v1}},
+            {{x2, y2}, {quad.u2, quad.v2}},
+            {{x1, y2}, {quad.u1, quad.v2}}
+        };
+        
+        if (currentTexture == quad.texture) {
+            vertices.insert(vertices.end(), quadVerts.begin(), quadVerts.end());
+        } else {
+            if (!vertices.empty()) {
+                batches.push_back({currentTexture, vertices});
+                vertices.clear();
+            }
+            currentTexture = quad.texture;
+            vertices.insert(vertices.end(), quadVerts.begin(), quadVerts.end());
+        }
+    }
+    
+    if (!vertices.empty()) {
+        batches.push_back({currentTexture, vertices});
+    }
+    
+    for (const auto& batch : batches) {
+        if (!batch.first || !batch.first->valid) continue;
+        
+        VkDescriptorSet descSet;
+        VkDescriptorSetAllocateInfo descAlloc{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        descAlloc.descriptorPool = descPool;
+        descAlloc.descriptorSetCount = 1;
+        descAlloc.pSetLayouts = &descLayoutUIImage;
+        
+        if (vkAllocateDescriptorSets(device, &descAlloc, &descSet) != VK_SUCCESS) {
+            continue;
+        }
+        
+        VkDescriptorImageInfo imageInfo{batch.first->sampler, batch.first->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        
+        VkWriteDescriptorSet descriptorWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        descriptorWrite.dstSet = descSet;
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrite.pImageInfo = &imageInfo;
+        
+        vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+        vkCmdBindDescriptorSets(frames[currentFrame].cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayoutUIImage, 0, 1, &descSet, 0, nullptr);
+        
+        void* data;
+        vkMapMemory(device, uiImageVertexBufferMemory, 0, batch.second.size() * sizeof(UIImageVertex), 0, &data);
+        memcpy(data, batch.second.data(), batch.second.size() * sizeof(UIImageVertex));
+        vkUnmapMemory(device, uiImageVertexBufferMemory);
+        
+        VkDeviceSize offsets = 0;
+        vkCmdBindVertexBuffers(frames[currentFrame].cmdBuffer, 0, 1, &uiImageVertexBuffer, &offsets);
+        vkCmdDraw(frames[currentFrame].cmdBuffer, (uint32_t)batch.second.size(), 1, 0, 0);
+        
+        vkFreeDescriptorSets(device, descPool, 1, &descSet);
+    }
+    
+    uiImageQuads.clear();
 }
 
 void Vulkan::loadModel(const std::vector<StandardMesh>& meshes) {
@@ -996,7 +1289,6 @@ void Vulkan::createPipelines() {
     pipelineInfo.subpass = 0;
     vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline3D);
     
-    // UI pipeline
     auto uiBindingDesc = VkVertexInputBindingDescription{0, sizeof(UIVertex), VK_VERTEX_INPUT_RATE_VERTEX};
     auto uiAttrDesc = std::array<VkVertexInputAttributeDescription, 2>{
         VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(UIVertex, pos)},
@@ -1053,7 +1345,6 @@ void Vulkan::createPipelines() {
     uiPipelineInfo.subpass = 0;
     vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &uiPipelineInfo, nullptr, &pipelineUI);
     
-    // UI Text pipeline
     auto uiTextBindingDesc = VkVertexInputBindingDescription{0, sizeof(UITextVertex), VK_VERTEX_INPUT_RATE_VERTEX};
     auto uiTextAttrDesc = std::array<VkVertexInputAttributeDescription, 3>{
         VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(UITextVertex, pos)},
@@ -1149,6 +1440,7 @@ void Vulkan::setup2D(int width, int height) {
     this->height = height;
     uiQuads.clear();
     uiTextQuads.clear();
+    uiImageQuads.clear();
 }
 
 void Vulkan::drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
@@ -1358,6 +1650,7 @@ void Vulkan::beginFrame() {
     renderModel();
     renderUI();
     renderUIText();
+    renderUIImage();
     
     vkCmdEndRenderPass(frames[currentFrame].cmdBuffer);
     vkEndCommandBuffer(frames[currentFrame].cmdBuffer);

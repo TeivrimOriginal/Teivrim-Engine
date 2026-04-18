@@ -1,0 +1,23 @@
+{
+    "gridSize": 8,
+    "items": {
+        "folder": 0,
+        "unknown": 1,
+        "txt": 2,
+        "cpp": 3,
+        "h": 4,
+        "png": 5,
+        "jpg": 6,
+        "obj": 7,
+        "fbx": 8,
+        "gltf": 9,
+        "json": 10,
+        "xml": 11,
+        "dll": 12,
+        "exe": 13,
+        "zip": 14,
+        "mp4": 15,
+        "mp3": 16,
+        "wav": 17
+    }
+}

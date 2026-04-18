@@ -7,6 +7,7 @@
 #include "SecondComplexity/Project/ProjectManager.h"
 #include "SecondComplexity/Asset/AssetManager.h"
 #include "../Interface/BufferLayer.h"
+#include "SecondComplexity/Icon/IconManager.h"
 #include <iostream>
 #include <string>
 #include <GL/glew.h>
@@ -240,7 +241,10 @@ void Core::GameLoop() {
     
     g_uiManager = new InterfaceManager(this, currentAPI);
     g_uiManager->setWindow(win32Window);
-    // УДАЛИТЬ ЭТУ СТРОКУ: ProjectManager::Instance().SetInterfaceManager(g_uiManager);
+    g_uiManager->setCore(this);
+    
+    IconManager::Instance().SetIconDirectory("System\\Data\\Interface");
+    IconManager::Instance().SetRenderer(&g_uiManager->getRenderer());
     
     RECT rect; GetClientRect(win32Window->getHWND(), &rect);
     int w = rect.right - rect.left, h = rect.bottom - rect.top;
@@ -328,5 +332,6 @@ void Core::GameLoop() {
     delete g_uiManager; g_uiManager = nullptr;
     cleanupRender();
 }
+
 void Core::settingUpRender() {}
 void Core::ParserToRender() {}

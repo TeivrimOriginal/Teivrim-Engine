@@ -13,6 +13,8 @@
 #include <commdlg.h>
 #include <fstream>
 
+class InterfaceManager;
+
 namespace fs = std::filesystem;
 
 struct GridItem {
@@ -40,7 +42,7 @@ public:
     Asset* renamingAsset = nullptr;
     std::string renameBuffer;
     
-    void VivodAsset(RenderUI& renderer, int startX, int startY, int areaW, int areaH) {
+    void VivodAsset(RenderUI& renderer, int startX, int startY, int areaW, int areaH, InterfaceManager* uiManager = nullptr) {
         Asset* root = AssetManager::Instance().GetRootAsset();
         if (!root) return;
         
@@ -64,13 +66,12 @@ public:
             
             int iconX = curX + spacing, iconY = curY + spacing;
             
-            std::string iconPath = iconDirectory + "\\Grid\\" + asset->type + ".svg";
-            if (!fs::exists(iconPath)) {
-                iconPath = iconDirectory + "\\Grid\\none.png";
+            if (uiManager) {
+                std::string iconType = asset->isFolder ? "folder" : asset->type;
+                uiManager->printIcon(iconX, iconY, iconSize, iconSize, iconType, iconSize);
+            } else {
+                renderer.drawQuad(iconX, iconY, iconX + iconSize, iconY + iconSize, 0.5f, 0.5f, 0.5f);
             }
-            
-            float r = 0.5f, g = 0.5f, b = 0.5f;
-            renderer.drawQuad(iconX, iconY, iconX + iconSize, iconY + iconSize, r, g, b);
             
             if (!(isRenaming && renamingAsset == asset)) {
                 std::string displayName = asset->name;

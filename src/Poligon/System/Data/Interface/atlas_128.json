@@ -1,0 +1,12 @@
+{
+    "gridSize": 8,
+    "items": {
+        "folder": 0,
+        "txt": 1,
+        "cpp": 2,
+        "png": 3,
+        "obj": 4,
+        "fbx": 5,
+        "unknown": 6
+    }
+}

@@ -3,6 +3,7 @@
 #include "../Core/Vulkan.h"
 #include "../Core/SecondComplexity/Asset/AssetManager.h"
 #include "BufferLayer.h"
+#include "../Core/SecondComplexity/Icon/IconManager.h"
 #include <iostream>
 
 InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api) 
@@ -142,6 +143,7 @@ InterfaceManager::~InterfaceManager() {
 
 void InterfaceManager::setVulkan(Vulkan* vk) {
     renderer.setVulkan(vk);
+    IconManager::Instance().SetRenderer(&renderer);
 }
 
 InterfaceManager::Dimensions InterfaceManager::getDimensions() {
@@ -175,6 +177,49 @@ void InterfaceManager::setup3DViewport(const Dimensions& dims) {
             glViewport(0, 0, dims.width, dims.height);
         }
         glEnable(GL_DEPTH_TEST);
+    }
+}
+
+void* InterfaceManager::GetIconTexture(const std::string& iconType, int size) {
+    if (currentAPI != RenderAPI::VULKAN) return nullptr;
+    
+    Vulkan* vk = core->getVulkan();
+    if (!vk) return nullptr;
+    
+    IconUV uv = IconManager::Instance().GetIconUV(iconType, size);
+    
+    static std::map<std::string, VulkanTexture*> iconCache;
+    
+    std::string atlasName = (size <= 16) ? "16" : (size <= 32) ? "32" : (size <= 64) ? "64" : "128";
+    std::string cacheKey = atlasName + "_" + iconType;
+    
+    auto it = iconCache.find(cacheKey);
+    if (it != iconCache.end()) {
+        return it->second;
+    }
+    
+    std::string atlasPath = "System/Data/Interface/atlas_" + atlasName + ".png";
+    VulkanTexture* tex = vk->loadUIImage(atlasPath);
+    
+    if (tex && tex->valid) {
+        iconCache[cacheKey] = tex;
+        return tex;
+    }
+    
+    return nullptr;
+}
+
+void InterfaceManager::printIcon(int x, int y, int w, int h, const std::string& iconType, int size) {
+    if (currentAPI != RenderAPI::VULKAN) return;
+    
+    void* texture = GetIconTexture(iconType, size);
+    if (!texture) return;
+    
+    IconUV uv = IconManager::Instance().GetIconUV(iconType, size);
+    
+    Vulkan* vk = core->getVulkan();
+    if (vk) {
+        vk->drawImageUV(x, y, x + w, y + h, (VulkanTexture*)texture, uv.u1, uv.v1, uv.u2, uv.v2);
     }
 }
 
@@ -217,7 +262,7 @@ void InterfaceManager::renderStatic() {
                 int contentH = assetPanel->getH() - 115;
                 
                 if (contentW > 0 && contentH > 0) {
-                    BufferLayer::Instance().VivodAsset(renderer, contentX, contentY, contentW, contentH);
+                    BufferLayer::Instance().VivodAsset(renderer, contentX, contentY, contentW, contentH, this);
                 }
             }
         }
@@ -264,7 +309,7 @@ void InterfaceManager::renderStatic() {
                 int contentH = assetPanel->getH() - 115;
                 
                 if (contentW > 0 && contentH > 0) {
-                    BufferLayer::Instance().VivodAsset(renderer, contentX, contentY, contentW, contentH);
+                    BufferLayer::Instance().VivodAsset(renderer, contentX, contentY, contentW, contentH, this);
                 }
             }
         }
@@ -317,6 +362,7 @@ void InterfaceManager::handleRightClick(int x, int y) {
         }
     }
 }
+
 void InterfaceManager::handleClick(int x, int y) {
     isClick = true;
     
@@ -334,7 +380,6 @@ void InterfaceManager::handleClick(int x, int y) {
         if (x >= contentX && x <= contentX + contentW && y >= contentY && y <= contentY + contentH) {
             Asset* clicked = BufferLayer::Instance().GetAssetAtPosition(x, y);
             
-            // Проверяем было ли это двойным кликом (можно добавить позже)
             static auto lastClick = std::chrono::steady_clock::now();
             auto now = std::chrono::steady_clock::now();
             bool doubleClick = (now - lastClick) < std::chrono::milliseconds(300);
@@ -352,6 +397,7 @@ void InterfaceManager::handleClick(int x, int y) {
         }
     }
 }
+
 void InterfaceManager::handleMouseDown(int x, int y) { 
     panels->onMouseDown(x, y); 
 }

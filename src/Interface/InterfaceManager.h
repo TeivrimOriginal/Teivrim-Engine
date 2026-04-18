@@ -35,6 +35,8 @@ public:
     bool CheckerClickToPanel(int x, int y);
     bool isClick = false;
     
+    void printIcon(int x, int y, int w, int h, const std::string& iconType, int size = 64);
+    
     struct Dimensions {
         int width, height;
     };
@@ -51,6 +53,8 @@ private:
     RenderUI renderer;
     RenderAPI currentAPI;
     bool startupActive;
+    
+    void* GetIconTexture(const std::string& iconType, int size);
 };
 
 #endif
