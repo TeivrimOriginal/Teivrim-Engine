@@ -12,22 +12,22 @@ public:
         return instance;
     }
     
+    void SetRenderAPI(int api) { currentAPI = api; }
+    
     void ShowCreateProjectDialog(HWND parent, std::function<void(const std::string&)> onCreated = nullptr);
     void CreateProject(const std::string& name, const std::string& type, const std::string& version,
                        const std::string& desc, const std::string& directory);
-    
-    void SetRenderAPI(int api) { currentAPI = api; }
 
 private:
-    ProjectManager() = default;
-    int currentAPI = 0;
-    
-    static LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    ProjectManager() : currentAPI(0) {}
+    int currentAPI;
     
     struct DialogData {
         HWND nameEdit, typeEdit, versionEdit, descEdit, dirEdit;
         std::function<void(const std::string&)> callback;
     };
+    
+    static LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 };
 
 #endif

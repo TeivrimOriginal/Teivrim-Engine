@@ -21,238 +21,146 @@ InterfaceManager* g_uiManager = nullptr;
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
+        case WM_CREATE: {
+            CreateDirectoryA("Config", NULL);
+            CreateDirectoryA("Config\\Windows", NULL);
+            CreateDirectoryA("System\\Data\\Interface\\Grid", NULL);
+            break;
+        }
+        
         case WM_COMMAND:
-            std::cout << "[WndProc] WM_COMMAND received, ID: " << LOWORD(wParam) << std::endl;
             if (LOWORD(wParam) == 1) {
-                std::cout << "[WndProc] New Project clicked" << std::endl;
                 ProjectManager::Instance().ShowCreateProjectDialog(hwnd);
                 return 0;
-            }
-            else if (LOWORD(wParam) == 2) {
-                std::cout << "[WndProc] Open Project clicked" << std::endl;
-                OPENFILENAMEA ofn;
+            } else if (LOWORD(wParam) == 2) {
+                OPENFILENAMEA ofn = {0};
                 CHAR szFile[MAX_PATH] = "";
-                ZeroMemory(&ofn, sizeof(ofn));
                 ofn.lStructSize = sizeof(ofn);
                 ofn.hwndOwner = hwnd;
                 ofn.lpstrFile = szFile;
                 ofn.nMaxFile = sizeof(szFile);
-                ofn.lpstrFilter = "Project Files (*.json)\0*.json\0All Files\0*.*\0";
-                ofn.nFilterIndex = 1;
-                ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+                ofn.lpstrFilter = "Project Files (*.json)\0*.json\0";
                 ofn.lpstrTitle = "Open Project";
+                ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
                 
                 if (GetOpenFileNameA(&ofn)) {
-                    std::cout << "[WndProc] Opening: " << ofn.lpstrFile << std::endl;
                     std::string projectFile = ofn.lpstrFile;
                     size_t pos = projectFile.find_last_of("\\/");
                     if (pos != std::string::npos) {
                         std::string projectDir = projectFile.substr(0, pos);
                         AssetManager::Instance().LoadProject(projectDir);
+                        BufferLayer::Instance().ResetNavigation();
                     }
                 }
                 return 0;
-            }
-            else if (LOWORD(wParam) == 3) {
+            } else if (LOWORD(wParam) == 3) {
                 DestroyWindow(hwnd);
                 return 0;
             }
             break;
             
+        case WM_RBUTTONDOWN: {
+            int x = LOWORD(lParam), y = HIWORD(lParam);
+            if (g_uiManager) g_uiManager->handleRightClick(x, y);
+            break;
+        }
+        
         case WM_LBUTTONDOWN: {
             int x = LOWORD(lParam), y = HIWORD(lParam);
             
-            // Сначала проверяем клик по ассетам
-            Asset* clicked = BufferLayer::Instance().GetAssetAtPosition(x, y);
-            if (clicked) {
-                if (clicked->isFolder) {
-                    BufferLayer::Instance().NavigateTo(clicked);
-                    std::cout << "[CORE] Navigated to: " << clicked->name << std::endl;
-                } else {
-                    std::cout << "[CORE] Selected file: " << clicked->name << " (" << clicked->type << ")" << std::endl;
-                    // Здесь можно загрузить модель если это 3D файл
-                    if (clicked->type == "obj" || clicked->type == "fbx" || clicked->type == "gltf" || clicked->type == "glb") {
-                        // Загрузка модели будет здесь
-                    }
-                }
-            }
             if (BufferLayer::Instance().showContextMenu) {
                 BufferLayer::Instance().HandleContextMenuClick(x, y);
+                return 0;
             }
-                
+            
             if (g_uiManager) {
-                g_uiManager->handleMouseDown(x, y);
                 g_uiManager->handleClick(x, y);
+                g_uiManager->handleMouseDown(x, y);
             }
             break;
         }
+        
         case WM_LBUTTONUP: {
             int x = LOWORD(lParam), y = HIWORD(lParam);
             if (g_uiManager) g_uiManager->handleMouseUp(x, y);
             break;
         }
+        
         case WM_MOUSEMOVE: {
             int x = LOWORD(lParam), y = HIWORD(lParam);
             if (g_uiManager) g_uiManager->handleMouseMove(x, y);
             break;
         }
+        
         case WM_SIZE: {
             if (g_uiManager) {
-                int width = LOWORD(lParam);
-                int height = HIWORD(lParam);
-                if (width > 0 && height > 0) {
-                    g_uiManager->updateWindowSize(width, height);
-                }
+                int width = LOWORD(lParam), height = HIWORD(lParam);
+                if (width > 0 && height > 0) g_uiManager->updateWindowSize(width, height);
             }
             break;
         }
-        case WM_DESTROY: {
-            std::cout << "[CORE] Window destroyed" << std::endl;
+        
+        case WM_KEYDOWN: {
+            if (wParam == 'S' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+                AssetManager::Instance().SaveProject();
+                return 0;
+            }
+            BufferLayer::Instance().HandleKeyboardInput(wParam);
+            break;
+        }
+        
+        case WM_CHAR: {
+            BufferLayer::Instance().HandleCharInput((char)wParam);
+            break;
+        }
+        
+        case WM_DESTROY:
             PostQuitMessage(0);
             break;
-        }
-        case WM_CLOSE: {
-            std::cout << "[CORE] Window close requested" << std::endl;
+            
+        case WM_CLOSE:
             DestroyWindow(hwnd);
             break;
-        }
-        case WM_RBUTTONDOWN: {
-            int x = LOWORD(lParam), y = HIWORD(lParam);
-            if (g_uiManager) {
-                g_uiManager->handleRightClick(x, y);
-            }
-            break;
-        }
     }
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
 Core::Core() {
-    std::cout << "========================================\n";
-    std::cout << "    3D Viewer - Select Render API\n";
-    std::cout << "========================================\n";
-    std::cout << "  [1] OpenGL (Fully Working)\n";
-    std::cout << "  [2] Vulkan (Experimental)\n";
-    std::cout << "========================================\n";
-    std::cout << "Choice: ";
+    cout << "========================================\n";
+    cout << "    3D Viewer - Select Render API\n";
+    cout << "========================================\n";
+    cout << "  [1] OpenGL\n  [2] Vulkan\n";
+    cout << "========================================\nChoice: ";
     
-    int choice;
-    std::cin >> choice;
+    int choice; cin >> choice;
     currentAPI = (choice == 2) ? RenderAPI::VULKAN : RenderAPI::OPENGL;
-    std::cout << (currentAPI == RenderAPI::VULKAN ? "Vulkan selected\n" : "OpenGL selected\n");
+    cout << (currentAPI == RenderAPI::VULKAN ? "Vulkan selected\n" : "OpenGL selected\n");
     
     ProjectManager::Instance().SetRenderAPI(currentAPI == RenderAPI::VULKAN ? 1 : 0);
     BufferLayer::Instance().SetIconDirectory("System\\Data\\Interface");
 }
 
-void Core::setRenderAPI(RenderAPI api) {
-    currentAPI = api;
-}
+void Core::setRenderAPI(RenderAPI api) { currentAPI = api; }
 
-
-void Core::renderModel(Camera& camera) {
-    if (!rendererInitialized || !modelLoaded) return;
-    
-    if (currentAPI == RenderAPI::OPENGL) {
-        if (needsOptimize) {
-            rendererw.optimize(modelParser, shaderProgram);
-            needsOptimize = false;
-        }
-        rendererw.renderModel(modelParser, shaderProgram, camera);
-    }
-}
-
-void Core::cleanupRender() {
-    if (currentAPI == RenderAPI::OPENGL) {
-        rendererw.cleanup();
-        if (shaderProgram) {
-            glDeleteProgram(shaderProgram);
-            shaderProgram = 0;
-        }
-    } else {
-        if (vulkan) {
-            vkDeviceWaitIdle(vulkan->getDevice());
-            delete vulkan;
-            vulkan = nullptr;
-        }
-    }
-}
-
-void Core::settingUpRender() {
-    std::cout << "Render setup complete" << std::endl;
-}
-
-void Core::ParserToRender() {
-}
-
-bool Core::loadModelFromPath(const std::string& path) {
-    if (path.empty()) {
-        std::cerr << "Model path empty" << std::endl;
-        return false;
-    }
-
-    if (!modelParser.loadModel(path)) {
-        std::cerr << "Failed to load model: " << path << std::endl;
-        return false;
-    }
-
-    modelPath = path;
-    modelLoaded = true;
-    needsOptimize = true;
-
-    if (currentAPI == RenderAPI::VULKAN && vulkan) {
-        vulkan->loadModel(modelParser.getMeshes());
-    }
-
-    std::cout << "Model loaded: " << path << std::endl;
-    return true;
-}
-
-bool Core::openFileDialogAndLoadModel(HWND hwnd) {
-    OPENFILENAMEA ofn;
-    CHAR szFile[MAX_PATH] = "";
-
-    ZeroMemory(&ofn, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = hwnd;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = sizeof(szFile);
-    ofn.lpstrFilter = "3D Models (OBJ, FBX, DAE, GLTF, GLB)\0*.obj;*.fbx;*.dae;*.gltf;*.glb\0All Files\0*.*\0";
-    ofn.nFilterIndex = 1;
-    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-    ofn.lpstrTitle = "Select 3D Model";
-
-    if (GetOpenFileNameA(&ofn)) {
-        return loadModelFromPath(ofn.lpstrFile);
-    }
-    return false;
-}
 void Core::initializeRender(InitialWin32* window) {
     currentWindow = window;
-    
-    // Устанавливаем parent HWND для BufferLayer
     BufferLayer::Instance().SetParentHWND(window->getHWND());
     
     window->onNewProject = [this, window]() {
         ProjectManager::Instance().ShowCreateProjectDialog(window->getHWND(), 
-            [this](const std::string& name) {
-                std::cout << "[CORE] Project created: " << name << std::endl;
-                modelLoaded = false;
-            });
+            [this](const std::string& name) { modelLoaded = false; });
     };
     
     window->onOpenProject = [this, window]() {
-        OPENFILENAMEA ofn;
+        OPENFILENAMEA ofn = {0};
         CHAR szFile[MAX_PATH] = "";
-        ZeroMemory(&ofn, sizeof(ofn));
         ofn.lStructSize = sizeof(ofn);
         ofn.hwndOwner = window->getHWND();
         ofn.lpstrFile = szFile;
         ofn.nMaxFile = sizeof(szFile);
-        ofn.lpstrFilter = "Project Files (*.json)\0*.json\0All Files\0*.*\0";
-        ofn.nFilterIndex = 1;
-        ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+        ofn.lpstrFilter = "Project Files (*.json)\0*.json\0";
         ofn.lpstrTitle = "Open Project";
+        ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
         
         if (GetOpenFileNameA(&ofn)) {
             std::string projectFile = ofn.lpstrFile;
@@ -266,156 +174,146 @@ void Core::initializeRender(InitialWin32* window) {
     };
     
     if (currentAPI == RenderAPI::OPENGL) {
-        if (!rendererw.initialize(window)) {
-            std::cerr << "Failed to initialize OpenGL renderer" << std::endl;
-            return;
-        }
+        if (!rendererw.initialize(window)) return;
         shaderProgram = rendererw.initShaders();
-        if (shaderProgram == 0) {
-            std::cerr << "Failed to create shader program" << std::endl;
-            return;
-        }
-        std::cout << "OpenGL renderer initialized" << std::endl;
-    } 
-    else {
-        RECT rect;
-        GetClientRect(window->getHWND(), &rect);
-        int width = rect.right - rect.left;
-        int height = rect.bottom - rect.top;
-        if (width <= 0) width = 1280;
-        if (height <= 0) height = 720;
-
-        vulkan = new Vulkan(window->getHWND(), width, height);
-        if (!vulkan || !vulkan->isInitialized()) {
-            std::cerr << "Failed to initialize Vulkan renderer" << std::endl;
-            delete vulkan;
-            vulkan = nullptr;
-            return;
-        }
-        vulkan->setup2D(width, height);
-        std::cout << "Vulkan renderer initialized" << std::endl;
+        if (shaderProgram == 0) return;
+    } else {
+        RECT rect; GetClientRect(window->getHWND(), &rect);
+        int w = rect.right - rect.left, h = rect.bottom - rect.top;
+        if (w <= 0) w = 1280; if (h <= 0) h = 720;
+        vulkan = new Vulkan(window->getHWND(), w, h);
+        if (!vulkan || !vulkan->isInitialized()) { delete vulkan; vulkan = nullptr; return; }
+        vulkan->setup2D(w, h);
     }
     rendererInitialized = true;
 }
+
+void Core::renderModel(Camera& camera) {
+    if (!rendererInitialized || !modelLoaded) return;
+    if (currentAPI == RenderAPI::OPENGL) {
+        if (needsOptimize) { rendererw.optimize(modelParser, shaderProgram); needsOptimize = false; }
+        rendererw.renderModel(modelParser, shaderProgram, camera);
+    }
+}
+
+void Core::cleanupRender() {
+    if (currentAPI == RenderAPI::OPENGL) {
+        rendererw.cleanup();
+        if (shaderProgram) { glDeleteProgram(shaderProgram); shaderProgram = 0; }
+    } else {
+        if (vulkan) { vkDeviceWaitIdle(vulkan->getDevice()); delete vulkan; vulkan = nullptr; }
+    }
+}
+
+bool Core::loadModelFromPath(const std::string& path) {
+    if (path.empty()) return false;
+    if (!modelParser.loadModel(path)) return false;
+    modelPath = path;
+    modelLoaded = true;
+    needsOptimize = true;
+    if (currentAPI == RenderAPI::VULKAN && vulkan) vulkan->loadModel(modelParser.getMeshes());
+    return true;
+}
+
+bool Core::openFileDialogAndLoadModel(HWND hwnd) {
+    OPENFILENAMEA ofn = {0};
+    CHAR szFile[MAX_PATH] = "";
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = sizeof(szFile);
+    ofn.lpstrFilter = "3D Models\0*.obj;*.fbx;*.dae;*.gltf;*.glb\0";
+    ofn.lpstrTitle = "Select 3D Model";
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+    if (GetOpenFileNameA(&ofn)) return loadModelFromPath(ofn.lpstrFile);
+    return false;
+}
+
 void Core::GameLoop() {
     Application app;
-    if (!app.createApplication()) {
-        std::cerr << "Application creation failed!" << std::endl;
-        return;
-    }
-
+    if (!app.createApplication()) return;
+    
     InitialWin32* win32Window = app.getWindow32();
-    if (!win32Window) {
-        std::cerr << "Error: Win32 window is null" << std::endl;
-        return;
-    }
-
+    if (!win32Window) return;
+    
     initializeRender(win32Window);
-
+    
     g_uiManager = new InterfaceManager(this, currentAPI);
     g_uiManager->setWindow(win32Window);
-
-    RECT rect;
-    GetClientRect(win32Window->getHWND(), &rect);
-    int windowWidth = rect.right - rect.left;
-    int windowHeight = rect.bottom - rect.top;
-
-    if (windowWidth <= 0) windowWidth = 1280;
-    if (windowHeight <= 0) windowHeight = 720;
-
-    g_uiManager->initializeRender(win32Window->getHWND(), windowWidth, windowHeight);
-
-    if (currentAPI == RenderAPI::VULKAN && vulkan) {
-        g_uiManager->setVulkan(vulkan);
-    }
-
+    // УДАЛИТЬ ЭТУ СТРОКУ: ProjectManager::Instance().SetInterfaceManager(g_uiManager);
+    
+    RECT rect; GetClientRect(win32Window->getHWND(), &rect);
+    int w = rect.right - rect.left, h = rect.bottom - rect.top;
+    if (w <= 0) w = 1280; if (h <= 0) h = 720;
+    
+    g_uiManager->initializeRender(win32Window->getHWND(), w, h);
+    if (currentAPI == RenderAPI::VULKAN && vulkan) g_uiManager->setVulkan(vulkan);
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
-
+    
     Input input(app, g_uiManager);
     input.EnableDebug(false);
-
-    POINT lastMousePos = {0, 0};
-    GetCursorPos(&lastMousePos);
-
-    int frameCount = 0;
-    float fpsTimer = 0.0f;
     
-    LARGE_INTEGER frequency, lastTime, currentTime;
-    QueryPerformanceFrequency(&frequency);
+    POINT lastMousePos; GetCursorPos(&lastMousePos);
+    
+    int frameCount = 0; float fpsTimer = 0.0f;
+    LARGE_INTEGER freq, lastTime, currentTime;
+    QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&lastTime);
-
-    std::cout << "[CORE] GameLoop started" << std::endl;
-    std::cout << "[CORE] Controls: RMB to capture mouse, WASD to move, Shift to sprint, R to reset camera" << std::endl;
-
+    
     while (!win32Window->shouldClose()) {
         QueryPerformanceCounter(&currentTime);
-        float deltaTime = (float)(currentTime.QuadPart - lastTime.QuadPart) / frequency.QuadPart;
+        float deltaTime = (float)(currentTime.QuadPart - lastTime.QuadPart) / freq.QuadPart;
         if (deltaTime > 0.033f) deltaTime = 0.033f;
         lastTime = currentTime;
-
-        fpsTimer += deltaTime;
-        frameCount++;
+        
+        fpsTimer += deltaTime; frameCount++;
         if (fpsTimer >= 1.0f) {
             char title[256];
             const auto& camPos = app.getCamera().GetPosition();
-            sprintf_s(title, "%s 3D Viewer | FPS: %d | Cam: %.1f, %.1f, %.1f", 
-                     currentAPI == RenderAPI::VULKAN ? "Vulkan" : "OpenGL",
-                     frameCount, camPos.x, camPos.y, camPos.z);
+            sprintf_s(title, "%s 3D Viewer | FPS: %d", currentAPI == RenderAPI::VULKAN ? "Vulkan" : "OpenGL", frameCount);
             SetWindowTextA(win32Window->getHWND(), title);
-            frameCount = 0;
-            fpsTimer = 0.0f;
+            frameCount = 0; fpsTimer = 0.0f;
         }
-
+        
         win32Window->pollEvents();
-
-        POINT currentMousePos;
-        GetCursorPos(&currentMousePos);
+        
+        POINT currentMousePos; GetCursorPos(&currentMousePos);
         ScreenToClient(win32Window->getHWND(), &currentMousePos);
-
+        
         if (!isStart) {
             input.processMouseWin32((float)currentMousePos.x, (float)currentMousePos.y);
             input.processInputWin32(deltaTime, win32Window->getHWND());
             input.Update(deltaTime);
-
-            RECT clientRect;
-            GetClientRect(win32Window->getHWND(), &clientRect);
-            int clientWidth = clientRect.right - clientRect.left;
-            int clientHeight = clientRect.bottom - clientRect.top;
-
-            if (clientWidth <= 0) clientWidth = 1280;
-            if (clientHeight <= 0) clientHeight = 720;
-
+            
+            RECT clientRect; GetClientRect(win32Window->getHWND(), &clientRect);
+            int cw = clientRect.right - clientRect.left, ch = clientRect.bottom - clientRect.top;
+            if (cw <= 0) cw = 1280; if (ch <= 0) ch = 720;
+            
             if (currentAPI == RenderAPI::VULKAN && vulkan) {
                 vulkan->beginFrame();
-                
                 if (modelLoaded) {
                     vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
-                    vulkan->setProjectionMatrix(glm::perspective(glm::radians(app.getCamera().GetZoom()), 
-                                                (float)clientWidth/clientHeight, 0.1f, 1000.0f));
+                    vulkan->setProjectionMatrix(glm::perspective(glm::radians(app.getCamera().GetZoom()), (float)cw/ch, 0.1f, 1000.0f));
                     vulkan->renderModel();
                 }
-                
                 g_uiManager->renderStatic();
-                
                 vulkan->endFrame();
                 vulkan->present();
-            }
-            else if (currentAPI == RenderAPI::OPENGL) {
+            } else if (currentAPI == RenderAPI::OPENGL) {
                 glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+                
                 if (modelLoaded && g_uiManager) {
                     Panel* view3D = g_uiManager->getPanelManager()->get3D();
                     if (view3D && view3D->visible) {
-                        int winH = clientHeight;
-                        int viewY = winH - (view3D->getY() + view3D->getH());
+                        int viewY = ch - (view3D->getY() + view3D->getH());
                         glViewport(view3D->getX(), viewY, view3D->getW(), view3D->getH());
                         glScissor(view3D->getX(), viewY, view3D->getW(), view3D->getH());
                         glEnable(GL_SCISSOR_TEST);
                         renderModel(app.getCamera());
                         glDisable(GL_SCISSOR_TEST);
                     } else {
-                        glViewport(0, 0, clientWidth, clientHeight);
+                        glViewport(0, 0, cw, ch);
                         renderModel(app.getCamera());
                     }
                 }
@@ -423,19 +321,12 @@ void Core::GameLoop() {
                 win32Window->swapBuffers();
             }
         }
-
         lastMousePos = currentMousePos;
-        
-        if (deltaTime < 0.016f) {
-            Sleep(1);
-        }
+        if (deltaTime < 0.016f) Sleep(1);
     }
-
-    std::cout << "[CORE] GameLoop exiting" << std::endl;
     
-    delete g_uiManager;
-    g_uiManager = nullptr;
+    delete g_uiManager; g_uiManager = nullptr;
     cleanupRender();
-    
-    std::cout << "[CORE] Cleanup complete" << std::endl;
 }
+void Core::settingUpRender() {}
+void Core::ParserToRender() {}

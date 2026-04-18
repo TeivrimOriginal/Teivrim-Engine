@@ -1,0 +1,23 @@
+{
+    "name": "WinCreateProject",
+    "title": "Create Project",
+    "width": 450,
+    "height": 380,
+    "modal": true,
+    "resizable": false,
+    "controls": [
+        {"id": "label_name", "type": "label", "text": "Project Name:", "x": 15, "y": 15, "w": 100, "h": 20},
+        {"id": "edit_name", "type": "edit", "text": "", "x": 130, "y": 15, "w": 290, "h": 22},
+        {"id": "label_type", "type": "label", "text": "Project Type:", "x": 15, "y": 55, "w": 100, "h": 20},
+        {"id": "combo_type", "type": "combobox", "x": 130, "y": 55, "w": 290, "h": 22, "items": ["3D Game", "2D Game", "Application"]},
+        {"id": "label_version", "type": "label", "text": "Engine Version:", "x": 15, "y": 95, "w": 100, "h": 20},
+        {"id": "edit_version", "type": "edit", "text": "1.0.0", "x": 130, "y": 95, "w": 290, "h": 22},
+        {"id": "label_desc", "type": "label", "text": "Description:", "x": 15, "y": 135, "w": 100, "h": 20},
+        {"id": "edit_desc", "type": "edit", "text": "", "x": 130, "y": 135, "w": 290, "h": 50},
+        {"id": "label_dir", "type": "label", "text": "Directory:", "x": 15, "y": 205, "w": 100, "h": 20},
+        {"id": "edit_dir", "type": "edit", "text": "", "x": 130, "y": 205, "w": 240, "h": 22},
+        {"id": "btn_browse", "type": "button", "text": "...", "x": 375, "y": 205, "w": 50, "h": 22, "callback": "onBrowse"},
+        {"id": "btn_create", "type": "button", "text": "Create", "x": 250, "y": 330, "w": 80, "h": 28, "callback": "onCreate"},
+        {"id": "btn_cancel", "type": "button", "text": "Cancel", "x": 340, "y": 330, "w": 80, "h": 28, "callback": "onCancel"}
+    ]
+}

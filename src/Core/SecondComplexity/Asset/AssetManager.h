@@ -11,6 +11,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cctype>
+#include <map>
+#include <random>
+#include <sstream>
+#include <iomanip>
 
 namespace fs = std::filesystem;
 
@@ -62,16 +66,39 @@ public:
     std::function<void(const std::string&)> onProjectLoaded;
     
     void LoadProject(const std::string& projectPath) {
+        if (projectRoot == projectPath && rootAsset != nullptr) {
+            return;
+        }
+        
         ClearAssets();
         projectRoot = projectPath;
-        std::cout << "[AssetManager] Loading project: " << projectPath << std::endl;
+        originalProjectPath = projectPath;
+        
+        // Убираем конечный слэш если есть
+        if (!originalProjectPath.empty() && originalProjectPath.back() == '\\') {
+            originalProjectPath.pop_back();
+        }
+        if (!projectRoot.empty() && projectRoot.back() == '\\') {
+            projectRoot.pop_back();
+        }
         
         tempPath = GetTempProjectDirectory(projectPath);
-        CopyToTemp(projectPath, tempPath);
+        if (!tempPath.empty() && tempPath.back() == '\\') {
+            tempPath.pop_back();
+        }
+        tempPath += "\\";
+        
+        std::cout << "[AssetManager] Original path: " << originalProjectPath << std::endl;
+        std::cout << "[AssetManager] Temp path: " << tempPath << std::endl;
+        
+        if (!fs::exists(tempPath)) {
+            fs::create_directories(tempPath);
+            CopyToTemp(originalProjectPath, tempPath);
+        }
+        
         rootAsset = ScanDirectory(tempPath, nullptr);
         
         if (onProjectLoaded) onProjectLoaded(projectPath);
-        std::cout << "[AssetManager] Project loaded, root: " << (rootAsset ? rootAsset->name : "null") << std::endl;
     }
     
     void ClearAssets() {
@@ -84,8 +111,70 @@ public:
     }
     
     void Refresh() {
-        if (!projectRoot.empty()) {
-            LoadProject(projectRoot);
+        if (tempPath.empty() || !fs::exists(tempPath)) return;
+        ClearAssets();
+        rootAsset = ScanDirectory(tempPath, nullptr);
+    }
+    
+    void SaveProject() {
+        if (originalProjectPath.empty() || tempPath.empty()) {
+            std::cerr << "[AssetManager] Save failed - paths empty" << std::endl;
+            return;
+        }
+        
+        std::cout << "[AssetManager] Saving from: " << tempPath << std::endl;
+        std::cout << "[AssetManager] Saving to: " << originalProjectPath << std::endl;
+        
+        try {
+            // Удаляем из оригинала то, чего нет в темпе
+            for (const auto& entry : fs::recursive_directory_iterator(originalProjectPath)) {
+                std::string origPath = entry.path().string();
+                std::string relPath = origPath.substr(originalProjectPath.length());
+                if (!relPath.empty() && relPath[0] == '\\') relPath = relPath.substr(1);
+                
+                std::string tempFilePath = tempPath + "\\" + relPath;
+                
+                if (!fs::exists(tempFilePath)) {
+                    std::cout << "[AssetManager] Removing: " << origPath << std::endl;
+                    fs::remove_all(origPath);
+                }
+            }
+            
+            // Копируем из темпа в оригинал
+            for (const auto& entry : fs::recursive_directory_iterator(tempPath)) {
+                std::string tempFilePath = entry.path().string();
+                std::string relPath = tempFilePath.substr(tempPath.length());
+                if (!relPath.empty() && relPath[0] == '\\') relPath = relPath.substr(1);
+                
+                std::string originalFilePath = originalProjectPath + "\\" + relPath;
+                
+                if (fs::is_directory(entry)) {
+                    if (!fs::exists(originalFilePath)) {
+                        std::cout << "[AssetManager] Creating dir: " << originalFilePath << std::endl;
+                        fs::create_directories(originalFilePath);
+                    }
+                } else {
+                    bool needCopy = false;
+                    if (!fs::exists(originalFilePath)) {
+                        needCopy = true;
+                    } else {
+                        auto tempTime = fs::last_write_time(tempFilePath);
+                        auto origTime = fs::last_write_time(originalFilePath);
+                        if (tempTime > origTime) {
+                            needCopy = true;
+                        }
+                    }
+                    
+                    if (needCopy) {
+                        std::cout << "[AssetManager] Copying file: " << relPath << std::endl;
+                        fs::copy_file(tempFilePath, originalFilePath, fs::copy_options::overwrite_existing);
+                    }
+                }
+            }
+            
+            std::cout << "[AssetManager] Save completed!" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[AssetManager] Save error: " << e.what() << std::endl;
         }
     }
     
@@ -99,79 +188,52 @@ public:
         return nullptr;
     }
     
-    Asset* FindAssetByName(const std::string& name) {
-        for (auto a : flatAssetList) if (a->name == name) return a;
-        return nullptr;
-    }
-    
-    void CreateFolder(const std::string& folderName, Asset* parent = nullptr) {
-        if (!parent) parent = rootAsset;
-        if (!parent || !parent->isFolder) return;
-        
-        std::string folderPath = parent->path + "\\" + folderName;
-        if (fs::create_directory(folderPath)) {
-            Asset* newFolder = new Asset(folderName, folderPath, true);
-            newFolder->parent = parent;
-            parent->children.push_back(newFolder);
-            flatAssetList.push_back(newFolder);
-            
-            if (onAssetAdded) onAssetAdded(newFolder);
-            std::cout << "[AssetManager] Created folder: " << folderPath << std::endl;
-        }
-    }
-    
     void DeleteAsset(Asset* asset) {
         if (!asset) return;
-        
         try {
-            if (asset->isFolder) {
-                fs::remove_all(asset->path);
-            } else {
-                fs::remove(asset->path);
-            }
-            
-            // Удаляем из parent
-            if (asset->parent) {
-                auto& children = asset->parent->children;
-                children.erase(std::remove(children.begin(), children.end(), asset), children.end());
-            }
-            
-            // Удаляем из flatAssetList
-            flatAssetList.erase(std::remove(flatAssetList.begin(), flatAssetList.end(), asset), flatAssetList.end());
-            
-            if (onAssetRemoved) onAssetRemoved(asset);
-            delete asset;
-            std::cout << "[AssetManager] Deleted: " << asset->path << std::endl;
-        } catch (const std::exception& e) {
-            std::cerr << "[AssetManager] Failed to delete: " << e.what() << std::endl;
-        }
+            if (asset->isFolder) fs::remove_all(asset->path);
+            else fs::remove(asset->path);
+            Refresh();
+        } catch (...) {}
     }
     
     bool RenameAsset(Asset* asset, const std::string& newName) {
         if (!asset) return false;
-        
         try {
             fs::path oldPath(asset->path);
             fs::path newPath = oldPath.parent_path() / newName;
-            
             fs::rename(oldPath, newPath);
-            
-            asset->name = newName;
-            asset->path = newPath.string();
-            
-            if (!asset->isFolder) {
-                size_t dotPos = newName.find_last_of('.');
-                if (dotPos != std::string::npos) {
-                    asset->extension = newName.substr(dotPos);
-                    asset->type = newName.substr(dotPos + 1);
-                    for (auto& c : asset->type) c = (char)tolower((unsigned char)c);
-                }
-            }
-            
-            std::cout << "[AssetManager] Renamed to: " << newName << std::endl;
+            Refresh();
             return true;
-        } catch (const std::exception& e) {
-            std::cerr << "[AssetManager] Failed to rename: " << e.what() << std::endl;
+        } catch (...) {
+            return false;
+        }
+    }
+    
+    bool CreateFile(const std::string& filePath) {
+        try {
+            fs::path parentPath = fs::path(filePath).parent_path();
+            if (!fs::exists(parentPath)) {
+                fs::create_directories(parentPath);
+            }
+            std::ofstream file(filePath);
+            file.close();
+            Refresh();
+            return true;
+        } catch (...) {
+            return false;
+        }
+    }
+    
+    bool CreateFolder(const std::string& folderPath) {
+        try {
+            if (!fs::exists(folderPath)) {
+                fs::create_directories(folderPath);
+                Refresh();
+                return true;
+            }
+            return false;
+        } catch (...) {
             return false;
         }
     }
@@ -184,42 +246,44 @@ private:
     std::vector<Asset*> flatAssetList;
     std::string projectRoot;
     std::string tempPath;
+    std::string originalProjectPath;
+    
+    std::string GenerateUniqueId() {
+        auto now = std::chrono::system_clock::now();
+        auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(1000, 9999);
+        std::ostringstream oss;
+        oss << std::hex << millis << "_" << dis(gen);
+        return oss.str();
+    }
     
     std::string GetTempProjectDirectory(const std::string& projectPath) {
         char tempDir[MAX_PATH];
-        DWORD result = ::GetTempPathA(MAX_PATH, tempDir);  // Явно вызываем WinAPI
-        if (result == 0) {
-            return "C:\\Temp\\GameEngine\\";
-        }
+        ::GetTempPathA(MAX_PATH, tempDir);
         
         fs::path projPath(projectPath);
         std::string projName = projPath.filename().string();
         
-        auto now = std::chrono::steady_clock::now().time_since_epoch().count();
-        std::string tempProj = std::string(tempDir) + "GameEngine\\" + projName + "_" + 
-                               std::to_string(now) + "\\";
-        
-        std::error_code ec;
-        fs::create_directories(tempProj, ec);
-        return tempProj;
+        static std::string sessionId = GenerateUniqueId();
+        std::string result = std::string(tempDir) + "GameEngine\\" + projName + "_" + sessionId;
+        return result;
     }
     
     void CopyToTemp(const std::string& src, const std::string& dst) {
         try { 
             std::error_code ec;
             fs::copy(src, dst, fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
-            if (!ec) {
-                std::cout << "[AssetManager] Copied to temp: " << dst << std::endl;
-            }
-        }
-        catch (const std::exception& e) { 
-            std::cerr << "[AssetManager] Copy failed: " << e.what() << std::endl; 
-        }
+        } catch (...) {}
     }
     
     Asset* ScanDirectory(const std::string& dirPath, Asset* parent) {
+        if (!fs::exists(dirPath)) return nullptr;
+        
         fs::path dir(dirPath);
-        Asset* dirAsset = new Asset(dir.filename().string(), dirPath, true);
+        std::string dirName = dir.filename().string();
+        Asset* dirAsset = new Asset(dirName, dirPath, true);
         dirAsset->parent = parent;
         flatAssetList.push_back(dirAsset);
         
@@ -227,19 +291,15 @@ private:
             for (const auto& entry : fs::directory_iterator(dirPath)) {
                 if (fs::is_directory(entry)) {
                     Asset* subDir = ScanDirectory(entry.path().string(), dirAsset);
-                    dirAsset->children.push_back(subDir);
+                    if (subDir) dirAsset->children.push_back(subDir);
                 } else {
                     Asset* fileAsset = new Asset(entry.path().filename().string(), entry.path().string(), false);
                     fileAsset->parent = dirAsset;
                     dirAsset->children.push_back(fileAsset);
                     flatAssetList.push_back(fileAsset);
-                    std::cout << "[AssetManager] Found: " << fileAsset->name << " (" << fileAsset->type << ")" << std::endl;
                 }
             }
-        } catch (const std::exception& e) {
-            std::cerr << "[AssetManager] Scan error: " << e.what() << std::endl;
-        }
-        
+        } catch (...) {}
         return dirAsset;
     }
 };
