@@ -8,6 +8,7 @@
 
 class Core;
 class Vulkan;
+struct VulkanTexture;
 enum class RenderAPI;
 
 class InterfaceManager {
@@ -36,6 +37,10 @@ public:
     bool isClick = false;
     
     void printIcon(int x, int y, int w, int h, const std::string& iconType, int size = 64);
+    RenderAPI getCurrentAPI() const { return currentAPI; }
+    void setTestTexture(VulkanTexture* tex) { testTexture = tex; }
+    Core* getCore() { return core; }
+    void setCore(Core* corePtr) { core = corePtr; }
     
     struct Dimensions {
         int width, height;
@@ -43,7 +48,6 @@ public:
     Dimensions getDimensions();
     void clearScreen(int width, int height);
     void setup3DViewport(const Dimensions& dims);
-    void setCore(Core* corePtr) { core = corePtr; }
 
 private:
     class InitialWin32* window;
@@ -53,8 +57,7 @@ private:
     RenderUI renderer;
     RenderAPI currentAPI;
     bool startupActive;
-    
-    void* GetIconTexture(const std::string& iconType, int size);
+    VulkanTexture* testTexture = nullptr;
 };
 
 #endif

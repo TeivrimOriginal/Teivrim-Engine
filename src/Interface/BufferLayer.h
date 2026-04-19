@@ -12,8 +12,10 @@
 #include <shlobj.h>
 #include <commdlg.h>
 #include <fstream>
+#include <chrono>
 
 class InterfaceManager;
+enum class RenderAPI;
 
 namespace fs = std::filesystem;
 

@@ -29,6 +29,9 @@ public:
     
     GLuint loadTextureFromFile(const std::string& path);
     
+    RenderAPIType getAPIType() const { return apiType; }
+    Vulkan* getVulkan() const { return vulkan; }
+    
     void saveState(GLint& prog, GLint vp[4], GLboolean& dt);
     void restoreState(GLint prog, GLint vp[4], GLboolean dt);
     void restoreMatrices();

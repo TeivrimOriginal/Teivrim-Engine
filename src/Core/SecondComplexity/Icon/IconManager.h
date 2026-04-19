@@ -10,13 +10,14 @@
 #include <filesystem>
 #include <GL/glew.h>
 #include "../../Render/Win32/RenderUI.h"
+#include "../../../Core/Render/Win32/stb_image_write.h"
 
 namespace fs = std::filesystem;
 
 struct IconUV {
     float u1, v1, u2, v2;
     int width, height;
-    GLuint textureId;
+    void* textureId;
 };
 
 struct IconAtlas {
@@ -24,7 +25,7 @@ struct IconAtlas {
     int iconSize;
     std::map<std::string, IconUV> uvMap;
     bool loaded;
-    GLuint textureId;
+    void* textureId;
 };
 
 class IconManager {
@@ -36,6 +37,13 @@ public:
     
     void SetIconDirectory(const std::string& dir) {
         iconDirectory = dir;
+        
+        if (!fs::exists(iconDirectory)) {
+            fs::create_directories(iconDirectory);
+            std::cout << "[IconManager] Created directory: " << iconDirectory << std::endl;
+        }
+        
+        GenerateMissingAtlases();
         LoadAtlases();
     }
     
@@ -91,18 +99,35 @@ public:
         for (auto& [name, atlas] : atlases) {
             std::string atlasPath = iconDirectory + "\\atlas_" + atlas.name + ".png";
             if (fs::exists(atlasPath)) {
-                atlas.textureId = renderer->loadTextureFromFile(atlasPath);
-                std::cout << "[IconManager] Loaded atlas texture: " << atlasPath << std::endl;
+                if (renderer->getAPIType() == RenderAPIType::VULKAN) {
+                    Vulkan* vk = renderer->getVulkan();
+                    if (vk) {
+                        VulkanTexture* tex = vk->loadUIImage(atlasPath);
+                        if (tex && tex->valid) {
+                            atlas.textureId = (void*)tex;
+                            std::cout << "[IconManager] Loaded Vulkan atlas: " << atlasPath << std::endl;
+                        } else {
+                            std::cerr << "[IconManager] Failed to load Vulkan atlas: " << atlasPath << std::endl;
+                            atlas.textureId = nullptr;
+                        }
+                    } else {
+                        atlas.textureId = nullptr;
+                    }
+                } else {
+                    GLuint texId = renderer->loadTextureFromFile(atlasPath);
+                    atlas.textureId = (void*)(uint64_t)texId;
+                    std::cout << "[IconManager] Loaded OpenGL atlas: " << atlasPath << std::endl;
+                }
             }
         }
     }
     
 private:
     IconManager() : renderer(nullptr) {
-        atlases["16"] = {"16", 16, {}, false, 0};
-        atlases["32"] = {"32", 32, {}, false, 0};
-        atlases["64"] = {"64", 64, {}, false, 0};
-        atlases["128"] = {"128", 128, {}, false, 0};
+        atlases["16"] = {"16", 16, {}, false, nullptr};
+        atlases["32"] = {"32", 32, {}, false, nullptr};
+        atlases["64"] = {"64", 64, {}, false, nullptr};
+        atlases["128"] = {"128", 128, {}, false, nullptr};
     }
     
     std::string iconDirectory = "System\\Data\\Interface";
@@ -114,6 +139,62 @@ private:
         if (size <= 32) return "32";
         if (size <= 64) return "64";
         return "128";
+    }
+    
+    void GenerateMissingAtlases() {
+        std::vector<int> sizes = {16, 32, 64, 128};
+        
+        for (int size : sizes) {
+            std::string atlasPath = iconDirectory + "\\atlas_" + std::to_string(size) + ".png";
+            
+            if (fs::exists(atlasPath)) {
+                continue;
+            }
+            
+            int atlasSize = (size == 16) ? 128 : (size == 32) ? 256 : (size == 64) ? 512 : 1024;
+            int cellSize = size;
+            
+            std::vector<unsigned char> image(atlasSize * atlasSize * 4, 255);
+            
+            for (int row = 0; row < cellSize; row++) {
+                for (int col = 0; col < cellSize; col++) {
+                    int idx = (row * atlasSize + col) * 4;
+                    image[idx] = 180;
+                    image[idx+1] = 180;
+                    image[idx+2] = 180;
+                    image[idx+3] = 255;
+                }
+            }
+            
+            int offset = cellSize;
+            for (int row = 0; row < cellSize; row++) {
+                for (int col = 0; col < cellSize; col++) {
+                    int idx = ((row + offset) * atlasSize + col) * 4;
+                    image[idx] = 120;
+                    image[idx+1] = 120;
+                    image[idx+2] = 120;
+                    image[idx+3] = 255;
+                }
+            }
+            
+            for (int i = 0; i <= 8; i++) {
+                int pos = i * cellSize;
+                for (int y = 0; y < atlasSize; y++) {
+                    for (int c = 0; c < 4; c++) {
+                        if (pos < atlasSize && pos > 0) {
+                            image[(y * atlasSize + pos) * 4 + c] = 80;
+                            image[(pos * atlasSize + y) * 4 + c] = 80;
+                        }
+                    }
+                }
+            }
+            
+            if (stbi_write_png(atlasPath.c_str(), atlasSize, atlasSize, 4, image.data(), atlasSize * 4)) {
+                std::cout << "[IconManager] Created atlas: " << atlasPath << std::endl;
+            } else {
+                std::cerr << "[IconManager] Failed to create atlas: " << atlasPath << std::endl;
+            }
+        }
     }
     
     void LoadAtlases() {
@@ -201,7 +282,7 @@ private:
             uv.v2 = (row + 1) * cellSize;
             uv.width = atlas.iconSize;
             uv.height = atlas.iconSize;
-            uv.textureId = 0;
+            uv.textureId = nullptr;
             
             atlas.uvMap[iconType] = uv;
             
@@ -235,7 +316,7 @@ private:
             uv.v2 = (row + 1) * cellSize;
             uv.width = atlas.iconSize;
             uv.height = atlas.iconSize;
-            uv.textureId = 0;
+            uv.textureId = nullptr;
             
             atlas.uvMap[types[i]] = uv;
         }
@@ -249,7 +330,7 @@ private:
         uv.u2 = 1.0f; uv.v2 = 1.0f;
         uv.width = size;
         uv.height = size;
-        uv.textureId = 0;
+        uv.textureId = nullptr;
         return uv;
     }
 };
