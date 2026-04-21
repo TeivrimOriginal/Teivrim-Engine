@@ -179,7 +179,6 @@ void InterfaceManager::setup3DViewport(const Dimensions& dims) {
         glEnable(GL_DEPTH_TEST);
     }
 }
-
 void InterfaceManager::printIcon(int x, int y, int w, int h, const std::string& iconType, int size) {
     if (currentAPI != RenderAPI::VULKAN) return;
     
@@ -195,57 +194,41 @@ void InterfaceManager::printIcon(int x, int y, int w, int h, const std::string& 
         if (lastSlash != std::string::npos) {
             exeDir = exeDir.substr(0, lastSlash);
         }
-        
         std::string fullPath = exeDir + "\\System\\Data\\Interface\\atlas_64.png";
-        std::cout << "[DEBUG] Loading atlas from: " << fullPath << std::endl;
         
         atlasTex = vk->loadUIImage(fullPath);
         if (!atlasTex || !atlasTex->valid) {
             std::cerr << "[ERROR] Failed to load atlas_64.png" << std::endl;
             return;
         }
-        std::cout << "[DEBUG] Atlas loaded: " << atlasTex->width << "x" << atlasTex->height << std::endl;
+        std::cout << "[DEBUG] Atlas loaded for grid" << std::endl;
     }
     
-    int cellSize = 64;
-    int gridSize = 8;
-    float cellUV = 1.0f / gridSize;
+    // ОПРЕДЕЛЯЕМ ИНДЕКС ЯЧЕЙКИ
+    int cellIndex = 1; // unknown по умолчанию
     
-    int cellIndex = 0;
     if (iconType == "folder") cellIndex = 0;
-    else if (iconType == "unknown") cellIndex = 1;
     else if (iconType == "txt") cellIndex = 2;
     else if (iconType == "cpp") cellIndex = 3;
-    else if (iconType == "h") cellIndex = 4;
-    else if (iconType == "hpp") cellIndex = 4;
-    else if (iconType == "png") cellIndex = 5;
-    else if (iconType == "jpg") cellIndex = 6;
-    else if (iconType == "jpeg") cellIndex = 6;
-    else if (iconType == "obj") cellIndex = 7;
-    else if (iconType == "fbx") cellIndex = 8;
-    else if (iconType == "gltf") cellIndex = 9;
-    else if (iconType == "glb") cellIndex = 9;
-    else if (iconType == "json") cellIndex = 10;
-    else if (iconType == "xml") cellIndex = 11;
-    else if (iconType == "dll") cellIndex = 12;
-    else if (iconType == "exe") cellIndex = 13;
-    else if (iconType == "zip") cellIndex = 14;
-    else if (iconType == "mp4") cellIndex = 15;
-    else if (iconType == "mp3") cellIndex = 16;
-    else if (iconType == "wav") cellIndex = 17;
-    else cellIndex = 1;
+    else if (iconType == "h" || iconType == "hpp") cellIndex = 4;
+    // все остальные типы - cellIndex = 1 (unknown)
     
+    // НЕ ДАЕМ ИНДЕКСУ ВЫХОДИТЬ ЗА ПРЕДЕЛЫ ПЕРВЫХ 5 ЯЧЕЕК
+    if (cellIndex > 4) cellIndex = 1;
+    
+    int gridSize = 8;
     int row = cellIndex / gridSize;
     int col = cellIndex % gridSize;
+    float cellUV = 1.0f / gridSize;
     
     float u1 = col * cellUV;
-    float v1 = row * cellUV;
     float u2 = u1 + cellUV;
-    float v2 = v1 + cellUV;
+    // ПЕРЕВОРАЧИВАЕМ V КООРДИНАТУ (исправление перевернутых иконок)
+    float v1 = 1.0f - (row + 1) * cellUV;
+    float v2 = 1.0f - row * cellUV;
     
     vk->drawImageUV(x, y, x + w, y + h, atlasTex, u1, v1, u2, v2);
 }
-
 void InterfaceManager::renderStatic() {
     Dimensions d = getDimensions();
     if (d.width == 0 || d.height == 0) return;
