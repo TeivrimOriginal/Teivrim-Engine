@@ -8,6 +8,7 @@
 #include "SecondComplexity/Asset/AssetManager.h"
 #include "../Interface/BufferLayer.h"
 #include "SecondComplexity/Icon/IconManager.h"
+#include "Otlad.h"
 #include <iostream>
 #include <string>
 #include <thread>
@@ -255,42 +256,20 @@ bool Core::openFileDialogAndLoadModel(HWND hwnd) {
 }
 
 void Core::GameLoop() {
-    // ПОТОК ДЛЯ КОНСОЛЬНОГО ВВОДА
+    // ПОТОК ДЛЯ КОНСОЛЬНОГО ВВОДА - ТОЛЬКО УСТАНАВЛИВАЕТ ФЛАГИ
     std::thread inputThread([]() {
         while (true) {
             std::string input;
             std::getline(std::cin, input);
             
             if (input == "1") {
-                std::cout << "[CONSOLE] Loading 1.png..." << std::endl;
-                
-                if (g_uiManager && g_uiManager->getCurrentAPI() == RenderAPI::VULKAN) {
-                    Vulkan* vk = g_uiManager->getCore()->getVulkan();
-                    if (vk) {
-                        char exePath[MAX_PATH];
-                        GetModuleFileNameA(NULL, exePath, MAX_PATH);
-                        std::string exeDir = std::string(exePath);
-                        size_t lastSlash = exeDir.find_last_of("\\");
-                        if (lastSlash != std::string::npos) {
-                            exeDir = exeDir.substr(0, lastSlash);
-                        }
-                        std::string pngPath = exeDir + "\\1.png";
-                        
-                        VulkanTexture* tex = vk->loadUIImage(pngPath);
-                        if (tex && tex->valid) {
-                            g_uiManager->setTestTexture(tex);
-                            std::cout << "[CONSOLE] 1.png loaded! Rendering at center of screen." << std::endl;
-                        } else {
-                            std::cerr << "[CONSOLE] Failed to load: " << pngPath << std::endl;
-                        }
-                    }
-                }
+                Otlad1();
+            }
+            else if (input == "2") {
+                Otlad2();
             }
             else if (input == "0") {
-                if (g_uiManager) {
-                    g_uiManager->setTestTexture(nullptr);
-                    std::cout << "[CONSOLE] Cleared test image" << std::endl;
-                }
+                OtladClear();
             }
         }
     });
@@ -374,6 +353,9 @@ void Core::GameLoop() {
             if (ch <= 0) ch = 720;
             
             if (currentAPI == RenderAPI::VULKAN && vulkan) {
+                // ОБРАБАТЫВАЕМ КОМАНДЫ ИЗ ГЛАВНОГО ПОТОКА
+                ProcessOtladCommands(vulkan, g_uiManager);
+                
                 vulkan->beginFrame();
                 if (modelLoaded) {
                     vulkan->setViewMatrix(app.getCamera().GetViewMatrix());

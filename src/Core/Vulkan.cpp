@@ -1714,3 +1714,13 @@ void Vulkan::recreateSwapchain() {
     createSwapchain();
     createFramebuffers();
 }
+VulkanTexture* Vulkan::loadUIImageFromData(unsigned char* data, int width, int height, int channels) {
+    VulkanTexture* texture = new VulkanTexture();
+    *texture = createTextureFromData(data, width, height, channels);
+    if (texture->valid) {
+        loadedUITextures.push_back(texture);
+        return texture;
+    }
+    delete texture;
+    return nullptr;
+}

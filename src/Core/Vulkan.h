@@ -40,7 +40,7 @@ public:
     ~Vulkan();
     
     bool isInitialized() const { return initialized; }
-    
+    VulkanTexture* loadUIImageFromData(unsigned char* data, int width, int height, int channels);
     void beginFrame();
     void endFrame();
     void present();
