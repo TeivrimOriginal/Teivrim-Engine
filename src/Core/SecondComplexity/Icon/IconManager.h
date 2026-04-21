@@ -52,31 +52,32 @@ public:
         ReloadTextures();
     }
     
-    IconUV GetIconUV(const std::string& iconType, int size = 64) {
-        std::string atlasName = GetAtlasNameForSize(size);
-        
-        auto atlasIt = atlases.find(atlasName);
-        if (atlasIt == atlases.end()) {
-            return GetDefaultIconUV(size);
-        }
-        
-        IconAtlas& atlas = atlasIt->second;
-        auto uvIt = atlas.uvMap.find(iconType);
-        if (uvIt != atlas.uvMap.end()) {
-            IconUV result = uvIt->second;
-            result.textureId = atlas.textureId;
-            return result;
-        }
-        
-        uvIt = atlas.uvMap.find("unknown");
-        if (uvIt != atlas.uvMap.end()) {
-            IconUV result = uvIt->second;
-            result.textureId = atlas.textureId;
-            return result;
-        }
-        
+IconUV GetIconUV(const std::string& iconType, int size = 64) {
+    std::string atlasName = GetAtlasNameForSize(size);
+    
+    auto atlasIt = atlases.find(atlasName);
+    if (atlasIt == atlases.end()) {
         return GetDefaultIconUV(size);
     }
+    
+    IconAtlas& atlas = atlasIt->second;
+    auto uvIt = atlas.uvMap.find(iconType);
+    if (uvIt != atlas.uvMap.end()) {
+        IconUV result = uvIt->second;
+        result.textureId = atlas.textureId;
+        // НЕ ПЕРЕВОРАЧИВАЙ НИЧЕГО!
+        return result;
+    }
+    
+    uvIt = atlas.uvMap.find("unknown");
+    if (uvIt != atlas.uvMap.end()) {
+        IconUV result = uvIt->second;
+        result.textureId = atlas.textureId;
+        return result;
+    }
+    
+    return GetDefaultIconUV(size);
+}
     
     bool HasIcon(const std::string& iconType, int size = 64) {
         std::string atlasName = GetAtlasNameForSize(size);
@@ -92,35 +93,28 @@ public:
         }
         return sizes;
     }
-    
     void ReloadTextures() {
-        if (!renderer) return;
-        
-        for (auto& [name, atlas] : atlases) {
-            std::string atlasPath = iconDirectory + "\\atlas_" + atlas.name + ".png";
-            if (fs::exists(atlasPath)) {
-                if (renderer->getAPIType() == RenderAPIType::VULKAN) {
-                    Vulkan* vk = renderer->getVulkan();
-                    if (vk) {
-                        VulkanTexture* tex = vk->loadUIImage(atlasPath);
-                        if (tex && tex->valid) {
-                            atlas.textureId = (void*)tex;
-                            std::cout << "[IconManager] Loaded Vulkan atlas: " << atlasPath << std::endl;
-                        } else {
-                            std::cerr << "[IconManager] Failed to load Vulkan atlas: " << atlasPath << std::endl;
-                            atlas.textureId = nullptr;
-                        }
+    if (!renderer) return;
+    
+    for (auto& [name, atlas] : atlases) {
+        std::string atlasPath = iconDirectory + "\\atlas_" + atlas.name + ".png";
+        if (fs::exists(atlasPath)) {
+            if (renderer->getAPIType() == RenderAPIType::VULKAN) {
+                Vulkan* vk = renderer->getVulkan();
+                if (vk) {
+                    // НЕ ПЕРЕВОРАЧИВАЙ ПРИ ЗАГРУЗКЕ!
+                    VulkanTexture* tex = vk->loadUIImage(atlasPath);
+                    if (tex && tex->valid) {
+                        atlas.textureId = (void*)tex;
+                        std::cout << "[IconManager] Loaded Vulkan atlas: " << atlasPath << std::endl;
                     } else {
                         atlas.textureId = nullptr;
                     }
-                } else {
-                    GLuint texId = renderer->loadTextureFromFile(atlasPath);
-                    atlas.textureId = (void*)(uint64_t)texId;
-                    std::cout << "[IconManager] Loaded OpenGL atlas: " << atlasPath << std::endl;
                 }
             }
         }
     }
+}
     
 private:
     IconManager() : renderer(nullptr) {

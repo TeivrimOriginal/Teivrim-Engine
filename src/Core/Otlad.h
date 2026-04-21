@@ -105,12 +105,17 @@ inline void ProcessOtladCommands(Vulkan* vk, InterfaceManager* uiManager) {
             int x = startX + col * (cellSize + spacing);
             int y = startY + row * (cellSize + spacing);
             
-            float u1 = col * cellUV;
-            float v1 = row * cellUV;
-            float u2 = u1 + cellUV;
-            float v2 = v1 + cellUV;
-            
-            vk->drawImageUV(x, y, x + cellSize, y + cellSize, g_atlasTexture, u1, v1, u2, v2);
+float u1 = col * cellUV;
+float u2 = u1 + cellUV;
+float v1 = row * cellUV;
+float v2 = v1 + cellUV;
+
+// ДЛЯ VULKAN - ПЕРЕВОРАЧИВАЕМ V
+float temp = v1;
+v1 = 1.0f - v2;
+v2 = 1.0f - temp;
+
+vk->drawImageUV(x, y, x + cellSize, y + cellSize, g_atlasTexture, u1, v1, u2, v2);
         }
     }
 }

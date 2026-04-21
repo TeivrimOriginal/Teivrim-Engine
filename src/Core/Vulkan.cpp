@@ -559,7 +559,6 @@ VulkanTexture Vulkan::createWhiteTexture() {
 
 VulkanTexture* Vulkan::loadUIImage(const std::string& filepath) {
     int width, height, channels;
-    stbi_set_flip_vertically_on_load(true);
     unsigned char* data = stbi_load(filepath.c_str(), &width, &height, &channels, 4);
     
     if (!data) {
@@ -579,7 +578,8 @@ VulkanTexture* Vulkan::loadUIImage(const std::string& filepath) {
     
     delete texture;
     return nullptr;
-}
+} 
+
 
 void Vulkan::freeUIImage(VulkanTexture* texture) {
     if (!texture) return;

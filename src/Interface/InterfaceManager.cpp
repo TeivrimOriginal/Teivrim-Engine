@@ -185,49 +185,16 @@ void InterfaceManager::printIcon(int x, int y, int w, int h, const std::string& 
     Vulkan* vk = core->getVulkan();
     if (!vk) return;
     
-    static VulkanTexture* atlasTex = nullptr;
-    if (!atlasTex) {
-        char exePath[MAX_PATH];
-        GetModuleFileNameA(NULL, exePath, MAX_PATH);
-        std::string exeDir = std::string(exePath);
-        size_t lastSlash = exeDir.find_last_of("\\");
-        if (lastSlash != std::string::npos) {
-            exeDir = exeDir.substr(0, lastSlash);
-        }
-        std::string fullPath = exeDir + "\\System\\Data\\Interface\\atlas_64.png";
-        
-        atlasTex = vk->loadUIImage(fullPath);
-        if (!atlasTex || !atlasTex->valid) {
-            std::cerr << "[ERROR] Failed to load atlas_64.png" << std::endl;
-            return;
-        }
-        std::cout << "[DEBUG] Atlas loaded for grid" << std::endl;
+    // ИСПОЛЬЗУЙ АТЛАС ИЗ ICONMANAGER, А НЕ ГРУЗИ НОВЫЙ!
+    IconUV uv = IconManager::Instance().GetIconUV(iconType, size);
+    if (!uv.textureId) {
+        // Если текстуры нет - рисуем красный квадрат для отладки
+        vk->drawQuad(x, y, x + w, y + h, 1.0f, 0.0f, 0.0f);
+        return;
     }
     
-    // ОПРЕДЕЛЯЕМ ИНДЕКС ЯЧЕЙКИ
-    int cellIndex = 1; // unknown по умолчанию
-    
-    if (iconType == "folder") cellIndex = 0;
-    else if (iconType == "txt") cellIndex = 2;
-    else if (iconType == "cpp") cellIndex = 3;
-    else if (iconType == "h" || iconType == "hpp") cellIndex = 4;
-    // все остальные типы - cellIndex = 1 (unknown)
-    
-    // НЕ ДАЕМ ИНДЕКСУ ВЫХОДИТЬ ЗА ПРЕДЕЛЫ ПЕРВЫХ 5 ЯЧЕЕК
-    if (cellIndex > 4) cellIndex = 1;
-    
-    int gridSize = 8;
-    int row = cellIndex / gridSize;
-    int col = cellIndex % gridSize;
-    float cellUV = 1.0f / gridSize;
-    
-    float u1 = col * cellUV;
-    float u2 = u1 + cellUV;
-    // ПЕРЕВОРАЧИВАЕМ V КООРДИНАТУ (исправление перевернутых иконок)
-    float v1 = 1.0f - (row + 1) * cellUV;
-    float v2 = 1.0f - row * cellUV;
-    
-    vk->drawImageUV(x, y, x + w, y + h, atlasTex, u1, v1, u2, v2);
+    // ПРЯМОЙ РЕНДЕР - БЕЗ ВСЯКИХ ПЕРЕВОРАЧИВАНИЙ
+    vk->drawImageUV(x, y, x + w, y + h, (VulkanTexture*)uv.textureId, uv.u1, uv.v1, uv.u2, uv.v2);
 }
 void InterfaceManager::renderStatic() {
     Dimensions d = getDimensions();
