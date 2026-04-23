@@ -34,6 +34,17 @@ struct UIImageQuad {
     VulkanTexture* texture;
 };
 
+struct LoadedModel {
+    std::string name;
+    std::vector<glm::vec3> vertices;
+    std::vector<uint32_t> indices;
+    std::vector<VulkanTexture> textures;
+    bool loaded;
+    glm::mat4 transform;
+    
+    LoadedModel() : loaded(false), transform(1.0f) {}
+};
+
 class Vulkan {
 public:
     Vulkan(HWND hwnd, int width, int height);
@@ -57,11 +68,15 @@ public:
     VulkanTexture* loadUIImage(const std::string& filepath);
     void freeUIImage(VulkanTexture* texture);
     
-    void loadModel(const std::vector<StandardMesh>& meshes);
-    void renderModel();
+    void addModel(const std::string& name, const std::vector<StandardMesh>& meshes);
+    void removeModel(const std::string& name);
+    void clearModels();
+    void renderAllModels();
+    void renderModel(const std::string& name);
+    void setModelTransform(const std::string& name, const glm::mat4& transform);
+    
     void setViewMatrix(const glm::mat4& view);
     void setProjectionMatrix(const glm::mat4& proj);
-    void setModelMatrix(const glm::mat4& model);
     
     void recreateSwapchain();
     
@@ -123,6 +138,16 @@ private:
                       uniformBufferMemory(VK_NULL_HANDLE) {}
     };
     
+    struct ModelBuffers {
+        VkBuffer vertexBuffer;
+        VkBuffer indexBuffer;
+        VkDeviceMemory vertexBufferMemory;
+        VkDeviceMemory indexBufferMemory;
+        uint32_t indexCount;
+        std::vector<VkDescriptorSet> descSets;
+        std::vector<VulkanTexture> textures;
+    };
+    
     static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
     
     HWND hwnd;
@@ -132,19 +157,15 @@ private:
     uint32_t currentImageIndex;
     uint32_t swapchainImageCount;
     
-    glm::mat4 viewMat, projMat, modelMat;
+    glm::mat4 viewMat, projMat;
     
     std::vector<UIQuad> uiQuads;
     std::vector<UITextQuad> uiTextQuads;
     std::vector<UIImageQuad> uiImageQuads;
     std::vector<VulkanTexture*> loadedUITextures;
     
-    std::vector<VertexGPU> modelVertices;
-    std::vector<uint32_t> modelIndices;
-    std::vector<VulkanTexture> meshTextures;
-    std::vector<size_t> meshVertexOffsets;
-    std::vector<size_t> meshIndexOffsets;
-    bool modelLoaded;
+    std::map<std::string, ModelBuffers> modelBuffers;
+    std::map<std::string, glm::mat4> modelTransforms;
     
     VulkanTexture fontTexture;
     stbtt_bakedchar glyphs[96];
@@ -180,15 +201,9 @@ private:
     VkDescriptorSetLayout descLayoutUIText;
     VkDescriptorSetLayout descLayoutUIImage;
     VkDescriptorPool descPool;
-    std::vector<VkDescriptorSet> descSets;
     VkDescriptorSet descSetUIText;
     
     std::vector<FrameData> frames;
-    
-    VkBuffer vertexBuffer;
-    VkBuffer indexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-    VkDeviceMemory indexBufferMemory;
     
     VkBuffer uiVertexBuffer;
     VkDeviceMemory uiVertexBufferMemory;
@@ -209,29 +224,32 @@ private:
     void createCommandPools();
     void createSyncObjects();
     void createUniformBuffers();
-    void createModelBuffers();
     void createDescriptorSetLayout();
     void createEmptyDescriptorSetLayout();
     void createDescriptorSetLayoutUIText();
     void createDescriptorSetLayoutUIImage();
-    void createDescriptorSetsForModel();
     void createPipelines();
     void createUIImagePipeline();
     void createUIBuffers();
     void createUITextBuffers();
     void createUIImageBuffers();
-    void updateUniformBuffer(uint32_t frameIndex);
+    void updateUniformBuffer(uint32_t frameIndex, const glm::mat4& modelMatrix);
     void renderUI();
     void renderUIText();
     void renderUIImage();
     void cleanupTextures();
     void cleanupFrameResources();
     void cleanupUITextures();
+    void cleanupModelBuffers();
     
     bool initializeFont();
     VulkanTexture createTextureFromData(unsigned char* data, int width, int height, int channels);
     VulkanTexture createWhiteTexture();
     float getTextWidth(const std::string& text);
+    
+    void createModelBuffers(ModelBuffers& buffers, const std::vector<VertexGPU>& vertices, 
+                            const std::vector<uint32_t>& indices, 
+                            const std::vector<VulkanTexture>& textures);
 };
 
 #endif

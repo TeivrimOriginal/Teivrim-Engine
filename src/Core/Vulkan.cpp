@@ -73,20 +73,13 @@ bool Vulkan::initializeFont() {
     sprintf_s(fontPath9, "C:\\Windows\\Fonts\\arial.ttf");
     sprintf_s(fontPath10, "C:\\Windows\\Fonts\\tahoma.ttf");
     
-    const char* fontPaths[] = {
-        fontPath1, fontPath2, fontPath3, fontPath4, fontPath5,
-        fontPath6, fontPath7, fontPath8, fontPath9, fontPath10
-    };
+    const char* fontPaths[] = {fontPath1, fontPath2, fontPath3, fontPath4, fontPath5, fontPath6, fontPath7, fontPath8, fontPath9, fontPath10};
     
     FILE* fontFile = nullptr;
-    const char* loadedPath = nullptr;
-    
-    std::cout << "Searching for font files..." << std::endl;
     for (int i = 0; i < 10; i++) {
         fontFile = fopen(fontPaths[i], "rb");
         if (fontFile) {
-            loadedPath = fontPaths[i];
-            std::cout << "  SUCCESS! Font loaded from: " << loadedPath << std::endl;
+            std::cout << "Font loaded from: " << fontPaths[i] << std::endl;
             break;
         }
     }
@@ -109,8 +102,7 @@ bool Vulkan::initializeFont() {
     unsigned char* atlasBitmap = new unsigned char[atlasWidth * atlasHeight];
     memset(atlasBitmap, 0, atlasWidth * atlasHeight);
     
-    int result = stbtt_BakeFontBitmap(fontBuffer, 0, 16.0f, atlasBitmap, 
-                                       atlasWidth, atlasHeight, 32, 96, glyphs);
+    int result = stbtt_BakeFontBitmap(fontBuffer, 0, 16.0f, atlasBitmap, atlasWidth, atlasHeight, 32, 96, glyphs);
     
     if (result <= 0) {
         std::cerr << "ERROR: Failed to bake font bitmap" << std::endl;
@@ -157,14 +149,12 @@ bool Vulkan::initializeFont() {
         VkResult allocResult = vkAllocateDescriptorSets(device, &descAlloc, &descSetUIText);
         if (allocResult == VK_SUCCESS) {
             VkDescriptorImageInfo imageInfo{fontTexture.sampler, fontTexture.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-            
             VkWriteDescriptorSet descriptorWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
             descriptorWrite.dstSet = descSetUIText;
             descriptorWrite.dstBinding = 0;
             descriptorWrite.descriptorCount = 1;
             descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             descriptorWrite.pImageInfo = &imageInfo;
-            
             vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
         }
     }
@@ -178,7 +168,7 @@ bool Vulkan::initializeFont() {
 
 Vulkan::Vulkan(HWND hwnd, int width, int height) 
     : hwnd(hwnd), width(width), height(height), initialized(false), currentFrame(0), currentImageIndex(0), 
-      swapchainImageCount(0), modelLoaded(false),
+      swapchainImageCount(0), viewMat(1.0f), projMat(1.0f),
       depthImage(VK_NULL_HANDLE), depthImageMemory(VK_NULL_HANDLE), depthImageView(VK_NULL_HANDLE),
       instance(VK_NULL_HANDLE), physDevice(VK_NULL_HANDLE), device(VK_NULL_HANDLE),
       graphicsQueue(VK_NULL_HANDLE), surface(VK_NULL_HANDLE), swapchain(VK_NULL_HANDLE),
@@ -187,10 +177,7 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
       pipeline3D(VK_NULL_HANDLE), pipelineUI(VK_NULL_HANDLE),
       pipelineUIText(VK_NULL_HANDLE), pipelineUIImage(VK_NULL_HANDLE),
       descLayout(VK_NULL_HANDLE), descLayoutUIEmpty(VK_NULL_HANDLE), descLayoutUIText(VK_NULL_HANDLE),
-      descLayoutUIImage(VK_NULL_HANDLE),
-      descPool(VK_NULL_HANDLE), descSetUIText(VK_NULL_HANDLE),
-      vertexBuffer(VK_NULL_HANDLE), indexBuffer(VK_NULL_HANDLE),
-      vertexBufferMemory(VK_NULL_HANDLE), indexBufferMemory(VK_NULL_HANDLE),
+      descLayoutUIImage(VK_NULL_HANDLE), descPool(VK_NULL_HANDLE), descSetUIText(VK_NULL_HANDLE),
       uiVertexBuffer(VK_NULL_HANDLE), uiVertexBufferMemory(VK_NULL_HANDLE),
       uiTextVertexBuffer(VK_NULL_HANDLE), uiTextVertexBufferMemory(VK_NULL_HANDLE),
       uiImageVertexBuffer(VK_NULL_HANDLE), uiImageVertexBufferMemory(VK_NULL_HANDLE),
@@ -286,7 +273,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     viewMat = glm::lookAt(glm::vec3(0.0f, 50.0f, 150.0f), glm::vec3(0, 50, 0), glm::vec3(0, 1, 0));
     projMat = glm::perspective(glm::radians(45.0f), (float)width/height, 0.1f, 1000.0f);
     projMat[1][1] *= -1;
-    modelMat = glm::mat4(1.0f);
     
     initialized = true;
     std::cout << "Vulkan initialized successfully" << std::endl;
@@ -298,6 +284,7 @@ Vulkan::~Vulkan() {
         
         cleanupFrameResources();
         cleanupUITextures();
+        cleanupModelBuffers();
         
         for (auto& frame : frames) {
             vkDestroyCommandPool(device, frame.commandPool, nullptr);
@@ -317,10 +304,6 @@ Vulkan::~Vulkan() {
         vkDestroyDescriptorSetLayout(device, descLayoutUIEmpty, nullptr);
         vkDestroyDescriptorSetLayout(device, descLayoutUIText, nullptr);
         vkDestroyDescriptorSetLayout(device, descLayoutUIImage, nullptr);
-        vkDestroyBuffer(device, vertexBuffer, nullptr);
-        vkFreeMemory(device, vertexBufferMemory, nullptr);
-        vkDestroyBuffer(device, indexBuffer, nullptr);
-        vkFreeMemory(device, indexBufferMemory, nullptr);
         vkDestroyBuffer(device, uiVertexBuffer, nullptr);
         vkFreeMemory(device, uiVertexBufferMemory, nullptr);
         vkDestroyBuffer(device, uiTextVertexBuffer, nullptr);
@@ -374,16 +357,6 @@ void Vulkan::cleanupSwapchain() {
 }
 
 void Vulkan::cleanupTextures() {
-    for (auto& tex : meshTextures) {
-        if (tex.valid) {
-            vkDestroyImageView(device, tex.view, nullptr);
-            vkDestroyImage(device, tex.image, nullptr);
-            vkFreeMemory(device, tex.memory, nullptr);
-            vkDestroySampler(device, tex.sampler, nullptr);
-        }
-    }
-    meshTextures.clear();
-    
     if (fontTexture.valid) {
         vkDestroyImageView(device, fontTexture.view, nullptr);
         vkDestroyImage(device, fontTexture.image, nullptr);
@@ -404,6 +377,25 @@ void Vulkan::cleanupUITextures() {
         }
     }
     loadedUITextures.clear();
+}
+
+void Vulkan::cleanupModelBuffers() {
+    for (auto& pair : modelBuffers) {
+        ModelBuffers& buffers = pair.second;
+        if (buffers.vertexBuffer) vkDestroyBuffer(device, buffers.vertexBuffer, nullptr);
+        if (buffers.vertexBufferMemory) vkFreeMemory(device, buffers.vertexBufferMemory, nullptr);
+        if (buffers.indexBuffer) vkDestroyBuffer(device, buffers.indexBuffer, nullptr);
+        if (buffers.indexBufferMemory) vkFreeMemory(device, buffers.indexBufferMemory, nullptr);
+        for (auto& tex : buffers.textures) {
+            if (tex.valid) {
+                vkDestroyImageView(device, tex.view, nullptr);
+                vkDestroyImage(device, tex.image, nullptr);
+                vkFreeMemory(device, tex.memory, nullptr);
+                vkDestroySampler(device, tex.sampler, nullptr);
+            }
+        }
+    }
+    modelBuffers.clear();
 }
 
 uint32_t Vulkan::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
@@ -578,8 +570,7 @@ VulkanTexture* Vulkan::loadUIImage(const std::string& filepath) {
     
     delete texture;
     return nullptr;
-} 
-
+}
 
 void Vulkan::freeUIImage(VulkanTexture* texture) {
     if (!texture) return;
@@ -824,46 +815,44 @@ void Vulkan::renderUIImage() {
     
     uiImageQuads.clear();
 }
-
-void Vulkan::loadModel(const std::vector<StandardMesh>& meshes) {
+void Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& meshes) {
     vkDeviceWaitIdle(device);
     
-    modelVertices.clear();
-    modelIndices.clear();
-    meshVertexOffsets.clear();
-    meshIndexOffsets.clear();
-    meshTextures.clear();
+    if (modelBuffers.find(name) != modelBuffers.end()) {
+        removeModel(name);
+    }
+    
+    std::vector<VertexGPU> vertices;
+    std::vector<uint32_t> indices;
+    std::vector<VulkanTexture> textures;
     
     size_t currVertexOffset = 0;
     size_t currIndexOffset = 0;
     
     for (const auto& mesh : meshes) {
-        meshVertexOffsets.push_back(currVertexOffset);
-        meshIndexOffsets.push_back(currIndexOffset);
-        
         for (const auto& vert : mesh.vertices) {
             VertexGPU v;
             v.pos = glm::vec3(vert.position[0], vert.position[1], vert.position[2]);
             v.color = glm::vec3(1.0f, 1.0f, 1.0f);
             v.texCoord = glm::vec2(vert.texCoords[0], vert.texCoords[1]);
-            modelVertices.push_back(v);
+            vertices.push_back(v);
         }
         
         for (unsigned int idx : mesh.indices) {
-            modelIndices.push_back((uint32_t)(currVertexOffset + idx));
+            indices.push_back((uint32_t)(currVertexOffset + idx));
         }
         
         currVertexOffset += mesh.vertices.size();
         currIndexOffset += mesh.indices.size();
     }
     
-    if (modelVertices.empty()) {
-        std::cerr << "No vertices in model!" << std::endl;
+    if (vertices.empty()) {
+        std::cerr << "No vertices in model: " << name << std::endl;
         return;
     }
     
-    for (size_t i = 0; i < meshes.size(); i++) {
-        const auto& mesh = meshes[i];
+    // ЗАГРУЖАЕМ ТЕКСТУРЫ ТОЛЬКО ЕСЛИ ОНИ ЕСТЬ
+    for (const auto& mesh : meshes) {
         bool textureLoaded = false;
         
         for (const auto& texData : mesh.textures) {
@@ -876,59 +865,231 @@ void Vulkan::loadModel(const std::vector<StandardMesh>& meshes) {
                 );
                 
                 if (vulkanTex.valid) {
-                    meshTextures.push_back(vulkanTex);
+                    textures.push_back(vulkanTex);
                     textureLoaded = true;
+                    std::cout << "[Vulkan] Loaded texture for " << name << ": " 
+                              << texData.rawData.width << "x" << texData.rawData.height << std::endl;
                     break;
                 }
             }
         }
         
+        // ТОЛЬКО ЕСЛИ НЕТ ТЕКСТУРЫ - БЕЛАЯ
         if (!textureLoaded) {
-            meshTextures.push_back(createWhiteTexture());
+            textures.push_back(createWhiteTexture());
+            std::cout << "[Vulkan] Using white texture for mesh in " << name << std::endl;
         }
     }
     
-    createModelBuffers();
-    createDescriptorSetsForModel();
+    ModelBuffers buffers;
+    createModelBuffers(buffers, vertices, indices, textures);
     
-    modelLoaded = true;
-    std::cout << "Model loaded: " << modelVertices.size() << " vertices" << std::endl;
+    modelBuffers[name] = buffers;
+    modelTransforms[name] = glm::mat4(1.0f);
+    
+    std::cout << "Added model: " << name << " (" << vertices.size() << " vertices, " 
+              << indices.size() << " indices, " << textures.size() << " textures)" << std::endl;
 }
 
-void Vulkan::createModelBuffers() {
-    if (modelVertices.empty()) return;
+void Vulkan::removeModel(const std::string& name) {
+    auto it = modelBuffers.find(name);
+    if (it != modelBuffers.end()) {
+        ModelBuffers& buffers = it->second;
+        vkDeviceWaitIdle(device);
+        
+        if (buffers.vertexBuffer) vkDestroyBuffer(device, buffers.vertexBuffer, nullptr);
+        if (buffers.vertexBufferMemory) vkFreeMemory(device, buffers.vertexBufferMemory, nullptr);
+        if (buffers.indexBuffer) vkDestroyBuffer(device, buffers.indexBuffer, nullptr);
+        if (buffers.indexBufferMemory) vkFreeMemory(device, buffers.indexBufferMemory, nullptr);
+        
+        for (auto& tex : buffers.textures) {
+            if (tex.valid) {
+                vkDestroyImageView(device, tex.view, nullptr);
+                vkDestroyImage(device, tex.image, nullptr);
+                vkFreeMemory(device, tex.memory, nullptr);
+                vkDestroySampler(device, tex.sampler, nullptr);
+            }
+        }
+        
+        modelBuffers.erase(it);
+        modelTransforms.erase(name);
+        
+        std::cout << "Removed model: " << name << std::endl;
+    }
+}
+
+void Vulkan::clearModels() {
+    vkDeviceWaitIdle(device);
+    cleanupModelBuffers();
+    modelTransforms.clear();
+    std::cout << "Cleared all models" << std::endl;
+}
+
+void Vulkan::renderAllModels() {
+    for (auto& pair : modelBuffers) {
+        const std::string& name = pair.first;
+        ModelBuffers& buffers = pair.second;
+        
+        glm::mat4 transform = modelTransforms[name];
+        
+        vkCmdBindPipeline(frames[currentFrame].cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline3D);
+        
+        VkDeviceSize offsets = 0;
+        vkCmdBindVertexBuffers(frames[currentFrame].cmdBuffer, 0, 1, &buffers.vertexBuffer, &offsets);
+        vkCmdBindIndexBuffer(frames[currentFrame].cmdBuffer, buffers.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        
+        for (size_t i = 0; i < buffers.descSets.size() && i < buffers.textures.size(); i++) {
+            uint32_t indexCount = buffers.indexCount;
+            
+            if (indexCount > 0) {
+                updateUniformBuffer(currentFrame, transform);
+                vkCmdBindDescriptorSets(frames[currentFrame].cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout3D, 0, 1, &buffers.descSets[i], 0, nullptr);
+                vkCmdDrawIndexed(frames[currentFrame].cmdBuffer, indexCount, 1, 0, 0, 0);
+            }
+        }
+    }
+}
+
+void Vulkan::renderModel(const std::string& name) {
+    auto it = modelBuffers.find(name);
+    if (it == modelBuffers.end()) return;
     
-    VkDeviceSize vertSize = sizeof(VertexGPU) * modelVertices.size();
+    ModelBuffers& buffers = it->second;
+    glm::mat4 transform = modelTransforms[name];
+    
+    vkCmdBindPipeline(frames[currentFrame].cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline3D);
+    
+    VkDeviceSize offsets = 0;
+    vkCmdBindVertexBuffers(frames[currentFrame].cmdBuffer, 0, 1, &buffers.vertexBuffer, &offsets);
+    vkCmdBindIndexBuffer(frames[currentFrame].cmdBuffer, buffers.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+    
+    for (size_t i = 0; i < buffers.descSets.size() && i < buffers.textures.size(); i++) {
+        uint32_t indexCount = buffers.indexCount;
+        
+        if (indexCount > 0) {
+            updateUniformBuffer(currentFrame, transform);
+            vkCmdBindDescriptorSets(frames[currentFrame].cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout3D, 0, 1, &buffers.descSets[i], 0, nullptr);
+            vkCmdDrawIndexed(frames[currentFrame].cmdBuffer, indexCount, 1, 0, 0, 0);
+        }
+    }
+}
+
+void Vulkan::setModelTransform(const std::string& name, const glm::mat4& transform) {
+    auto it = modelTransforms.find(name);
+    if (it != modelTransforms.end()) {
+        it->second = transform;
+    }
+}
+
+void Vulkan::setViewMatrix(const glm::mat4& view) { 
+    viewMat = view; 
+}
+
+void Vulkan::setProjectionMatrix(const glm::mat4& proj) { 
+    projMat = proj; 
+    projMat[1][1] *= -1; 
+}
+void Vulkan::createModelBuffers(ModelBuffers& buffers, const std::vector<VertexGPU>& vertices, 
+                                const std::vector<uint32_t>& indices, 
+                                const std::vector<VulkanTexture>& textures) {
+    if (vertices.empty()) return;
+    
+    // Clean up existing buffers if any
+    if (buffers.vertexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, buffers.vertexBuffer, nullptr);
+        buffers.vertexBuffer = VK_NULL_HANDLE;
+    }
+    if (buffers.vertexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, buffers.vertexBufferMemory, nullptr);
+        buffers.vertexBufferMemory = VK_NULL_HANDLE;
+    }
+    if (buffers.indexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, buffers.indexBuffer, nullptr);
+        buffers.indexBuffer = VK_NULL_HANDLE;
+    }
+    if (buffers.indexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, buffers.indexBufferMemory, nullptr);
+        buffers.indexBufferMemory = VK_NULL_HANDLE;
+    }
+    
+    VkDeviceSize vertSize = sizeof(VertexGPU) * vertices.size();
     VkBufferCreateInfo bufInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     bufInfo.size = vertSize;
     bufInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    vkCreateBuffer(device, &bufInfo, nullptr, &vertexBuffer);
+    vkCreateBuffer(device, &bufInfo, nullptr, &buffers.vertexBuffer);
     
     VkMemoryRequirements memReq;
-    vkGetBufferMemoryRequirements(device, vertexBuffer, &memReq);
+    vkGetBufferMemoryRequirements(device, buffers.vertexBuffer, &memReq);
     VkMemoryAllocateInfo memAlloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     memAlloc.allocationSize = memReq.size;
     memAlloc.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    vkAllocateMemory(device, &memAlloc, nullptr, &vertexBufferMemory);
-    vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+    vkAllocateMemory(device, &memAlloc, nullptr, &buffers.vertexBufferMemory);
+    vkBindBufferMemory(device, buffers.vertexBuffer, buffers.vertexBufferMemory, 0);
     
     void* data;
-    vkMapMemory(device, vertexBufferMemory, 0, vertSize, 0, &data);
-    memcpy(data, modelVertices.data(), vertSize);
-    vkUnmapMemory(device, vertexBufferMemory);
+    vkMapMemory(device, buffers.vertexBufferMemory, 0, vertSize, 0, &data);
+    memcpy(data, vertices.data(), vertSize);
+    vkUnmapMemory(device, buffers.vertexBufferMemory);
     
-    VkDeviceSize idxSize = sizeof(uint32_t) * modelIndices.size();
+    VkDeviceSize idxSize = sizeof(uint32_t) * indices.size();
     bufInfo.size = idxSize;
     bufInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    vkCreateBuffer(device, &bufInfo, nullptr, &indexBuffer);
-    vkGetBufferMemoryRequirements(device, indexBuffer, &memReq);
+    vkCreateBuffer(device, &bufInfo, nullptr, &buffers.indexBuffer);
+    vkGetBufferMemoryRequirements(device, buffers.indexBuffer, &memReq);
     memAlloc.allocationSize = memReq.size;
     memAlloc.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    vkAllocateMemory(device, &memAlloc, nullptr, &indexBufferMemory);
-    vkBindBufferMemory(device, indexBuffer, indexBufferMemory, 0);
-    vkMapMemory(device, indexBufferMemory, 0, idxSize, 0, &data);
-    memcpy(data, modelIndices.data(), idxSize);
-    vkUnmapMemory(device, indexBufferMemory);
+    vkAllocateMemory(device, &memAlloc, nullptr, &buffers.indexBufferMemory);
+    vkBindBufferMemory(device, buffers.indexBuffer, buffers.indexBufferMemory, 0);
+    vkMapMemory(device, buffers.indexBufferMemory, 0, idxSize, 0, &data);
+    memcpy(data, indices.data(), idxSize);
+    vkUnmapMemory(device, buffers.indexBufferMemory);
+    
+    buffers.indexCount = (uint32_t)indices.size();
+    buffers.textures = textures;
+    
+    // Free old descriptor sets if any
+    for (auto& descSet : buffers.descSets) {
+        if (descSet != VK_NULL_HANDLE) {
+            vkFreeDescriptorSets(device, descPool, 1, &descSet);
+        }
+    }
+    buffers.descSets.clear();
+    buffers.descSets.resize(textures.size());
+    
+    for (size_t i = 0; i < textures.size(); i++) {
+        VkDescriptorSetAllocateInfo descAlloc{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        descAlloc.descriptorPool = descPool;
+        descAlloc.descriptorSetCount = 1;
+        descAlloc.pSetLayouts = &descLayout;
+        
+        VkResult result = vkAllocateDescriptorSets(device, &descAlloc, &buffers.descSets[i]);
+        if (result != VK_SUCCESS) {
+            std::cerr << "Failed to allocate descriptor set for texture " << i << std::endl;
+            continue;
+        }
+        
+        VkDescriptorImageInfo imageInfo{textures[i].sampler, textures[i].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        VkDescriptorBufferInfo bufInfo{frames[0].uniformBuffer, 0, sizeof(UniformBufferObject)};
+        
+        std::array<VkWriteDescriptorSet, 2> descriptorWrites = {};
+        descriptorWrites[0] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        descriptorWrites[0].dstSet = buffers.descSets[i];
+        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].descriptorCount = 1;
+        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[0].pBufferInfo = &bufInfo;
+        
+        descriptorWrites[1] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        descriptorWrites[1].dstSet = buffers.descSets[i];
+        descriptorWrites[1].dstBinding = 1;
+        descriptorWrites[1].descriptorCount = 1;
+        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrites[1].pImageInfo = &imageInfo;
+        
+        vkUpdateDescriptorSets(device, (uint32_t)descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
+    }
+    
+    std::cout << "[Vulkan] Created buffers for model with " << textures.size() << " textures" << std::endl;
 }
 
 void Vulkan::createCommandPools() {
@@ -984,44 +1145,6 @@ void Vulkan::createDescriptorSetLayoutUIText() {
     layoutInfo.bindingCount = 1;
     layoutInfo.pBindings = &samplerBinding;
     vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descLayoutUIText);
-}
-
-void Vulkan::createDescriptorSetsForModel() {
-    descSets.clear();
-    
-    if (meshTextures.empty()) {
-        meshTextures.push_back(createWhiteTexture());
-    }
-    
-    descSets.resize(meshTextures.size());
-    
-    for (size_t i = 0; i < meshTextures.size(); i++) {
-        VkDescriptorSetAllocateInfo descAlloc{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-        descAlloc.descriptorPool = descPool;
-        descAlloc.descriptorSetCount = 1;
-        descAlloc.pSetLayouts = &descLayout;
-        vkAllocateDescriptorSets(device, &descAlloc, &descSets[i]);
-        
-        VkDescriptorImageInfo imageInfo{meshTextures[i].sampler, meshTextures[i].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-        VkDescriptorBufferInfo bufInfo{frames[0].uniformBuffer, 0, sizeof(UniformBufferObject)};
-        
-        std::array<VkWriteDescriptorSet, 2> descriptorWrites = {};
-        descriptorWrites[0] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        descriptorWrites[0].dstSet = descSets[i];
-        descriptorWrites[0].dstBinding = 0;
-        descriptorWrites[0].descriptorCount = 1;
-        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrites[0].pBufferInfo = &bufInfo;
-        
-        descriptorWrites[1] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        descriptorWrites[1].dstSet = descSets[i];
-        descriptorWrites[1].dstBinding = 1;
-        descriptorWrites[1].descriptorCount = 1;
-        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptorWrites[1].pImageInfo = &imageInfo;
-        
-        vkUpdateDescriptorSets(device, (uint32_t)descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
-    }
 }
 
 void Vulkan::createSwapchain() {
@@ -1423,9 +1546,9 @@ void Vulkan::createUITextBuffers() {
     vkBindBufferMemory(device, uiTextVertexBuffer, uiTextVertexBufferMemory, 0);
 }
 
-void Vulkan::updateUniformBuffer(uint32_t frameIndex) {
+void Vulkan::updateUniformBuffer(uint32_t frameIndex, const glm::mat4& modelMatrix) {
     UniformBufferObject ubo;
-    ubo.model = modelMat;
+    ubo.model = modelMatrix;
     ubo.view = viewMat;
     ubo.proj = projMat;
     
@@ -1512,32 +1635,6 @@ void Vulkan::drawTextCentered(int x, int y, int w, int h, const std::string& tex
     
     drawText(centerX, centerY, text, r, g, b);
 }
-
-void Vulkan::renderModel() {
-    if (!modelLoaded || modelVertices.empty()) return;
-    
-    vkCmdBindPipeline(frames[currentFrame].cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline3D);
-    VkDeviceSize offsets = 0;
-    vkCmdBindVertexBuffers(frames[currentFrame].cmdBuffer, 0, 1, &vertexBuffer, &offsets);
-    vkCmdBindIndexBuffer(frames[currentFrame].cmdBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-    
-    for (size_t i = 0; i < descSets.size() && i < meshTextures.size(); i++) {
-        uint32_t indexCount = 0;
-        if (i < meshIndexOffsets.size()) {
-            uint32_t nextOffset = (i + 1 < meshIndexOffsets.size()) ? (uint32_t)meshIndexOffsets[i + 1] : (uint32_t)modelIndices.size();
-            indexCount = nextOffset - (uint32_t)meshIndexOffsets[i];
-        }
-        
-        if (indexCount > 0 && i < descSets.size()) {
-            vkCmdBindDescriptorSets(frames[currentFrame].cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout3D, 0, 1, &descSets[i], 0, nullptr);
-            vkCmdDrawIndexed(frames[currentFrame].cmdBuffer, indexCount, 1, (uint32_t)meshIndexOffsets[i], (uint32_t)meshVertexOffsets[i], 0);
-        }
-    }
-}
-
-void Vulkan::setViewMatrix(const glm::mat4& view) { viewMat = view; }
-void Vulkan::setProjectionMatrix(const glm::mat4& proj) { projMat = proj; projMat[1][1] *= -1; }
-void Vulkan::setModelMatrix(const glm::mat4& model) { modelMat = model; }
 
 void Vulkan::renderUI() {
     if (uiQuads.empty()) return;
@@ -1646,8 +1743,7 @@ void Vulkan::beginFrame() {
     
     vkCmdBeginRenderPass(frames[currentFrame].cmdBuffer, &rp, VK_SUBPASS_CONTENTS_INLINE);
     
-    updateUniformBuffer(currentFrame);
-    renderModel();
+    renderAllModels();
     renderUI();
     renderUIText();
     renderUIImage();
@@ -1704,6 +1800,7 @@ void Vulkan::recreateSwapchain() {
     vkDeviceWaitIdle(device);
     
     cleanupSwapchain();
+    
     vkDestroyImageView(device, depthImageView, nullptr);
     vkDestroyImage(device, depthImage, nullptr);
     vkFreeMemory(device, depthImageMemory, nullptr);
@@ -1713,7 +1810,10 @@ void Vulkan::recreateSwapchain() {
     
     createSwapchain();
     createFramebuffers();
+    
+    vkDeviceWaitIdle(device);
 }
+
 VulkanTexture* Vulkan::loadUIImageFromData(unsigned char* data, int width, int height, int channels) {
     VulkanTexture* texture = new VulkanTexture();
     *texture = createTextureFromData(data, width, height, channels);

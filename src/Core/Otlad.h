@@ -16,7 +16,7 @@ static std::atomic<bool> g_otlad1Requested{false};
 static std::atomic<bool> g_otlad2Requested{false};
 static std::atomic<bool> g_otladClearRequested{false};
 static std::atomic<bool> g_otlad3Requested{false};
-
+static std::atomic<bool> g_otlad4Requested{false};
 static VulkanTexture* g_atlasTexture = nullptr;
 static bool g_atlasReady = false;
 
@@ -40,6 +40,11 @@ inline void Otlad3() {
     g_otlad3Requested = true;
 }
 
+
+inline void Otlad4() {
+    std::cout << "[OTLAD] Mesh hierarchy scan requested" << std::endl;
+    g_otlad4Requested = true;
+}
 inline void ProcessOtladCommands(Vulkan* vk, InterfaceManager* uiManager) {
     if (!vk || !uiManager) return;
     
@@ -122,6 +127,64 @@ inline void ProcessOtladCommands(Vulkan* vk, InterfaceManager* uiManager) {
         
         std::cout << "===============================\n" << std::endl;
     }
+    if (g_otlad4Requested) {
+    g_otlad4Requested = false;
+    
+    std::cout << "\n========== MESH HIERARCHY SCAN ==========" << std::endl;
+    
+    auto& sm = SceneManager::Instance();
+    auto objects = sm.GetAllObjects();
+    
+    if (objects.empty()) {
+        std::cout << "No objects in scene!" << std::endl;
+    } else {
+        for (auto obj : objects) {
+            if (!obj->loaded || !obj->parser) {
+                std::cout << "[SKIP] " << obj->name << " (not loaded or no parser)" << std::endl;
+                continue;
+            }
+            
+            const auto& meshes = obj->parser->getMeshes();
+            std::cout << "\n[OBJECT] " << obj->name << std::endl;
+            std::cout << "  Meshes: " << meshes.size() << std::endl;
+            std::cout << "  Transform: pos(" << obj->localTransform.position.x << ", " 
+                      << obj->localTransform.position.y << ", " << obj->localTransform.position.z << ")" << std::endl;
+            
+            for (size_t i = 0; i < meshes.size(); i++) {
+                const auto& mesh = meshes[i];
+                std::cout << "  [MESH " << i << "]" << std::endl;
+                std::cout << "    Vertices: " << mesh.vertices.size() << std::endl;
+                std::cout << "    Indices: " << mesh.indices.size() << std::endl;
+                std::cout << "    Triangles: " << mesh.indices.size() / 3 << std::endl;
+                std::cout << "    Textures: " << mesh.textures.size() << std::endl;
+                
+                if (!mesh.textures.empty()) {
+                    for (size_t t = 0; t < mesh.textures.size(); t++) {
+                        const auto& tex = mesh.textures[t];
+                        std::cout << "      Texture " << t << ": type=" << tex.type;
+                        if (tex.rawData.isValid) {
+                            std::cout << " size=" << tex.rawData.width << "x" << tex.rawData.height;
+                        }
+                        std::cout << std::endl;
+                    }
+                }
+                
+                if (mesh.vertices.size() > 0) {
+                    const auto& v = mesh.vertices[0];
+                    std::cout << "    First vertex: pos(" << v.position[0] << ", " 
+                              << v.position[1] << ", " << v.position[2] << ") uv(" 
+                              << v.texCoords[0] << ", " << v.texCoords[1] << ")" << std::endl;
+                }
+                
+                if (mesh.indices.size() > 0) {
+                    std::cout << "    First index: " << mesh.indices[0] << std::endl;
+                }
+            }
+        }
+    }
+    
+    std::cout << "=========================================\n" << std::endl;
+}
     
     if (g_atlasReady && g_atlasTexture && g_atlasTexture->valid) {
         int cellSize = 64;

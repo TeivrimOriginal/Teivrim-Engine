@@ -18,7 +18,6 @@ public:
     bool needsOptimize = false;
     std::string modelPath;
     GLuint shaderProgram = 0;
-    ModelParser modelParser;
     
     void setRenderAPI(RenderAPI api);
     void initializeRender(InitialWin32* window);

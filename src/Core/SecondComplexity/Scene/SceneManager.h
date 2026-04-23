@@ -140,15 +140,16 @@ public:
     void RenderAll(Vulkan* vk) {
         if (!vk) return;
         
+        // Устанавливаем трансформы для всех объектов
         for (auto obj : allObjects) {
             if (obj->visible && obj->loaded && obj->parser) {
-                vk->setModelMatrix(obj->localTransform.GetMatrix());
-                vk->loadModel(obj->parser->getMeshes());
-                vk->renderModel();
+                vk->setModelTransform(obj->name, obj->localTransform.GetMatrix());
             }
         }
+        
+        // Рендерим все модели
+        vk->renderAllModels();
     }
-    
     SceneObject* FindByName(const std::string& name) {
         for (auto obj : allObjects) {
             if (obj->name == name) return obj;
@@ -166,7 +167,14 @@ public:
         allObjects.clear();
         rootObjects.clear();
     }
-    
+void RenderModel(Vulkan* vk, const std::string& name) {
+    if (!vk) return;
+    auto obj = FindByName(name);
+    if (obj && obj->visible && obj->loaded && obj->parser) {
+        vk->setModelTransform(name, obj->localTransform.GetMatrix());
+        vk->renderModel(name);
+    }
+}
 private:
     SceneManager() = default;
     ~SceneManager() { Clear(); }

@@ -157,7 +157,7 @@ void Core::initializeRender(InitialWin32* window) {
     
     window->onNewProject = [this, window]() {
         ProjectManager::Instance().ShowCreateProjectDialog(window->getHWND(), 
-            [this](const std::string& name) { modelLoaded = false; });
+            [this](const std::string& name) {});
     };
     
     window->onOpenProject = [this, window]() {
@@ -204,13 +204,8 @@ void Core::initializeRender(InitialWin32* window) {
 }
 
 void Core::renderModel(Camera& camera) {
-    if (!rendererInitialized || !modelLoaded) return;
+    if (!rendererInitialized) return;
     if (currentAPI == RenderAPI::OPENGL) {
-        if (needsOptimize) { 
-            rendererw.optimize(modelParser, shaderProgram); 
-            needsOptimize = false; 
-        }
-        rendererw.renderModel(modelParser, shaderProgram, camera);
     }
 }
 
@@ -232,17 +227,24 @@ void Core::cleanupRender() {
 
 bool Core::loadModelFromPath(const std::string& path) {
     if (path.empty()) return false;
-    if (!modelParser.loadModel(path)) return false;
+    
+    ModelParser* newParser = new ModelParser();
+    if (!newParser->loadModel(path)) {
+        delete newParser;
+        return false;
+    }
+    
     modelPath = path;
-    modelLoaded = true;
-    needsOptimize = true;
     
     std::string modelName = path.substr(path.find_last_of("/\\") + 1);
-    SceneManager::Instance().AddModel(modelName, &modelParser);
     
     if (currentAPI == RenderAPI::VULKAN && vulkan) {
-        vulkan->loadModel(modelParser.getMeshes());
+        vulkan->addModel(modelName, newParser->getMeshes());
+        vulkan->setModelTransform(modelName, glm::scale(glm::mat4(1.0f), glm::vec3(0.01f)));
     }
+    
+    SceneManager::Instance().AddModel(modelName, newParser);
+    
     return true;
 }
 
@@ -276,6 +278,9 @@ void Core::GameLoop() {
             }
             else if (input == "3") {
                 Otlad3();
+            }
+            else if (input == "4") {
+                Otlad4();
             }
             else if (input == "0") {
                 OtladClear();
@@ -382,12 +387,13 @@ void Core::GameLoop() {
                 ProcessOtladCommands(vulkan, g_uiManager);
                 
                 vulkan->beginFrame();
-                if (modelLoaded) {
-                    vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
-                    vulkan->setProjectionMatrix(glm::perspective(glm::radians(app.getCamera().GetZoom()), 
-                                             (float)cw/ch, 0.1f, 1000.0f));
-                    vulkan->renderModel();
-                }
+                
+                vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
+                vulkan->setProjectionMatrix(glm::perspective(glm::radians(app.getCamera().GetZoom()), 
+                                         (float)cw/ch, 0.1f, 1000.0f));
+                
+                SceneManager::Instance().RenderAll(vulkan);
+                
                 g_uiManager->renderStatic();
                 vulkan->endFrame();
                 vulkan->present();
@@ -395,21 +401,6 @@ void Core::GameLoop() {
             else if (currentAPI == RenderAPI::OPENGL) {
                 glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-                
-                if (modelLoaded && g_uiManager) {
-                    Panel* view3D = g_uiManager->getPanelManager()->get3D();
-                    if (view3D && view3D->visible) {
-                        int viewY = ch - (view3D->getY() + view3D->getH());
-                        glViewport(view3D->getX(), viewY, view3D->getW(), view3D->getH());
-                        glScissor(view3D->getX(), viewY, view3D->getW(), view3D->getH());
-                        glEnable(GL_SCISSOR_TEST);
-                        renderModel(app.getCamera());
-                        glDisable(GL_SCISSOR_TEST);
-                    } else {
-                        glViewport(0, 0, cw, ch);
-                        renderModel(app.getCamera());
-                    }
-                }
                 g_uiManager->renderStatic();
                 win32Window->swapBuffers();
             }
