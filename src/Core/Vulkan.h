@@ -63,6 +63,8 @@ public:
     void setProjectionMatrix(const glm::mat4& proj);
     void setModelMatrix(const glm::mat4& model);
     
+    void recreateSwapchain();
+    
     VkDevice getDevice() const { return device; }
     bool isWindowValid() const { return hwnd && IsWindow(hwnd); }
 
@@ -202,7 +204,6 @@ private:
     void createMainDescriptorPool();
     void createSwapchain();
     void cleanupSwapchain();
-    void recreateSwapchain();
     void createRenderPass();
     void createFramebuffers();
     void createCommandPools();

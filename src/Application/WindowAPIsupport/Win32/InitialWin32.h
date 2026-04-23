@@ -30,29 +30,36 @@ private:
                     std::cout << "[WindowProc] WM_COMMAND received, ID: " << LOWORD(wParam) << std::endl;
                     if (LOWORD(wParam) == 1) {
                         std::cout << "[WindowProc] New Project clicked" << std::endl;
-                        if (pThis->onNewProject) {
-                            pThis->onNewProject();
-                        }
+                        if (pThis->onNewProject) pThis->onNewProject();
                     }
                     else if (LOWORD(wParam) == 2) {
                         std::cout << "[WindowProc] Open Project clicked" << std::endl;
-                        if (pThis->onOpenProject) {
-                            pThis->onOpenProject();
-                        }
+                        if (pThis->onOpenProject) pThis->onOpenProject();
                     }
                     else if (LOWORD(wParam) == 3) {
                         std::cout << "[WindowProc] Exit clicked" << std::endl;
                         DestroyWindow(hwnd);
                     }
                     break;
-                case WM_SIZE:
-                    pThis->windowWidth = LOWORD(lParam);
-                    pThis->windowHeight = HIWORD(lParam);
+                    
+                case WM_SIZE: {
+                    int width = LOWORD(lParam);
+                    int height = HIWORD(lParam);
+                    if (width > 0 && height > 0) {
+                        pThis->windowWidth = width;
+                        pThis->windowHeight = height;
+                        if (pThis->onResize) {
+                            pThis->onResize(width, height);
+                        }
+                    }
                     break;
+                }
+                    
                 case WM_CLOSE:
                     std::cout << "[WindowProc] WM_CLOSE" << std::endl;
                     DestroyWindow(hwnd);
                     break;
+                    
                 case WM_DESTROY:
                     std::cout << "[WindowProc] WM_DESTROY" << std::endl;
                     PostQuitMessage(0);
@@ -66,7 +73,7 @@ public:
     InitialWin32() : hwnd(nullptr), hdc(nullptr), hrc(nullptr), 
                      hMenu(nullptr), hInstance(nullptr), 
                      windowWidth(800), windowHeight(600),
-                     onNewProject(nullptr), onOpenProject(nullptr) {}
+                     onNewProject(nullptr), onOpenProject(nullptr), onResize(nullptr) {}
     
     HWND getHWND() { return hwnd; }
     HDC getHDC() const { return hdc; }
@@ -74,9 +81,13 @@ public:
     HMENU getMenu() const { return hMenu; }
     int getWidth() const { return windowWidth; }
     int getHeight() const { return windowHeight; }
+    void setWindowSize(int width, int height) { windowWidth = width; windowHeight = height; }
+    int getClientWidth() const { return windowWidth; }
+    int getClientHeight() const { return windowHeight; }
     
     std::function<void()> onNewProject;
     std::function<void()> onOpenProject;
+    std::function<void(int, int)> onResize;
     
     static InitialWin32* createWindow(int width, int height, const char* title);
     
@@ -89,9 +100,7 @@ public:
     }
     
     void swapBuffers() {
-        if (hrc) {
-            SwapBuffers(hdc);
-        }
+        if (hrc) SwapBuffers(hdc);
     }
     
     bool shouldClose() {

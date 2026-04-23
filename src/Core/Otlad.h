@@ -8,12 +8,14 @@
 #include <windows.h>
 #include "Vulkan.h"
 #include "../Interface/InterfaceManager.h"
+#include "SecondComplexity/Scene/SceneManager.h"
 
 extern InterfaceManager* g_uiManager;
 
 static std::atomic<bool> g_otlad1Requested{false};
 static std::atomic<bool> g_otlad2Requested{false};
 static std::atomic<bool> g_otladClearRequested{false};
+static std::atomic<bool> g_otlad3Requested{false};
 
 static VulkanTexture* g_atlasTexture = nullptr;
 static bool g_atlasReady = false;
@@ -31,6 +33,11 @@ inline void Otlad2() {
 inline void OtladClear() {
     std::cout << "[OTLAD] Clear requested" << std::endl;
     g_otladClearRequested = true;
+}
+
+inline void Otlad3() {
+    std::cout << "[OTLAD] Scene info requested" << std::endl;
+    g_otlad3Requested = true;
 }
 
 inline void ProcessOtladCommands(Vulkan* vk, InterfaceManager* uiManager) {
@@ -91,7 +98,31 @@ inline void ProcessOtladCommands(Vulkan* vk, InterfaceManager* uiManager) {
         }
     }
     
-    // Рендерим атлас если загружен
+    if (g_otlad3Requested) {
+        g_otlad3Requested = false;
+        
+        std::cout << "\n========== SCENE INFO ==========" << std::endl;
+        
+        auto& sm = SceneManager::Instance();
+        auto objects = sm.GetAllObjects();
+        
+        std::cout << "Total objects: " << objects.size() << std::endl;
+        
+        for (auto obj : objects) {
+            std::cout << "  " << obj->name 
+                      << " [loaded=" << (obj->loaded ? "Y" : "N")
+                      << " visible=" << (obj->visible ? "Y" : "N")
+                      << " meshes=" << obj->meshCount << "]";
+            
+            if (obj->parent) std::cout << " parent=" << obj->parent->name;
+            if (!obj->modelPath.empty()) std::cout << " path=" << obj->modelPath;
+            
+            std::cout << std::endl;
+        }
+        
+        std::cout << "===============================\n" << std::endl;
+    }
+    
     if (g_atlasReady && g_atlasTexture && g_atlasTexture->valid) {
         int cellSize = 64;
         int spacing = 1;
@@ -105,17 +136,16 @@ inline void ProcessOtladCommands(Vulkan* vk, InterfaceManager* uiManager) {
             int x = startX + col * (cellSize + spacing);
             int y = startY + row * (cellSize + spacing);
             
-float u1 = col * cellUV;
-float u2 = u1 + cellUV;
-float v1 = row * cellUV;
-float v2 = v1 + cellUV;
-
-// ДЛЯ VULKAN - ПЕРЕВОРАЧИВАЕМ V
-float temp = v1;
-v1 = 1.0f - v2;
-v2 = 1.0f - temp;
-
-vk->drawImageUV(x, y, x + cellSize, y + cellSize, g_atlasTexture, u1, v1, u2, v2);
+            float u1 = col * cellUV;
+            float u2 = u1 + cellUV;
+            float v1 = row * cellUV;
+            float v2 = v1 + cellUV;
+            
+            float temp = v1;
+            v1 = 1.0f - v2;
+            v2 = 1.0f - temp;
+            
+            vk->drawImageUV(x, y, x + cellSize, y + cellSize, g_atlasTexture, u1, v1, u2, v2);
         }
     }
 }

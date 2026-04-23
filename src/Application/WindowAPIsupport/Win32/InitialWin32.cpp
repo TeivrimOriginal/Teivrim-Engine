@@ -57,7 +57,6 @@ InitialWin32* InitialWin32::createWindow(int width, int height, const char* titl
         return nullptr;
     }
     
-    // Сохраняем указатель на объект в GWLP_USERDATA
     SetWindowLongPtr(win->hwnd, GWLP_USERDATA, (LONG_PTR)win);
     
     win->hdc = GetDC(win->hwnd);

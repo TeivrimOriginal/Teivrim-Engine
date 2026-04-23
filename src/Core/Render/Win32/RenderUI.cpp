@@ -24,7 +24,6 @@ void RenderUI::setup2D(int width, int height) {
         vulkan->setup2D(width, height);
     }
 }
-
 void RenderUI::drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
     if (apiType == RenderAPIType::VULKAN && vulkan) {
         vulkan->drawQuad(x1, y1, x2, y2, r, g, b);

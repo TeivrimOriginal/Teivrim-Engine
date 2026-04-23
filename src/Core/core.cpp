@@ -257,6 +257,8 @@ bool Core::openFileDialogAndLoadModel(HWND hwnd) {
 
 void Core::GameLoop() {
     // ПОТОК ДЛЯ КОНСОЛЬНОГО ВВОДА - ТОЛЬКО УСТАНАВЛИВАЕТ ФЛАГИ
+// core.cpp - НАЙТИ ПОТОК inputThread И ДОБАВИТЬ ОБРАБОТКУ '3'
+
     std::thread inputThread([]() {
         while (true) {
             std::string input;
@@ -268,6 +270,9 @@ void Core::GameLoop() {
             else if (input == "2") {
                 Otlad2();
             }
+            else if (input == "3") {           // ДОБАВИТЬ ЭТОТ БЛОК
+                Otlad3();                      // ДОБАВИТЬ ЭТУ СТРОКУ
+            }                                  // ДОБАВИТЬ ЭТУ СТРОКУ                      // ДОБАВИТЬ ЭТУ СТРОКУ
             else if (input == "0") {
                 OtladClear();
             }
