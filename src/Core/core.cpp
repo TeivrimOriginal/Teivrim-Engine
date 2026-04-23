@@ -6,6 +6,7 @@
 #include "../Control/Input.h"
 #include "SecondComplexity/Project/ProjectManager.h"
 #include "SecondComplexity/Asset/AssetManager.h"
+#include "SecondComplexity/Scene/SceneManager.h"
 #include "../Interface/BufferLayer.h"
 #include "SecondComplexity/Icon/IconManager.h"
 #include "Otlad.h"
@@ -98,7 +99,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_SIZE: {
             if (g_uiManager) {
                 int width = LOWORD(lParam), height = HIWORD(lParam);
-                if (width > 0 && height > 0) g_uiManager->updateWindowSize(width, height);
+                if (width > 0 && height > 0) {
+                    g_uiManager->updateWindowSize(width, height);
+                }
             }
             break;
         }
@@ -233,6 +236,10 @@ bool Core::loadModelFromPath(const std::string& path) {
     modelPath = path;
     modelLoaded = true;
     needsOptimize = true;
+    
+    std::string modelName = path.substr(path.find_last_of("/\\") + 1);
+    SceneManager::Instance().AddModel(modelName, &modelParser);
+    
     if (currentAPI == RenderAPI::VULKAN && vulkan) {
         vulkan->loadModel(modelParser.getMeshes());
     }
@@ -256,9 +263,6 @@ bool Core::openFileDialogAndLoadModel(HWND hwnd) {
 }
 
 void Core::GameLoop() {
-    // ПОТОК ДЛЯ КОНСОЛЬНОГО ВВОДА - ТОЛЬКО УСТАНАВЛИВАЕТ ФЛАГИ
-// core.cpp - НАЙТИ ПОТОК inputThread И ДОБАВИТЬ ОБРАБОТКУ '3'
-
     std::thread inputThread([]() {
         while (true) {
             std::string input;
@@ -270,9 +274,9 @@ void Core::GameLoop() {
             else if (input == "2") {
                 Otlad2();
             }
-            else if (input == "3") {           // ДОБАВИТЬ ЭТОТ БЛОК
-                Otlad3();                      // ДОБАВИТЬ ЭТУ СТРОКУ
-            }                                  // ДОБАВИТЬ ЭТУ СТРОКУ                      // ДОБАВИТЬ ЭТУ СТРОКУ
+            else if (input == "3") {
+                Otlad3();
+            }
             else if (input == "0") {
                 OtladClear();
             }
@@ -307,6 +311,23 @@ void Core::GameLoop() {
         g_uiManager->setVulkan(vulkan);
         IconManager::Instance().SetRenderer(&g_uiManager->getRenderer());
     }
+    
+    win32Window->onResize = [this](int width, int height) {
+        if (width <= 0 || height <= 0) return;
+        
+        if (currentAPI == RenderAPI::VULKAN && vulkan) {
+            vulkan->recreateSwapchain();
+            vulkan->setup2D(width, height);
+            if (g_uiManager) {
+                g_uiManager->updateWindowSize(width, height);
+            }
+        } else if (currentAPI == RenderAPI::OPENGL) {
+            glViewport(0, 0, width, height);
+            if (g_uiManager) {
+                g_uiManager->updateWindowSize(width, height);
+            }
+        }
+    };
     
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
     
@@ -358,7 +379,6 @@ void Core::GameLoop() {
             if (ch <= 0) ch = 720;
             
             if (currentAPI == RenderAPI::VULKAN && vulkan) {
-                // ОБРАБАТЫВАЕМ КОМАНДЫ ИЗ ГЛАВНОГО ПОТОКА
                 ProcessOtladCommands(vulkan, g_uiManager);
                 
                 vulkan->beginFrame();
