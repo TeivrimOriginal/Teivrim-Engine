@@ -1,0 +1,2 @@
+#version 450
+layout(location = 0) in vec2 fragUV; layout(location = 0) out vec4 outColor; void main() { float gridSize = 20.0; float lineWidth = 0.02; vec2 uv = fragUV * gridSize; vec2 grid = abs(fract(uv - 0.5) - 0.5); float lineX = 1.0 - smoothstep(0.0, lineWidth, grid.x); float lineZ = 1.0 - smoothstep(0.0, lineWidth, grid.y); float line = max(lineX, lineZ); vec3 color = mix(vec3(0.12, 0.13, 0.18), vec3(0.45, 0.48, 0.55), line); outColor = vec4(color, 1.0); }

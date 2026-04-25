@@ -3,7 +3,7 @@
 Camera::Camera(glm::vec3 position, glm::vec3 up, float yaw, float pitch)
     : Front(glm::vec3(0.0f, 0.0f, -1.0f)), 
       MovementSpeed(50.0f),  // Увеличил скорость
-      MouseSensitivity(0.15f), 
+      MouseSensitivity(2.0f), 
       Zoom(45.0f),
       TargetYaw(yaw),
       TargetPitch(pitch),
