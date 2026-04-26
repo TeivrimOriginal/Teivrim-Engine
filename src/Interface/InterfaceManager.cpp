@@ -1,3 +1,4 @@
+// InterfaceManager.cpp - FULL
 #include "InterfaceManager.h"
 #include "../Core/core.h"
 #include "../Core/Vulkan.h"
@@ -146,7 +147,7 @@ void InterfaceManager::setVulkan(Vulkan* vk) {
     IconManager::Instance().SetRenderer(&renderer);
 }
 
-InterfaceManager::Dimensions InterfaceManager::getDimensions() {
+InterfaceManager::Dimensions InterfaceManager::getDimensions() const {
     Dimensions d = {0, 0};
     if (!window) return d;
     HWND hwnd = window->getHWND();
@@ -179,23 +180,38 @@ void InterfaceManager::setup3DViewport(const Dimensions& dims) {
         glEnable(GL_DEPTH_TEST);
     }
 }
+
+void InterfaceManager::Get3DViewportRect(int& x, int& y, int& w, int& h) const {
+    Panel* view3D = panels ? panels->get3D() : nullptr;
+    if (view3D && view3D->visible && !view3D->collapsed) {
+        x = view3D->getX();
+        y = view3D->getY();
+        w = view3D->getW();
+        h = view3D->getH();
+    } else {
+        x = 0;
+        y = 0;
+        Dimensions dims = getDimensions();
+        w = dims.width;
+        h = dims.height;
+    }
+}
+
 void InterfaceManager::printIcon(int x, int y, int w, int h, const std::string& iconType, int size) {
     if (currentAPI != RenderAPI::VULKAN) return;
     
     Vulkan* vk = core->getVulkan();
     if (!vk) return;
     
-    // ИСПОЛЬЗУЙ АТЛАС ИЗ ICONMANAGER, А НЕ ГРУЗИ НОВЫЙ!
     IconUV uv = IconManager::Instance().GetIconUV(iconType, size);
     if (!uv.textureId) {
-        // Если текстуры нет - рисуем красный квадрат для отладки
         vk->drawQuad(x, y, x + w, y + h, 1.0f, 0.0f, 0.0f);
         return;
     }
     
-    // ПРЯМОЙ РЕНДЕР - БЕЗ ВСЯКИХ ПЕРЕВОРАЧИВАНИЙ
     vk->drawImageUV(x, y, x + w, y + h, (VulkanTexture*)uv.textureId, uv.u1, uv.v1, uv.u2, uv.v2);
 }
+
 void InterfaceManager::renderStatic() {
     Dimensions d = getDimensions();
     if (d.width == 0 || d.height == 0) return;
@@ -287,7 +303,6 @@ void InterfaceManager::renderStatic() {
             }
         }
         
-        // РЕНДЕР ТЕСТОВОГО ИЗОБРАЖЕНИЯ
         if (testTexture && testTexture->valid) {
             Vulkan* vk = core->getVulkan();
             if (vk) {

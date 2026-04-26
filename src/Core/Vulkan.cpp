@@ -165,6 +165,7 @@ bool Vulkan::initializeFont() {
     std::cout << "Font initialized successfully" << std::endl;
     return true;
 }
+// Vulkan.cpp - ПОЛНЫЙ КОНСТРУКТОР (заменить существующий)
 
 Vulkan::Vulkan(HWND hwnd, int width, int height) 
     : hwnd(hwnd), width(width), height(height), initialized(false), currentFrame(0), currentImageIndex(0), 
@@ -181,8 +182,10 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
       uiVertexBuffer(VK_NULL_HANDLE), uiVertexBufferMemory(VK_NULL_HANDLE),
       uiTextVertexBuffer(VK_NULL_HANDLE), uiTextVertexBufferMemory(VK_NULL_HANDLE),
       uiImageVertexBuffer(VK_NULL_HANDLE), uiImageVertexBufferMemory(VK_NULL_HANDLE),
-      fontInitialized(false) {
-    
+      fontInitialized(false),
+      viewportClipEnabled(false),
+      clipX(0), clipY(0), clipW(0), clipH(0)
+{
     memset(&fontTexture, 0, sizeof(fontTexture));
     memset(glyphs, 0, sizeof(glyphs));
     
@@ -594,20 +597,46 @@ void Vulkan::drawImage(float x1, float y1, float x2, float y2, VulkanTexture* te
     if (!texture || !texture->valid) return;
     drawImageUV(x1, y1, x2, y2, texture, 0.0f, 0.0f, 1.0f, 1.0f);
 }
-
 void Vulkan::drawImageUV(float x1, float y1, float x2, float y2, VulkanTexture* texture, 
                          float u1, float v1, float u2, float v2) {
     if (!texture || !texture->valid) return;
     
+    // Сохраняем оригинальные UV (для текстуры clipping не меняет UV)
+    float origU1 = u1, origV1 = v1, origU2 = u2, origV2 = v2;
+    
+    // Применяем clipping к координатам
+    float origX1 = x1, origY1 = y1, origX2 = x2, origY2 = y2;
+    ApplyClipping(x1, y1, x2, y2);
+    
+    // Если после обрезки квадрат невидим - пропускаем
+    if (x1 >= x2 || y1 >= y2) return;
+    
+    // Пересчитываем UV пропорционально обрезке
+    float totalW = origX2 - origX1;
+    float totalH = origY2 - origY1;
+    
+    if (totalW > 0 && totalH > 0) {
+        float clipLeft = (x1 - origX1) / totalW;
+        float clipRight = (origX2 - x2) / totalW;
+        float clipTop = (y1 - origY1) / totalH;
+        float clipBottom = (origY2 - y2) / totalH;
+        
+        float newU1 = origU1 + clipLeft * (origU2 - origU1);
+        float newU2 = origU2 - clipRight * (origU2 - origU1);
+        float newV1 = origV1 + clipTop * (origV2 - origV1);
+        float newV2 = origV2 - clipBottom * (origV2 - origV1);
+        
+        u1 = newU1;
+        u2 = newU2;
+        v1 = newV1;
+        v2 = newV2;
+    }
+    
     UIImageQuad quad;
-    quad.x1 = x1;
-    quad.y1 = y1;
-    quad.x2 = x2;
-    quad.y2 = y2;
-    quad.u1 = u1;
-    quad.v1 = v1;
-    quad.u2 = u2;
-    quad.v2 = v2;
+    quad.x1 = x1; quad.y1 = y1;
+    quad.x2 = x2; quad.y2 = y2;
+    quad.u1 = u1; quad.v1 = v1;
+    quad.u2 = u2; quad.v2 = v2;
     quad.texture = texture;
     uiImageQuads.push_back(quad);
 }
@@ -1567,12 +1596,19 @@ void Vulkan::setup2D(int width, int height) {
 }
 
 void Vulkan::drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
+    // Применяем clipping
+    ApplyClipping(x1, y1, x2, y2);
+    
+    // Если после обрезки квадрат невидим - пропускаем
+    if (x1 >= x2 || y1 >= y2) return;
+    
     UIQuad quad;
     quad.x1 = x1; quad.y1 = y1;
     quad.x2 = x2; quad.y2 = y2;
     quad.color = glm::vec3(r, g, b);
     uiQuads.push_back(quad);
 }
+
 
 float Vulkan::getTextWidth(const std::string& text) {
     float width = 0;
@@ -1823,4 +1859,61 @@ VulkanTexture* Vulkan::loadUIImageFromData(unsigned char* data, int width, int h
     }
     delete texture;
     return nullptr;
+}
+// Vulkan.cpp - НОВЫЕ МЕТОДЫ (добавить в конец файла, перед последней закрывающей скобкой)
+
+// ============================================
+// VIEWPORT CLIPPING METHODS
+// ============================================
+
+void Vulkan::SetViewportClip(int x, int y, int w, int h) {
+    viewportClipEnabled = true;
+    clipX = x;
+    clipY = y;
+    clipW = w;
+    clipH = h;
+    
+    // Защита от отрицательных/нулевых размеров
+    if (clipW < 0) clipW = 0;
+    if (clipH < 0) clipH = 0;
+    
+    // Защита от выхода за границы экрана
+    if (clipX < 0) {
+        clipW += clipX;
+        clipX = 0;
+    }
+    if (clipY < 0) {
+        clipH += clipY;
+        clipY = 0;
+    }
+    if (clipX + clipW > width) {
+        clipW = width - clipX;
+    }
+    if (clipY + clipH > height) {
+        clipH = height - clipY;
+    }
+    
+    if (clipW < 0) clipW = 0;
+    if (clipH < 0) clipH = 0;
+}
+
+void Vulkan::DisableViewportClip() {
+    viewportClipEnabled = false;
+}
+
+void Vulkan::ApplyClipping(float& x1, float& y1, float& x2, float& y2) {
+    if (!viewportClipEnabled) return;
+    
+    // Обрезаем по X
+    if (x1 < clipX) x1 = clipX;
+    if (x2 > clipX + clipW) x2 = clipX + clipW;
+    
+    // Обрезаем по Y
+    if (y1 < clipY) y1 = clipY;
+    if (y2 > clipY + clipH) y2 = clipY + clipH;
+    
+    // Если после обрезки квадрат невидим - делаем его нулевым
+    if (x1 >= x2 || y1 >= y2) {
+        x1 = x2 = y1 = y2 = 0;
+    }
 }

@@ -1,3 +1,4 @@
+// Vulkan.h - ДОБАВИТЬ НОВЫЕ МЕТОДЫ (вставить в public секцию)
 #ifndef VULKAN_H
 #define VULKAN_H
 
@@ -82,6 +83,12 @@ public:
     
     VkDevice getDevice() const { return device; }
     bool isWindowValid() const { return hwnd && IsWindow(hwnd); }
+    
+    // НОВЫЕ МЕТОДЫ ДЛЯ VIEWPORT CLIPPING
+    void SetViewportClip(int x, int y, int w, int h);
+    void DisableViewportClip();
+    bool IsViewportClippingEnabled() const { return viewportClipEnabled; }
+    void GetViewportClip(int& x, int& y, int& w, int& h) const;
 
 private:
     struct VertexGPU { 
@@ -213,6 +220,13 @@ private:
     
     VkBuffer uiImageVertexBuffer;
     VkDeviceMemory uiImageVertexBufferMemory;
+    
+    // VIEWPORT CLIPPING
+    bool viewportClipEnabled;
+    int clipX, clipY, clipW, clipH;
+    
+    // ВСПОМОГАТЕЛЬНЫЙ МЕТОД ДЛЯ КЛИППИНГА
+    void ApplyClipping(float& x1, float& y1, float& x2, float& y2);
     
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     VkShaderModule createShaderModule(const std::string& filename);

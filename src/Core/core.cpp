@@ -1,4 +1,4 @@
-// core.cpp - FULL FILE
+// core.cpp - ПОЛНОСТЬЮ (с правильным порядком слоев)
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -266,6 +266,33 @@ bool Core::openFileDialogAndLoadModel(HWND hwnd) {
     return false;
 }
 
+void Core::SetViewportClip(int x, int y, int w, int h) {
+    viewportClipEnabled = true;
+    clipX = x;
+    clipY = y;
+    clipW = w;
+    clipH = h;
+    
+    if (currentAPI == RenderAPI::VULKAN && vulkan) {
+        vulkan->SetViewportClip(x, y, w, h);
+    }
+}
+
+void Core::DisableViewportClip() {
+    viewportClipEnabled = false;
+    
+    if (currentAPI == RenderAPI::VULKAN && vulkan) {
+        vulkan->DisableViewportClip();
+    }
+}
+
+void Core::GetViewportClip(int& x, int& y, int& w, int& h) const {
+    x = clipX;
+    y = clipY;
+    w = clipW;
+    h = clipH;
+}
+
 void Core::GameLoop() {
     std::thread inputThread([]() {
         while (true) {
@@ -321,9 +348,9 @@ void Core::GameLoop() {
     
     // ИНИЦИАЛИЗАЦИЯ SECONDRENDER
     if (currentAPI == RenderAPI::VULKAN && vulkan) {
-        SecondRender::Instance().Initialize(vulkan, &g_uiManager->getRenderer(), w, h);
+        SecondRender::Instance().Initialize(vulkan, &g_uiManager->getRenderer(), g_uiManager, w, h);
     } else if (currentAPI == RenderAPI::OPENGL) {
-        SecondRender::Instance().Initialize(nullptr, &g_uiManager->getRenderer(), w, h);
+        SecondRender::Instance().Initialize(nullptr, &g_uiManager->getRenderer(), g_uiManager, w, h);
     }
     
     win32Window->onResize = [this](int width, int height) {
@@ -334,8 +361,11 @@ void Core::GameLoop() {
             vulkan->setup2D(width, height);
             if (g_uiManager) {
                 g_uiManager->updateWindowSize(width, height);
+                Panel* view3D = g_uiManager->getPanelManager()->get3D();
+                if (view3D && view3D->visible && !view3D->collapsed) {
+                    SetViewportClip(view3D->getX(), view3D->getY(), view3D->getW(), view3D->getH());
+                }
             }
-            // ОБНОВЛЕНИЕ РАЗМЕРА ДЛЯ SECONDRENDER
             SecondRender::Instance().UpdateScreenSize(width, height);
             SecondRender::Instance().ClearOverlay();
             SecondRender::Instance().DrawTestQuads();
@@ -343,6 +373,10 @@ void Core::GameLoop() {
             glViewport(0, 0, width, height);
             if (g_uiManager) {
                 g_uiManager->updateWindowSize(width, height);
+                Panel* view3D = g_uiManager->getPanelManager()->get3D();
+                if (view3D && view3D->visible && !view3D->collapsed) {
+                    SetViewportClip(view3D->getX(), view3D->getY(), view3D->getW(), view3D->getH());
+                }
             }
             SecondRender::Instance().UpdateScreenSize(width, height);
             SecondRender::Instance().ClearOverlay();
@@ -363,6 +397,12 @@ void Core::GameLoop() {
     LARGE_INTEGER freq, lastTime, currentTime;
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&lastTime);
+    
+    // Получаем начальный viewport
+    Panel* initialView3D = g_uiManager->getPanelManager()->get3D();
+    if (initialView3D && initialView3D->visible && !initialView3D->collapsed) {
+        SetViewportClip(initialView3D->getX(), initialView3D->getY(), initialView3D->getW(), initialView3D->getH());
+    }
     
     while (!win32Window->shouldClose()) {
         QueryPerformanceCounter(&currentTime);
@@ -399,38 +439,73 @@ void Core::GameLoop() {
             if (cw <= 0) cw = 1280; 
             if (ch <= 0) ch = 720;
             
-            if (currentAPI == RenderAPI::VULKAN && vulkan) {
-                ProcessOtladCommands(vulkan, g_uiManager);
-                
-                vulkan->beginFrame();
-                
-                vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
-                vulkan->setProjectionMatrix(glm::perspective(glm::radians(app.getCamera().GetZoom()), 
-                                         (float)cw/ch, 0.1f, 1000.0f));
-                
-                SceneManager::Instance().RenderAll(vulkan);
-                
-                // РЕНДЕР SECONDRENDER - ФОН (ПЕРВЫЙ СЛОЙ, ПОД ВСЕМ)
-                SecondRender::Instance().RenderBackground();
-                
-                g_uiManager->renderStatic();
-                
-                // РЕНДЕР SECONDRENDER - ОВЕРЛЕЙ (ПОВЕРХ ВСЕГО)
-                SecondRender::Instance().RenderOverlay();
-                
-                vulkan->endFrame();
-                vulkan->present();
-            } 
+            // Проверяем, не изменился ли viewport
+            Panel* currentView3D = g_uiManager->getPanelManager()->get3D();
+            if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
+                int vx = currentView3D->getX();
+                int vy = currentView3D->getY();
+                int vw = currentView3D->getW();
+                int vh = currentView3D->getH();
+                if (vx != clipX || vy != clipY || vw != clipW || vh != clipH) {
+                    SetViewportClip(vx, vy, vw, vh);
+                    SecondRender::Instance().ClearOverlay();
+                    SecondRender::Instance().DrawTestQuads();
+                }
+            }
+            
+// В core.cpp, внутри render loop:
+
+if (currentAPI == RenderAPI::VULKAN && vulkan) {
+    ProcessOtladCommands(vulkan, g_uiManager);
+    
+    vulkan->beginFrame();  // Здесь внутри начинается render pass и очистка буфера
+    
+    vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
+vulkan->setProjectionMatrix(glm::perspective(glm::radians(app.getCamera().GetZoom()), 
+                            (float)cw / (float)ch, 
+                            0.1f, 
+                            1000.0f));
+    // ✅ Теперь фон (сетка, серый квадрат) рисуется ПОСЛЕ очистки буфера
+    DisableViewportClip();
+    SecondRender::Instance().RenderBackground();
+    
+    // 3D сцена
+    if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
+        SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
+                        currentView3D->getW(), currentView3D->getH());
+    }
+    SceneManager::Instance().RenderAll(vulkan);
+    
+    // UI и оверлей
+    DisableViewportClip();
+    g_uiManager->renderStatic();
+    SecondRender::Instance().RenderOverlay();
+    
+    vulkan->endFrame();
+    vulkan->present();
+}
             else if (currentAPI == RenderAPI::OPENGL) {
                 glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_TEST);
                 
-                // РЕНДЕР SECONDRENDER - ФОН (ПЕРВЫЙ СЛОЙ, ПОД ВСЕМ)
+                // СЛОЙ 0: BACKGROUND
                 SecondRender::Instance().RenderBackground();
                 
+                // СЛОЙ 1: 3D СЦЕНА
+                if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
+                    glEnable(GL_SCISSOR_TEST);
+                    glScissor(currentView3D->getX(), ch - (currentView3D->getY() + currentView3D->getH()),
+                              currentView3D->getW(), currentView3D->getH());
+                }
+                SceneManager::Instance().RenderAll(nullptr);
+                
+                // СЛОЙ 1.5: UI ПАНЕЛИ
+                if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
+                    glDisable(GL_SCISSOR_TEST);
+                }
                 g_uiManager->renderStatic();
                 
-                // РЕНДЕР SECONDRENDER - ОВЕРЛЕЙ (ПОВЕРХ ВСЕГО)
+                // СЛОЙ 2: OVERLAY
                 SecondRender::Instance().RenderOverlay();
                 
                 win32Window->swapBuffers();

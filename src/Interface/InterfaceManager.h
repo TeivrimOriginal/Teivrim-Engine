@@ -1,3 +1,4 @@
+// InterfaceManager.h - FULL
 #ifndef INTERFACE_MANAGER_H
 #define INTERFACE_MANAGER_H
 
@@ -45,9 +46,12 @@ public:
     struct Dimensions {
         int width, height;
     };
-    Dimensions getDimensions();
+    Dimensions getDimensions() const;
     void clearScreen(int width, int height);
     void setup3DViewport(const Dimensions& dims);
+    
+    // Получить текущую область 3D Viewport
+    void Get3DViewportRect(int& x, int& y, int& w, int& h) const;
 
 private:
     class InitialWin32* window;

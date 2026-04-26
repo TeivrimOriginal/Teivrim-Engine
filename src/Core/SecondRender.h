@@ -1,4 +1,4 @@
-// SecondRender.h
+// SecondRender.h - ДОБАВИТЬ НОВЫЕ МЕТОДЫ
 #ifndef SECOND_RENDER_H
 #define SECOND_RENDER_H
 
@@ -10,6 +10,7 @@
 class Vulkan;
 class RenderUI;
 class InterfaceManager;
+class Panel;
 
 struct Quad2D {
     float x1, y1, x2, y2;
@@ -36,23 +37,23 @@ public:
     }
     
     // Инициализация с прямым доступом к Vulkan
-    void Initialize(Vulkan* vk, RenderUI* ui, int screenWidth, int screenHeight);
+    void Initialize(Vulkan* vk, RenderUI* ui, InterfaceManager* uiManager, int screenWidth, int screenHeight);
     
     // Управление слоями
     void SetBackgroundEnabled(bool enabled) { backgroundEnabled = enabled; }
     void SetOverlayEnabled(bool enabled) { overlayEnabled = enabled; }
     
-    // Рисование квадратов
+    // Рисование квадратов (автоматически обрезаются по Viewport)
     void DrawBackgroundQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
     void DrawOverlayQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
     void DrawBackgroundImage(float x1, float y1, float x2, float y2, void* texture);
     void DrawOverlayImage(float x1, float y1, float x2, float y2, void* texture);
     
-    // Сетка (Grid) для фона
+    // Сетка (Grid) для фона (рендерится только в Viewport)
     void DrawGrid(int cellSize = 50, int gridSize = 20);
     void SetGridConfig(const GridConfig& config);
     
-    // Тестовые квадраты
+    // Тестовые квадраты (в координатах Viewport)
     void DrawTestQuads();
     
     // Основные методы рендера
@@ -66,16 +67,24 @@ public:
     // Обновление размера экрана
     void UpdateScreenSize(int width, int height);
     
+    // Получить область Viewport
+    void UpdateViewportRect();
+    bool IsPointInViewport(float x, float y) const;
+    
 private:
     SecondRender();
     ~SecondRender();
     
     Vulkan* vulkan;
     RenderUI* renderUI;
+    InterfaceManager* uiManager;
     int screenW, screenH;
     bool initialized;
     bool backgroundEnabled;
     bool overlayEnabled;
+    
+    // Область 3D Viewport
+    int viewportX, viewportY, viewportW, viewportH;
     
     std::vector<Quad2D> backgroundQuads;
     std::vector<Quad2D> overlayQuads;
@@ -83,6 +92,7 @@ private:
     
     void RenderQuads(const std::vector<Quad2D>& quads, int layer);
     void DrawGridInternal();
+    void ClipQuadToViewport(Quad2D& quad);
 };
 
 #endif

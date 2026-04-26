@@ -1,3 +1,4 @@
+// core.h - FULL
 #ifndef CORE_H
 #define CORE_H
 
@@ -31,12 +32,22 @@ public:
     
     Vulkan* getVulkan() { return vulkan; }
     
+    // Для viewport clipping
+    void SetViewportClip(int x, int y, int w, int h);
+    void DisableViewportClip();
+    bool IsViewportClippingEnabled() const { return viewportClipEnabled; }
+    void GetViewportClip(int& x, int& y, int& w, int& h) const;
+    
 private:
     RendererW rendererw;
     RenderAPI currentAPI = RenderAPI::OPENGL;
     InitialWin32* currentWindow = nullptr;
     bool rendererInitialized = false;
     Vulkan* vulkan = nullptr;
+    
+    // Viewport clipping
+    bool viewportClipEnabled = false;
+    int clipX = 0, clipY = 0, clipW = 0, clipH = 0;
 };
 
 #endif
