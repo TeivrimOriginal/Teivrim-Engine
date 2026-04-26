@@ -1,3 +1,4 @@
+// core.cpp - FULL FILE
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -10,6 +11,7 @@
 #include "../Interface/BufferLayer.h"
 #include "SecondComplexity/Icon/IconManager.h"
 #include "Otlad.h"
+#include "SecondRender.h"
 #include <iostream>
 #include <string>
 #include <thread>
@@ -317,6 +319,13 @@ void Core::GameLoop() {
         IconManager::Instance().SetRenderer(&g_uiManager->getRenderer());
     }
     
+    // ИНИЦИАЛИЗАЦИЯ SECONDRENDER
+    if (currentAPI == RenderAPI::VULKAN && vulkan) {
+        SecondRender::Instance().Initialize(vulkan, &g_uiManager->getRenderer(), w, h);
+    } else if (currentAPI == RenderAPI::OPENGL) {
+        SecondRender::Instance().Initialize(nullptr, &g_uiManager->getRenderer(), w, h);
+    }
+    
     win32Window->onResize = [this](int width, int height) {
         if (width <= 0 || height <= 0) return;
         
@@ -326,11 +335,18 @@ void Core::GameLoop() {
             if (g_uiManager) {
                 g_uiManager->updateWindowSize(width, height);
             }
+            // ОБНОВЛЕНИЕ РАЗМЕРА ДЛЯ SECONDRENDER
+            SecondRender::Instance().UpdateScreenSize(width, height);
+            SecondRender::Instance().ClearOverlay();
+            SecondRender::Instance().DrawTestQuads();
         } else if (currentAPI == RenderAPI::OPENGL) {
             glViewport(0, 0, width, height);
             if (g_uiManager) {
                 g_uiManager->updateWindowSize(width, height);
             }
+            SecondRender::Instance().UpdateScreenSize(width, height);
+            SecondRender::Instance().ClearOverlay();
+            SecondRender::Instance().DrawTestQuads();
         }
     };
     
@@ -394,14 +410,29 @@ void Core::GameLoop() {
                 
                 SceneManager::Instance().RenderAll(vulkan);
                 
+                // РЕНДЕР SECONDRENDER - ФОН (ПЕРВЫЙ СЛОЙ, ПОД ВСЕМ)
+                SecondRender::Instance().RenderBackground();
+                
                 g_uiManager->renderStatic();
+                
+                // РЕНДЕР SECONDRENDER - ОВЕРЛЕЙ (ПОВЕРХ ВСЕГО)
+                SecondRender::Instance().RenderOverlay();
+                
                 vulkan->endFrame();
                 vulkan->present();
             } 
             else if (currentAPI == RenderAPI::OPENGL) {
                 glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                
+                // РЕНДЕР SECONDRENDER - ФОН (ПЕРВЫЙ СЛОЙ, ПОД ВСЕМ)
+                SecondRender::Instance().RenderBackground();
+                
                 g_uiManager->renderStatic();
+                
+                // РЕНДЕР SECONDRENDER - ОВЕРЛЕЙ (ПОВЕРХ ВСЕГО)
+                SecondRender::Instance().RenderOverlay();
+                
                 win32Window->swapBuffers();
             }
         }
