@@ -1,4 +1,4 @@
-// SecondRender.h - ДОБАВИТЬ НОВЫЕ МЕТОДЫ
+// SecondRender.h
 #ifndef SECOND_RENDER_H
 #define SECOND_RENDER_H
 
@@ -6,11 +6,13 @@
 #include <vector>
 #include <string>
 #include <functional>
+#include <iostream>
 
 class Vulkan;
 class RenderUI;
 class InterfaceManager;
 class Panel;
+struct VulkanTexture;
 
 struct Quad2D {
     float x1, y1, x2, y2;
@@ -18,7 +20,7 @@ struct Quad2D {
     float u1, v1, u2, v2;
     bool useTexture;
     void* textureId;
-    int layer; // 0 = background, 1 = overlay
+    int layer;
 };
 
 struct GridConfig {
@@ -36,40 +38,31 @@ public:
         return instance;
     }
     
-    // Инициализация с прямым доступом к Vulkan
     void Initialize(Vulkan* vk, RenderUI* ui, InterfaceManager* uiManager, int screenWidth, int screenHeight);
     
-    // Управление слоями
     void SetBackgroundEnabled(bool enabled) { backgroundEnabled = enabled; }
     void SetOverlayEnabled(bool enabled) { overlayEnabled = enabled; }
     
-    // Рисование квадратов (автоматически обрезаются по Viewport)
     void DrawBackgroundQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
     void DrawOverlayQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
     void DrawBackgroundImage(float x1, float y1, float x2, float y2, void* texture);
     void DrawOverlayImage(float x1, float y1, float x2, float y2, void* texture);
     
-    // Сетка (Grid) для фона (рендерится только в Viewport)
     void DrawGrid(int cellSize = 50, int gridSize = 20);
     void SetGridConfig(const GridConfig& config);
     
-    // Тестовые квадраты (в координатах Viewport)
     void DrawTestQuads();
     
-    // Основные методы рендера
     void RenderBackground();
     void RenderOverlay();
     
-    // Clear
     void ClearBackground();
     void ClearOverlay();
     
-    // Обновление размера экрана
     void UpdateScreenSize(int width, int height);
-    
-    // Получить область Viewport
     void UpdateViewportRect();
-    bool IsPointInViewport(float x, float y) const;
+    
+    bool IsInitialized() const { return initialized; }
     
 private:
     SecondRender();
@@ -83,16 +76,13 @@ private:
     bool backgroundEnabled;
     bool overlayEnabled;
     
-    // Область 3D Viewport
     int viewportX, viewportY, viewportW, viewportH;
     
     std::vector<Quad2D> backgroundQuads;
     std::vector<Quad2D> overlayQuads;
     GridConfig gridConfig;
     
-    void RenderQuads(const std::vector<Quad2D>& quads, int layer);
     void DrawGridInternal();
-    void ClipQuadToViewport(Quad2D& quad);
 };
 
 #endif

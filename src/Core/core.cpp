@@ -1,4 +1,4 @@
-// core.cpp - ПОЛНОСТЬЮ (с правильным порядком слоев)
+// core.cpp - FULL FILE
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -453,40 +453,53 @@ void Core::GameLoop() {
                 }
             }
             
-// В core.cpp, внутри render loop:
-
-if (currentAPI == RenderAPI::VULKAN && vulkan) {
-    ProcessOtladCommands(vulkan, g_uiManager);
-    
-    vulkan->beginFrame();  // Здесь внутри начинается render pass и очистка буфера
-    
-    vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
-vulkan->setProjectionMatrix(glm::perspective(glm::radians(app.getCamera().GetZoom()), 
-                            (float)cw / (float)ch, 
-                            0.1f, 
-                            1000.0f));
-    // ✅ Теперь фон (сетка, серый квадрат) рисуется ПОСЛЕ очистки буфера
-    DisableViewportClip();
-    SecondRender::Instance().RenderBackground();
-    
-    // 3D сцена
-    if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
-        SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
-                        currentView3D->getW(), currentView3D->getH());
-    }
-    SceneManager::Instance().RenderAll(vulkan);
-    
-    // UI и оверлей
-    DisableViewportClip();
-    g_uiManager->renderStatic();
-    SecondRender::Instance().RenderOverlay();
-    
-    vulkan->endFrame();
-    vulkan->present();
-}
+            if (currentAPI == RenderAPI::VULKAN && vulkan) {
+                ProcessOtladCommands(vulkan, g_uiManager);
+                
+                // ============================================
+                // НАЧАЛО КАДРА
+                // ============================================
+                vulkan->beginFrame();
+                
+                vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
+                vulkan->setProjectionMatrix(glm::perspective(glm::radians(app.getCamera().GetZoom()), 
+                                         (float)cw/ch, 0.1f, 1000.0f));
+                
+                // ============================================
+                // СЛОЙ 0: BACKGROUND (ФОН)
+                // ============================================
+                DisableViewportClip();
+                SecondRender::Instance().RenderBackground();
+                
+                // ============================================
+                // СЛОЙ 1: 3D СЦЕНА
+                // ============================================
+                if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
+                    SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
+                                    currentView3D->getW(), currentView3D->getH());
+                }
+                vulkan->Render3DLayer();
+                
+                // ============================================
+                // СЛОЙ 2: UI ИНТЕРФЕЙС
+                // ============================================
+                DisableViewportClip();
+                g_uiManager->renderStatic();
+                
+                // ============================================
+                // СЛОЙ 3: OVERLAY (ОВЕРЛЕЙ)
+                // ============================================
+                vulkan->RenderOverlayLayer();
+                
+                // ============================================
+                // ЗАВЕРШЕНИЕ КАДРА
+                // ============================================
+                vulkan->endFrame();
+                vulkan->present();
+            } 
             else if (currentAPI == RenderAPI::OPENGL) {
                 glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_TEST);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 
                 // СЛОЙ 0: BACKGROUND
                 SecondRender::Instance().RenderBackground();
@@ -497,15 +510,16 @@ vulkan->setProjectionMatrix(glm::perspective(glm::radians(app.getCamera().GetZoo
                     glScissor(currentView3D->getX(), ch - (currentView3D->getY() + currentView3D->getH()),
                               currentView3D->getW(), currentView3D->getH());
                 }
-                SceneManager::Instance().RenderAll(nullptr);
+                // SceneManager::Instance().RenderAll(nullptr); // OpenGL рендер через другой механизм
                 
-                // СЛОЙ 1.5: UI ПАНЕЛИ
                 if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                     glDisable(GL_SCISSOR_TEST);
                 }
+                
+                // СЛОЙ 2: UI
                 g_uiManager->renderStatic();
                 
-                // СЛОЙ 2: OVERLAY
+                // СЛОЙ 3: OVERLAY
                 SecondRender::Instance().RenderOverlay();
                 
                 win32Window->swapBuffers();

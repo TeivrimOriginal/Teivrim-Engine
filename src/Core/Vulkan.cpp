@@ -1,3 +1,4 @@
+// Vulkan.cpp - FULL REFACTORED WITH PROPER LAYERS
 #include "Vulkan.h"
 #include <iostream>
 #include <fstream>
@@ -165,7 +166,6 @@ bool Vulkan::initializeFont() {
     std::cout << "Font initialized successfully" << std::endl;
     return true;
 }
-// Vulkan.cpp - ПОЛНЫЙ КОНСТРУКТОР (заменить существующий)
 
 Vulkan::Vulkan(HWND hwnd, int width, int height) 
     : hwnd(hwnd), width(width), height(height), initialized(false), currentFrame(0), currentImageIndex(0), 
@@ -183,8 +183,8 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
       uiTextVertexBuffer(VK_NULL_HANDLE), uiTextVertexBufferMemory(VK_NULL_HANDLE),
       uiImageVertexBuffer(VK_NULL_HANDLE), uiImageVertexBufferMemory(VK_NULL_HANDLE),
       fontInitialized(false),
-      viewportClipEnabled(false),
-      clipX(0), clipY(0), clipW(0), clipH(0)
+      viewportClipEnabled(false), clipX(0), clipY(0), clipW(0), clipH(0),
+      frameActive(false)
 {
     memset(&fontTexture, 0, sizeof(fontTexture));
     memset(glyphs, 0, sizeof(glyphs));
@@ -597,21 +597,17 @@ void Vulkan::drawImage(float x1, float y1, float x2, float y2, VulkanTexture* te
     if (!texture || !texture->valid) return;
     drawImageUV(x1, y1, x2, y2, texture, 0.0f, 0.0f, 1.0f, 1.0f);
 }
+
 void Vulkan::drawImageUV(float x1, float y1, float x2, float y2, VulkanTexture* texture, 
                          float u1, float v1, float u2, float v2) {
     if (!texture || !texture->valid) return;
     
-    // Сохраняем оригинальные UV (для текстуры clipping не меняет UV)
     float origU1 = u1, origV1 = v1, origU2 = u2, origV2 = v2;
-    
-    // Применяем clipping к координатам
     float origX1 = x1, origY1 = y1, origX2 = x2, origY2 = y2;
     ApplyClipping(x1, y1, x2, y2);
     
-    // Если после обрезки квадрат невидим - пропускаем
     if (x1 >= x2 || y1 >= y2) return;
     
-    // Пересчитываем UV пропорционально обрезке
     float totalW = origX2 - origX1;
     float totalH = origY2 - origY1;
     
@@ -621,15 +617,10 @@ void Vulkan::drawImageUV(float x1, float y1, float x2, float y2, VulkanTexture* 
         float clipTop = (y1 - origY1) / totalH;
         float clipBottom = (origY2 - y2) / totalH;
         
-        float newU1 = origU1 + clipLeft * (origU2 - origU1);
-        float newU2 = origU2 - clipRight * (origU2 - origU1);
-        float newV1 = origV1 + clipTop * (origV2 - origV1);
-        float newV2 = origV2 - clipBottom * (origV2 - origV1);
-        
-        u1 = newU1;
-        u2 = newU2;
-        v1 = newV1;
-        v2 = newV2;
+        u1 = origU1 + clipLeft * (origU2 - origU1);
+        u2 = origU2 - clipRight * (origU2 - origU1);
+        v1 = origV1 + clipTop * (origV2 - origV1);
+        v2 = origV2 - clipBottom * (origV2 - origV1);
     }
     
     UIImageQuad quad;
@@ -844,6 +835,7 @@ void Vulkan::renderUIImage() {
     
     uiImageQuads.clear();
 }
+
 void Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& meshes) {
     vkDeviceWaitIdle(device);
     
@@ -856,7 +848,6 @@ void Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& 
     std::vector<VulkanTexture> textures;
     
     size_t currVertexOffset = 0;
-    size_t currIndexOffset = 0;
     
     for (const auto& mesh : meshes) {
         for (const auto& vert : mesh.vertices) {
@@ -872,7 +863,6 @@ void Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& 
         }
         
         currVertexOffset += mesh.vertices.size();
-        currIndexOffset += mesh.indices.size();
     }
     
     if (vertices.empty()) {
@@ -880,7 +870,6 @@ void Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& 
         return;
     }
     
-    // ЗАГРУЖАЕМ ТЕКСТУРЫ ТОЛЬКО ЕСЛИ ОНИ ЕСТЬ
     for (const auto& mesh : meshes) {
         bool textureLoaded = false;
         
@@ -903,7 +892,6 @@ void Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& 
             }
         }
         
-        // ТОЛЬКО ЕСЛИ НЕТ ТЕКСТУРЫ - БЕЛАЯ
         if (!textureLoaded) {
             textures.push_back(createWhiteTexture());
             std::cout << "[Vulkan] Using white texture for mesh in " << name << std::endl;
@@ -1018,12 +1006,12 @@ void Vulkan::setProjectionMatrix(const glm::mat4& proj) {
     projMat = proj; 
     projMat[1][1] *= -1; 
 }
+
 void Vulkan::createModelBuffers(ModelBuffers& buffers, const std::vector<VertexGPU>& vertices, 
                                 const std::vector<uint32_t>& indices, 
                                 const std::vector<VulkanTexture>& textures) {
     if (vertices.empty()) return;
     
-    // Clean up existing buffers if any
     if (buffers.vertexBuffer != VK_NULL_HANDLE) {
         vkDestroyBuffer(device, buffers.vertexBuffer, nullptr);
         buffers.vertexBuffer = VK_NULL_HANDLE;
@@ -1076,7 +1064,6 @@ void Vulkan::createModelBuffers(ModelBuffers& buffers, const std::vector<VertexG
     buffers.indexCount = (uint32_t)indices.size();
     buffers.textures = textures;
     
-    // Free old descriptor sets if any
     for (auto& descSet : buffers.descSets) {
         if (descSet != VK_NULL_HANDLE) {
             vkFreeDescriptorSets(device, descPool, 1, &descSet);
@@ -1590,16 +1577,25 @@ void Vulkan::updateUniformBuffer(uint32_t frameIndex, const glm::mat4& modelMatr
 void Vulkan::setup2D(int width, int height) {
     this->width = width;
     this->height = height;
+    backgroundQuads.clear();
     uiQuads.clear();
     uiTextQuads.clear();
     uiImageQuads.clear();
 }
 
-void Vulkan::drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
-    // Применяем clipping
+void Vulkan::drawBackground(float x1, float y1, float x2, float y2, float r, float g, float b) {
     ApplyClipping(x1, y1, x2, y2);
+    if (x1 >= x2 || y1 >= y2) return;
     
-    // Если после обрезки квадрат невидим - пропускаем
+    UIQuad quad;
+    quad.x1 = x1; quad.y1 = y1;
+    quad.x2 = x2; quad.y2 = y2;
+    quad.color = glm::vec3(r, g, b);
+    backgroundQuads.push_back(quad);
+}
+
+void Vulkan::drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
+    ApplyClipping(x1, y1, x2, y2);
     if (x1 >= x2 || y1 >= y2) return;
     
     UIQuad quad;
@@ -1608,7 +1604,6 @@ void Vulkan::drawQuad(float x1, float y1, float x2, float y2, float r, float g, 
     quad.color = glm::vec3(r, g, b);
     uiQuads.push_back(quad);
 }
-
 
 float Vulkan::getTextWidth(const std::string& text) {
     float width = 0;
@@ -1670,6 +1665,44 @@ void Vulkan::drawTextCentered(int x, int y, int w, int h, const std::string& tex
     int centerY = y + (int)((h - textHeight) / 2);
     
     drawText(centerX, centerY, text, r, g, b);
+}
+
+void Vulkan::RenderBackgroundImmediate() {
+    if (backgroundQuads.empty()) return;
+    
+    vkCmdBindPipeline(frames[currentFrame].cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineUI);
+    
+    std::vector<UIVertex> vertices;
+    for (const auto& quad : backgroundQuads) {
+        float x1 = (quad.x1 / width) * 2.0f - 1.0f;
+        float y1 = (quad.y1 / height) * 2.0f - 1.0f;
+        float x2 = (quad.x2 / width) * 2.0f - 1.0f;
+        float y2 = (quad.y2 / height) * 2.0f - 1.0f;
+        
+        vertices.push_back({{x1, y1}, quad.color});
+        vertices.push_back({{x2, y1}, quad.color});
+        vertices.push_back({{x1, y2}, quad.color});
+        vertices.push_back({{x2, y1}, quad.color});
+        vertices.push_back({{x2, y2}, quad.color});
+        vertices.push_back({{x1, y2}, quad.color});
+    }
+    
+    if (!vertices.empty()) {
+        void* data;
+        vkMapMemory(device, uiVertexBufferMemory, 0, vertices.size() * sizeof(UIVertex), 0, &data);
+        memcpy(data, vertices.data(), vertices.size() * sizeof(UIVertex));
+        vkUnmapMemory(device, uiVertexBufferMemory);
+        
+        VkDeviceSize offsets = 0;
+        vkCmdBindVertexBuffers(frames[currentFrame].cmdBuffer, 0, 1, &uiVertexBuffer, &offsets);
+        vkCmdDraw(frames[currentFrame].cmdBuffer, (uint32_t)vertices.size(), 1, 0, 0);
+    }
+    
+    backgroundQuads.clear();
+}
+
+void Vulkan::FlushBackground() {
+    RenderBackgroundImmediate();
 }
 
 void Vulkan::renderUI() {
@@ -1744,6 +1777,10 @@ void Vulkan::renderUIText() {
     uiTextQuads.clear();
 }
 
+// ============================================
+// НОВАЯ АРХИТЕКТУРА СЛОЕВ
+// ============================================
+
 void Vulkan::beginFrame() {
     if (!hwnd || !IsWindow(hwnd)) return;
     
@@ -1779,17 +1816,14 @@ void Vulkan::beginFrame() {
     
     vkCmdBeginRenderPass(frames[currentFrame].cmdBuffer, &rp, VK_SUBPASS_CONTENTS_INLINE);
     
-    renderAllModels();
-    renderUI();
-    renderUIText();
-    renderUIImage();
-    
-    vkCmdEndRenderPass(frames[currentFrame].cmdBuffer);
-    vkEndCommandBuffer(frames[currentFrame].cmdBuffer);
+    frameActive = true;
 }
 
 void Vulkan::endFrame() {
-    if (!hwnd || !IsWindow(hwnd)) return;
+    if (!frameActive) return;
+    
+    vkCmdEndRenderPass(frames[currentFrame].cmdBuffer);
+    vkEndCommandBuffer(frames[currentFrame].cmdBuffer);
     
     VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
@@ -1802,6 +1836,8 @@ void Vulkan::endFrame() {
     submitInfo.pSignalSemaphores = &frames[currentFrame].renderFinishedSemaphore;
     
     vkQueueSubmit(graphicsQueue, 1, &submitInfo, frames[currentFrame].inFlightFence);
+    
+    frameActive = false;
 }
 
 void Vulkan::present() {
@@ -1860,11 +1896,6 @@ VulkanTexture* Vulkan::loadUIImageFromData(unsigned char* data, int width, int h
     delete texture;
     return nullptr;
 }
-// Vulkan.cpp - НОВЫЕ МЕТОДЫ (добавить в конец файла, перед последней закрывающей скобкой)
-
-// ============================================
-// VIEWPORT CLIPPING METHODS
-// ============================================
 
 void Vulkan::SetViewportClip(int x, int y, int w, int h) {
     viewportClipEnabled = true;
@@ -1873,11 +1904,8 @@ void Vulkan::SetViewportClip(int x, int y, int w, int h) {
     clipW = w;
     clipH = h;
     
-    // Защита от отрицательных/нулевых размеров
     if (clipW < 0) clipW = 0;
     if (clipH < 0) clipH = 0;
-    
-    // Защита от выхода за границы экрана
     if (clipX < 0) {
         clipW += clipX;
         clipX = 0;
@@ -1892,7 +1920,6 @@ void Vulkan::SetViewportClip(int x, int y, int w, int h) {
     if (clipY + clipH > height) {
         clipH = height - clipY;
     }
-    
     if (clipW < 0) clipW = 0;
     if (clipH < 0) clipH = 0;
 }
@@ -1904,16 +1931,33 @@ void Vulkan::DisableViewportClip() {
 void Vulkan::ApplyClipping(float& x1, float& y1, float& x2, float& y2) {
     if (!viewportClipEnabled) return;
     
-    // Обрезаем по X
     if (x1 < clipX) x1 = clipX;
     if (x2 > clipX + clipW) x2 = clipX + clipW;
-    
-    // Обрезаем по Y
     if (y1 < clipY) y1 = clipY;
     if (y2 > clipY + clipH) y2 = clipY + clipH;
     
-    // Если после обрезки квадрат невидим - делаем его нулевым
     if (x1 >= x2 || y1 >= y2) {
         x1 = x2 = y1 = y2 = 0;
     }
+}
+
+// ============================================
+// PUBLIC LAYER RENDER METHODS
+// ============================================
+
+void Vulkan::RenderBackgroundLayer() {
+    if (!frameActive) return;
+    RenderBackgroundImmediate();
+}
+
+void Vulkan::Render3DLayer() {
+    if (!frameActive) return;
+    renderAllModels();
+}
+
+void Vulkan::RenderOverlayLayer() {
+    if (!frameActive) return;
+    renderUI();
+    renderUIText();
+    renderUIImage();
 }

@@ -1,4 +1,4 @@
-// Vulkan.h - ДОБАВИТЬ НОВЫЕ МЕТОДЫ (вставить в public секцию)
+// Vulkan.h - FULL
 #ifndef VULKAN_H
 #define VULKAN_H
 
@@ -58,6 +58,7 @@ public:
     void present();
     
     void setup2D(int width, int height);
+    void drawBackground(float x1, float y1, float x2, float y2, float r, float g, float b);
     void drawQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
     void drawText(int x, int y, const std::string& text, float r, float g, float b);
     void drawTextCentered(int x, int y, int w, int h, const std::string& text, float r, float g, float b);
@@ -84,12 +85,16 @@ public:
     VkDevice getDevice() const { return device; }
     bool isWindowValid() const { return hwnd && IsWindow(hwnd); }
     
-    // НОВЫЕ МЕТОДЫ ДЛЯ VIEWPORT CLIPPING
     void SetViewportClip(int x, int y, int w, int h);
     void DisableViewportClip();
     bool IsViewportClippingEnabled() const { return viewportClipEnabled; }
     void GetViewportClip(int& x, int& y, int& w, int& h) const;
-
+    
+    void FlushBackground();
+// Добавить в public секцию Vulkan.h:
+void RenderBackgroundLayer();
+void Render3DLayer();
+void RenderOverlayLayer();
 private:
     struct VertexGPU { 
         glm::vec3 pos; 
@@ -166,6 +171,7 @@ private:
     
     glm::mat4 viewMat, projMat;
     
+    std::vector<UIQuad> backgroundQuads;
     std::vector<UIQuad> uiQuads;
     std::vector<UITextQuad> uiTextQuads;
     std::vector<UIImageQuad> uiImageQuads;
@@ -221,12 +227,11 @@ private:
     VkBuffer uiImageVertexBuffer;
     VkDeviceMemory uiImageVertexBufferMemory;
     
-    // VIEWPORT CLIPPING
     bool viewportClipEnabled;
     int clipX, clipY, clipW, clipH;
     
-    // ВСПОМОГАТЕЛЬНЫЙ МЕТОД ДЛЯ КЛИППИНГА
     void ApplyClipping(float& x1, float& y1, float& x2, float& y2);
+    void RenderBackgroundImmediate();
     
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     VkShaderModule createShaderModule(const std::string& filename);
