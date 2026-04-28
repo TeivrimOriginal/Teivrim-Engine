@@ -1,4 +1,4 @@
-// core.cpp - FULL FILE
+// core.cpp - FULL FILE WITH NEW LAYER RENDER SYSTEM
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -208,6 +208,7 @@ void Core::initializeRender(InitialWin32* window) {
 void Core::renderModel(Camera& camera) {
     if (!rendererInitialized) return;
     if (currentAPI == RenderAPI::OPENGL) {
+        // OpenGL rendering would go here
     }
 }
 
@@ -364,6 +365,8 @@ void Core::GameLoop() {
                 Panel* view3D = g_uiManager->getPanelManager()->get3D();
                 if (view3D && view3D->visible && !view3D->collapsed) {
                     SetViewportClip(view3D->getX(), view3D->getY(), view3D->getW(), view3D->getH());
+                } else {
+                    DisableViewportClip();
                 }
             }
             SecondRender::Instance().UpdateScreenSize(width, height);
@@ -376,6 +379,8 @@ void Core::GameLoop() {
                 Panel* view3D = g_uiManager->getPanelManager()->get3D();
                 if (view3D && view3D->visible && !view3D->collapsed) {
                     SetViewportClip(view3D->getX(), view3D->getY(), view3D->getW(), view3D->getH());
+                } else {
+                    DisableViewportClip();
                 }
             }
             SecondRender::Instance().UpdateScreenSize(width, height);
@@ -402,6 +407,8 @@ void Core::GameLoop() {
     Panel* initialView3D = g_uiManager->getPanelManager()->get3D();
     if (initialView3D && initialView3D->visible && !initialView3D->collapsed) {
         SetViewportClip(initialView3D->getX(), initialView3D->getY(), initialView3D->getW(), initialView3D->getH());
+    } else {
+        DisableViewportClip();
     }
     
     while (!win32Window->shouldClose()) {
@@ -448,6 +455,14 @@ void Core::GameLoop() {
                 int vh = currentView3D->getH();
                 if (vx != clipX || vy != clipY || vw != clipW || vh != clipH) {
                     SetViewportClip(vx, vy, vw, vh);
+                    SecondRender::Instance().UpdateViewportRect();
+                    SecondRender::Instance().ClearOverlay();
+                    SecondRender::Instance().DrawTestQuads();
+                }
+            } else {
+                if (viewportClipEnabled) {
+                    DisableViewportClip();
+                    SecondRender::Instance().UpdateViewportRect();
                     SecondRender::Instance().ClearOverlay();
                     SecondRender::Instance().DrawTestQuads();
                 }
@@ -461,6 +476,7 @@ void Core::GameLoop() {
                 // ============================================
                 vulkan->beginFrame();
                 
+                // Устанавливаем матрицы камеры для 3D слоя
                 vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
                 vulkan->setProjectionMatrix(glm::perspective(glm::radians(app.getCamera().GetZoom()), 
                                          (float)cw/ch, 0.1f, 1000.0f));
@@ -468,28 +484,36 @@ void Core::GameLoop() {
                 // ============================================
                 // СЛОЙ 0: BACKGROUND (ФОН)
                 // ============================================
-                DisableViewportClip();
                 SecondRender::Instance().RenderBackground();
+                vulkan->renderBackground();
                 
                 // ============================================
-                // СЛОЙ 1: 3D СЦЕНА
+                // СЛОЙ 1: 3D СЦЕНА с применением viewport clipping
                 // ============================================
                 if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                     SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
                                     currentView3D->getW(), currentView3D->getH());
+                    vulkan->SetViewportClip(currentView3D->getX(), currentView3D->getY(),
+                                            currentView3D->getW(), currentView3D->getH());
+                } else {
+                    DisableViewportClip();
+                    vulkan->DisableViewportClip();
                 }
-                vulkan->Render3DLayer();
+                
+                vulkan->renderScene();
                 
                 // ============================================
-                // СЛОЙ 2: UI ИНТЕРФЕЙС
+                // СЛОЙ 2: UI ИНТЕРФЕЙС (без клиппинга)
                 // ============================================
                 DisableViewportClip();
+                vulkan->DisableViewportClip();
                 g_uiManager->renderStatic();
                 
                 // ============================================
                 // СЛОЙ 3: OVERLAY (ОВЕРЛЕЙ)
                 // ============================================
-                vulkan->RenderOverlayLayer();
+                SecondRender::Instance().RenderOverlay();
+                vulkan->renderOverlay();
                 
                 // ============================================
                 // ЗАВЕРШЕНИЕ КАДРА
