@@ -6,8 +6,10 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include "../../Render/Parser/parser.h"
+#include "../../SecondRender.h"  // Добавляем включение SecondRender.h
 
 class Vulkan;
+class Camera;
 
 struct Transform {
     glm::vec3 position = glm::vec3(0.0f);
@@ -137,19 +139,35 @@ public:
         if (obj) obj->localTransform.scale = glm::vec3(x, y, z);
     }
     
-    void RenderAll(Vulkan* vk) {
+    void UpdateWorldTransforms() {
+        for (auto obj : rootObjects) {
+            UpdateTransformRecursive(obj, glm::mat4(1.0f));
+        }
+    }
+    
+    void RenderAll(Vulkan* vk, Camera* camera = nullptr) {
         if (!vk) return;
         
-        // Устанавливаем трансформы для всех объектов
+        UpdateWorldTransforms();
+        
         for (auto obj : allObjects) {
             if (obj->visible && obj->loaded && obj->parser) {
-                vk->setModelTransform(obj->name, obj->localTransform.GetMatrix());
+                vk->setModelTransform(obj->name, obj->worldTransform.GetMatrix());
             }
         }
         
-        // Рендерим все модели
         vk->renderAllModels();
     }
+    
+    void RenderModel(Vulkan* vk, const std::string& name) {
+        if (!vk) return;
+        auto obj = FindByName(name);
+        if (obj && obj->visible && obj->loaded && obj->parser) {
+            vk->setModelTransform(name, obj->worldTransform.GetMatrix());
+            vk->renderModel(name);
+        }
+    }
+    
     SceneObject* FindByName(const std::string& name) {
         for (auto obj : allObjects) {
             if (obj->name == name) return obj;
@@ -167,17 +185,23 @@ public:
         allObjects.clear();
         rootObjects.clear();
     }
-void RenderModel(Vulkan* vk, const std::string& name) {
-    if (!vk) return;
-    auto obj = FindByName(name);
-    if (obj && obj->visible && obj->loaded && obj->parser) {
-        vk->setModelTransform(name, obj->localTransform.GetMatrix());
-        vk->renderModel(name);
-    }
-}
+    
 private:
     SceneManager() = default;
     ~SceneManager() { Clear(); }
+    
+    void UpdateTransformRecursive(SceneObject* obj, const glm::mat4& parentMatrix) {
+        glm::mat4 localMatrix = obj->localTransform.GetMatrix();
+        glm::mat4 worldMatrix = parentMatrix * localMatrix;
+        
+        obj->worldTransform.position = glm::vec3(worldMatrix[3]);
+        obj->worldTransform.rotation = obj->localTransform.rotation;
+        obj->worldTransform.scale = obj->localTransform.scale;
+        
+        for (auto child : obj->children) {
+            UpdateTransformRecursive(child, worldMatrix);
+        }
+    }
     
     std::vector<SceneObject*> allObjects;
     std::vector<SceneObject*> rootObjects;

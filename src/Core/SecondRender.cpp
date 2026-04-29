@@ -331,3 +331,168 @@ void SecondRender::UpdateScreenSize(int width, int height) {
     UpdateViewportRect();
     testQuadsDirty = true;
 }
+// SecondRender.cpp - добавляем в конец файла, перед закрывающими скобками
+
+void SecondRender::SetCamera(const glm::mat4& viewMatrix, const glm::mat4& projMatrix, const glm::vec3& cameraPos) {
+    currentViewMat = viewMatrix;
+    currentProjMat = projMatrix;
+    currentCameraPos = cameraPos;
+    cameraMatrixValid = true;
+}
+
+std::vector<GridLine> SecondRender::CalculateGridLines() {
+    std::vector<GridLine> lines;
+    
+    if (!gridConfig.infiniteGrid || !cameraMatrixValid) return lines;
+    
+    float spacing = gridConfig.gridSpacing;
+    float fadeDist = gridConfig.fadeDistance;
+    float yOffset = gridConfig.yOffset;
+    
+    // Получаем frustum плоскостей в мировом пространстве
+    glm::mat4 VP = currentProjMat * currentViewMat;
+    glm::mat4 invVP = glm::inverse(VP);
+    
+    // Получаем 8 углов frustum в мировом пространстве
+    glm::vec4 frustumCorners[8];
+    for (int i = 0; i < 8; i++) {
+        float x = (i & 1) ? 1.0f : -1.0f;
+        float y = (i & 2) ? 1.0f : -1.0f;
+        float z = (i & 4) ? 1.0f : -1.0f;
+        glm::vec4 clipSpace(x, y, z, 1.0f);
+        glm::vec4 worldSpace = invVP * clipSpace;
+        worldSpace /= worldSpace.w;
+        frustumCorners[i] = worldSpace;
+    }
+    
+    // Находим min и max X/Z в frustum
+    float minX = FLT_MAX, maxX = -FLT_MAX;
+    float minZ = FLT_MAX, maxZ = -FLT_MAX;
+    
+    for (int i = 0; i < 8; i++) {
+        minX = std::min(minX, frustumCorners[i].x);
+        maxX = std::max(maxX, frustumCorners[i].x);
+        minZ = std::min(minZ, frustumCorners[i].z);
+        maxZ = std::max(maxZ, frustumCorners[i].z);
+    }
+    
+    // Расширяем границы с учетом расстояния камеры
+    float camX = currentCameraPos.x;
+    float camZ = currentCameraPos.z;
+    float range = std::max(fabsf(maxX - minX), fabsf(maxZ - minZ)) * 1.5f;
+    
+    minX = std::min(minX, camX - range);
+    maxX = std::max(maxX, camX + range);
+    minZ = std::min(minZ, camZ - range);
+    maxZ = std::max(maxZ, camZ + range);
+    
+    // Округляем до ближайшего шага грид
+    minX = floor(minX / spacing) * spacing;
+    maxX = ceil(maxX / spacing) * spacing;
+    minZ = floor(minZ / spacing) * spacing;
+    maxZ = ceil(maxZ / spacing) * spacing;
+    
+    // Ограничиваем максимальное количество линий (для производительности)
+    int maxLines = 200;
+    int xSteps = std::min((int)((maxX - minX) / spacing), maxLines);
+    int zSteps = std::min((int)((maxZ - minZ) / spacing), maxLines);
+    
+    float centerX = floor(camX / spacing) * spacing;
+    float centerZ = floor(camZ / spacing) * spacing;
+    
+    // Линии по X
+    for (int i = -xSteps/2; i <= xSteps/2; i++) {
+        float x = centerX + i * spacing;
+        float dist = fabs(x - camX);
+        float alpha = 1.0f - std::min(1.0f, dist / fadeDist);
+        
+        if (alpha <= 0.05f) continue;
+        
+        GridLine line;
+        line.start = glm::vec3(x, yOffset, minZ);
+        line.end = glm::vec3(x, yOffset, maxZ);
+        line.alpha = alpha;
+        line.isCenter = (fabs(x) < spacing * 0.1f);
+        lines.push_back(line);
+    }
+    
+    // Линии по Z
+    for (int i = -zSteps/2; i <= zSteps/2; i++) {
+        float z = centerZ + i * spacing;
+        float dist = fabs(z - camZ);
+        float alpha = 1.0f - std::min(1.0f, dist / fadeDist);
+        
+        if (alpha <= 0.05f) continue;
+        
+        GridLine line;
+        line.start = glm::vec3(minX, yOffset, z);
+        line.end = glm::vec3(maxX, yOffset, z);
+        line.alpha = alpha;
+        line.isCenter = (fabs(z) < spacing * 0.1f);
+        lines.push_back(line);
+    }
+    
+    return lines;
+}
+
+void SecondRender::DrawInfiniteGridLines(const std::vector<GridLine>& lines) {
+    if (!vulkan || lines.empty()) return;
+    
+    // Сохраняем текущие матрицы
+    glm::mat4 oldView = vulkan->getViewMatrix();
+    glm::mat4 oldProj = vulkan->getProjectionMatrix();
+    
+    // Создаем ортографическую проекцию для 2D проецирования линии
+    // Но для 3D линий используем обычные матрицы
+    // Здесь мы рисуем линии как 3D объекты
+    
+    for (const auto& line : lines) {
+        float r = line.isCenter ? gridConfig.centerLineColor[0] : gridConfig.lineColor[0];
+        float g = line.isCenter ? gridConfig.centerLineColor[1] : gridConfig.lineColor[1];
+        float b = line.isCenter ? gridConfig.centerLineColor[2] : gridConfig.lineColor[2];
+        
+        // Проецируем 3D точки на экран
+        glm::vec4 clipStart = currentProjMat * currentViewMat * glm::vec4(line.start, 1.0f);
+        glm::vec4 clipEnd = currentProjMat * currentViewMat * glm::vec4(line.end, 1.0f);
+        
+        if (clipStart.w <= 0 || clipEnd.w <= 0) continue;
+        
+        glm::vec3 ndcStart = glm::vec3(clipStart) / clipStart.w;
+        glm::vec3 ndcEnd = glm::vec3(clipEnd) / clipEnd.w;
+        
+        // Конвертируем NDC в экранные координаты
+        float screenX1 = (ndcStart.x + 1.0f) * 0.5f * viewportW + viewportX;
+        float screenY1 = (1.0f - ndcStart.y) * 0.5f * viewportH + viewportY;
+        float screenX2 = (ndcEnd.x + 1.0f) * 0.5f * viewportW + viewportX;
+        float screenY2 = (1.0f - ndcEnd.y) * 0.5f * viewportH + viewportY;
+        
+        // Рисуем линию как тонкий прямоугольник
+        float dx = screenX2 - screenX1;
+        float dy = screenY2 - screenY1;
+        float len = sqrt(dx*dx + dy*dy);
+        
+        if (len < 0.001f) continue;
+        
+        float thickness = 1.0f;
+        float perpX = -dy / len * thickness;
+        float perpY = dx / len * thickness;
+        
+        float alpha = line.alpha;
+        
+        // Рисуем линию как два треугольника
+        std::vector<Quad2D> lineQuads;
+        
+        // Временно переключаемся на overlay слой для линий (чтобы были поверх грид)
+        DrawOverlayQuad(screenX1 + perpX, screenY1 + perpY, screenX2 + perpX, screenY2 + perpY, r*alpha, g*alpha, b*alpha);
+        DrawOverlayQuad(screenX1 - perpX, screenY1 - perpY, screenX2 - perpX, screenY2 - perpY, r*alpha, g*alpha, b*alpha);
+        DrawOverlayQuad(screenX1 + perpX, screenY1 + perpY, screenX2 - perpX, screenY2 - perpY, r*alpha, g*alpha, b*alpha);
+        DrawOverlayQuad(screenX1 - perpX, screenY1 - perpY, screenX2 + perpX, screenY2 + perpY, r*alpha, g*alpha, b*alpha);
+    }
+}
+
+void SecondRender::RenderInfiniteGrid() {
+    if (!gridConfig.enabled || !gridConfig.infiniteGrid || !vulkan) return;
+    
+    auto lines = CalculateGridLines();
+    DrawInfiniteGridLines(lines);
+}

@@ -1,4 +1,4 @@
-// SecondRender.h
+// SecondRender.h - оставляем только это определение GridConfig
 #ifndef SECOND_RENDER_H
 #define SECOND_RENDER_H
 
@@ -7,12 +7,27 @@
 #include <string>
 #include <functional>
 #include <iostream>
+#include <glm/glm.hpp>
 
 class Vulkan;
 class RenderUI;
 class InterfaceManager;
 class Panel;
 struct VulkanTexture;
+class Camera;
+
+// ЕДИНСТВЕННОЕ ОПРЕДЕЛЕНИЕ GridConfig
+struct GridConfig {
+    int cellSize;
+    int gridSize;
+    float lineColor[3];
+    float centerLineColor[3];
+    bool enabled;
+    bool infiniteGrid;
+    float gridSpacing;
+    float fadeDistance;
+    float yOffset;
+};
 
 struct Quad2D {
     float x1, y1, x2, y2;
@@ -23,12 +38,11 @@ struct Quad2D {
     int layer;
 };
 
-struct GridConfig {
-    int cellSize;
-    int gridSize;
-    float lineColor[3];
-    float centerLineColor[3];
-    bool enabled;
+struct GridLine {
+    glm::vec3 start;
+    glm::vec3 end;
+    float alpha;
+    bool isCenter;
 };
 
 class SecondRender {
@@ -50,12 +64,14 @@ public:
     
     void DrawGrid(int cellSize = 50, int gridSize = 20);
     void SetGridConfig(const GridConfig& config);
+    void SetCamera(const glm::mat4& viewMatrix, const glm::mat4& projMatrix, const glm::vec3& cameraPos);
     
     void DrawTestQuads();
     void MarkTestQuadsDirty() { testQuadsDirty = true; }
     
     void RenderBackground();
     void RenderOverlay();
+    void RenderInfiniteGrid();
     
     void ClearBackground();
     void ClearOverlay();
@@ -87,8 +103,15 @@ private:
     std::vector<Quad2D> testBackgroundQuads;
     std::vector<Quad2D> testOverlayQuads;
     
+    glm::mat4 currentViewMat;
+    glm::mat4 currentProjMat;
+    glm::vec3 currentCameraPos;
+    bool cameraMatrixValid;
+    
     void DrawGridInternal();
     void RebuildTestQuadsIfNeeded();
+    std::vector<GridLine> CalculateGridLines();
+    void DrawInfiniteGridLines(const std::vector<GridLine>& lines);
 };
 
 #endif

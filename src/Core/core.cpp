@@ -1,4 +1,4 @@
-// core.cpp - FULL FILE WITH NEW LAYER RENDER SYSTEM
+// core.cpp - FULL FILE WITH INFINITE GRID
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -24,6 +24,7 @@
 using namespace std;
 
 InterfaceManager* g_uiManager = nullptr;
+static bool gridEnabled = true;
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -111,6 +112,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_KEYDOWN: {
             if (wParam == 'S' && (GetKeyState(VK_CONTROL) & 0x8000)) {
                 AssetManager::Instance().SaveProject();
+                return 0;
+            }
+            if (wParam == 'G') {
+                gridEnabled = !gridEnabled;
+                cout << "[GRID] " << (gridEnabled ? "Enabled" : "Disabled") << endl;
                 return 0;
             }
             BufferLayer::Instance().HandleKeyboardInput(wParam);
@@ -293,6 +299,7 @@ void Core::GetViewportClip(int& x, int& y, int& w, int& h) const {
     w = clipW;
     h = clipH;
 }
+
 void Core::GameLoop() {
     std::thread inputThread([]() {
         while (true) {
@@ -353,6 +360,21 @@ void Core::GameLoop() {
     }
     
     SecondRender::Instance().MarkTestQuadsDirty();
+    
+    // Настройка бесконечной грид
+    GridConfig gridConf;
+    gridConf.enabled = true;
+    gridConf.infiniteGrid = true;
+    gridConf.gridSpacing = 10.0f;
+    gridConf.fadeDistance = 150.0f;
+    gridConf.yOffset = 0.0f;
+    gridConf.lineColor[0] = 0.3f;
+    gridConf.lineColor[1] = 0.3f;
+    gridConf.lineColor[2] = 0.35f;
+    gridConf.centerLineColor[0] = 0.6f;
+    gridConf.centerLineColor[1] = 0.6f;
+    gridConf.centerLineColor[2] = 0.7f;
+    SecondRender::Instance().SetGridConfig(gridConf);
     
     win32Window->onResize = [this](int width, int height) {
         if (width <= 0 || height <= 0) return;
@@ -418,9 +440,10 @@ void Core::GameLoop() {
         frameCount++;
         if (fpsTimer >= 1.0f) {
             char title[256];
-            sprintf_s(title, "%s 3D Viewer | FPS: %d", 
+            sprintf_s(title, "%s 3D Viewer | FPS: %d | Grid: %s", 
                       currentAPI == RenderAPI::VULKAN ? "Vulkan" : "OpenGL", 
-                      frameCount);
+                      frameCount,
+                      gridEnabled ? "ON" : "OFF");
             SetWindowTextA(win32Window->getHWND(), title);
             frameCount = 0; 
             fpsTimer = 0.0f;
@@ -486,6 +509,31 @@ void Core::GameLoop() {
                 
                 vulkan->renderScene();
                 
+                // БЕСКОНЕЧНАЯ ГРИД С Z-ТЕСТОМ
+                if (gridEnabled) {
+                    // Отключаем viewport clip для грид (рисуем поверх всего)
+                    DisableViewportClip();
+                    vulkan->DisableViewportClip();
+                    
+                    // Устанавливаем матрицы камеры для грид
+                    SecondRender::Instance().SetCamera(
+                        app.getCamera().GetViewMatrix(),
+                        glm::perspective(glm::radians(app.getCamera().GetZoom()), (float)cw/ch, 0.1f, 1000.0f),
+                        app.getCamera().GetPosition()
+                    );
+                    
+                    // Рендерим бесконечную грид
+                    SecondRender::Instance().RenderInfiniteGrid();
+                    
+                    // Возвращаем viewport clip если был
+                    if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
+                        SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
+                                        currentView3D->getW(), currentView3D->getH());
+                        vulkan->SetViewportClip(currentView3D->getX(), currentView3D->getY(),
+                                                currentView3D->getW(), currentView3D->getH());
+                    }
+                }
+                
                 DisableViewportClip();
                 vulkan->DisableViewportClip();
                 g_uiManager->renderStatic();
@@ -508,6 +556,25 @@ void Core::GameLoop() {
                               currentView3D->getW(), currentView3D->getH());
                 }
                 
+                // OpenGL рендер моделей
+                // SceneManager::Instance().RenderAll(nullptr);
+                
+                // OpenGL грид
+                if (gridEnabled) {
+                    if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
+                        glDisable(GL_SCISSOR_TEST);
+                    }
+                    SecondRender::Instance().SetCamera(
+                        app.getCamera().GetViewMatrix(),
+                        glm::perspective(glm::radians(app.getCamera().GetZoom()), (float)cw/ch, 0.1f, 1000.0f),
+                        app.getCamera().GetPosition()
+                    );
+                    SecondRender::Instance().RenderInfiniteGrid();
+                    if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
+                        glEnable(GL_SCISSOR_TEST);
+                    }
+                }
+                
                 if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                     glDisable(GL_SCISSOR_TEST);
                 }
@@ -527,6 +594,7 @@ void Core::GameLoop() {
     g_uiManager = nullptr;
     cleanupRender();
 }
+
 void Core::settingUpRender() {}
 
 void Core::ParserToRender() {}

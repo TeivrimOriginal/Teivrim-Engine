@@ -84,7 +84,9 @@ public:
     void renderBackground();
     void renderScene();
     void renderOverlay();
-
+// Vulkan.h - добавляем в public секцию:
+    glm::mat4 getViewMatrix() const { return viewMat; }
+    glm::mat4 getProjectionMatrix() const { return projMat; }
 private:
     struct VertexGPU {
         glm::vec3 pos;
