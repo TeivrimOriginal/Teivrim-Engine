@@ -52,6 +52,7 @@ public:
     void SetGridConfig(const GridConfig& config);
     
     void DrawTestQuads();
+    void MarkTestQuadsDirty() { testQuadsDirty = true; }
     
     void RenderBackground();
     void RenderOverlay();
@@ -82,7 +83,12 @@ private:
     std::vector<Quad2D> overlayQuads;
     GridConfig gridConfig;
     
+    bool testQuadsDirty = true;
+    std::vector<Quad2D> testBackgroundQuads;
+    std::vector<Quad2D> testOverlayQuads;
+    
     void DrawGridInternal();
+    void RebuildTestQuadsIfNeeded();
 };
 
 #endif

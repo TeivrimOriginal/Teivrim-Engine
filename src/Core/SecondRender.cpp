@@ -51,8 +51,8 @@ void SecondRender::Initialize(Vulkan* vk, RenderUI* ui, InterfaceManager* manage
     UpdateViewportRect();
     
     if (initialized) {
-        DrawTestQuads();
-        std::cout << "[SecondRender] Test quads drawn" << std::endl;
+        testQuadsDirty = true;
+        std::cout << "[SecondRender] Ready, test quads will be created on first render" << std::endl;
     }
 }
 
@@ -85,6 +85,8 @@ void SecondRender::UpdateViewportRect() {
     
     std::cout << "[SecondRender] Viewport rect: " << viewportX << "," << viewportY 
               << " " << viewportW << "x" << viewportH << std::endl;
+    
+    testQuadsDirty = true;
 }
 
 void SecondRender::DrawBackgroundQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
@@ -103,9 +105,6 @@ void SecondRender::DrawBackgroundQuad(float x1, float y1, float x2, float y2, fl
     quad.u2 = quad.v2 = 1.0f;
     
     backgroundQuads.push_back(quad);
-    
-    std::cout << "[SecondRender] Added background quad: " << quad.x1 << "," << quad.y1 
-              << " -> " << quad.x2 << "," << quad.y2 << " color=" << r << "," << g << "," << b << std::endl;
 }
 
 void SecondRender::DrawOverlayQuad(float x1, float y1, float x2, float y2, float r, float g, float b) {
@@ -124,9 +123,6 @@ void SecondRender::DrawOverlayQuad(float x1, float y1, float x2, float y2, float
     quad.u2 = quad.v2 = 1.0f;
     
     overlayQuads.push_back(quad);
-    
-    std::cout << "[SecondRender] Added overlay quad: " << quad.x1 << "," << quad.y1 
-              << " -> " << quad.x2 << "," << quad.y2 << " color=" << r << "," << g << "," << b << std::endl;
 }
 
 void SecondRender::DrawBackgroundImage(float x1, float y1, float x2, float y2, void* texture) {
@@ -165,20 +161,52 @@ void SecondRender::DrawOverlayImage(float x1, float y1, float x2, float y2, void
     overlayQuads.push_back(quad);
 }
 
-void SecondRender::DrawTestQuads() {
-    UpdateViewportRect();
+void SecondRender::RebuildTestQuadsIfNeeded() {
+    if (!testQuadsDirty) return;
     
-    std::cout << "[SecondRender] DrawTestQuads: viewportW=" << viewportW << ", viewportH=" << viewportH << std::endl;
+    testBackgroundQuads.clear();
+    testOverlayQuads.clear();
+    
+    std::cout << "[SecondRender] Rebuilding test quads: viewportW=" << viewportW << ", viewportH=" << viewportH << std::endl;
+    
+    Quad2D quad;
     
     // Серый квадрат в BACKGROUND слое (ПОД 3D моделью)
-    DrawBackgroundQuad(200.0f, 200.0f, 300.0f, 300.0f, 0.3f, 0.3f, 0.4f);
+    quad.useTexture = false;
+    quad.textureId = nullptr;
+    quad.layer = 0;
+    quad.x1 = 200.0f + viewportX;
+    quad.y1 = 200.0f + viewportY;
+    quad.x2 = 300.0f + viewportX;
+    quad.y2 = 300.0f + viewportY;
+    quad.r = 0.3f; quad.g = 0.3f; quad.b = 0.4f;
+    testBackgroundQuads.push_back(quad);
     
     // Белые квадраты в OVERLAY слое (ПОВЕРХ 3D модели)
-    DrawOverlayQuad(50.0f, 50.0f, 150.0f, 150.0f, 1.0f, 1.0f, 1.0f);
-    DrawOverlayQuad(viewportW - 150.0f, 50.0f, viewportW - 50.0f, 150.0f, 1.0f, 1.0f, 1.0f);
+    quad.layer = 1;
     
-    std::cout << "[SecondRender] Test quads added: bg=" << backgroundQuads.size() 
-              << ", ov=" << overlayQuads.size() << std::endl;
+    quad.x1 = 50.0f + viewportX;
+    quad.y1 = 50.0f + viewportY;
+    quad.x2 = 150.0f + viewportX;
+    quad.y2 = 150.0f + viewportY;
+    quad.r = 1.0f; quad.g = 1.0f; quad.b = 1.0f;
+    testOverlayQuads.push_back(quad);
+    
+    quad.x1 = (viewportW - 150.0f) + viewportX;
+    quad.y1 = 50.0f + viewportY;
+    quad.x2 = (viewportW - 50.0f) + viewportX;
+    quad.y2 = 150.0f + viewportY;
+    testOverlayQuads.push_back(quad);
+    
+    std::cout << "[SecondRender] Test quads rebuilt: bg=" << testBackgroundQuads.size() 
+              << ", ov=" << testOverlayQuads.size() << std::endl;
+    
+    testQuadsDirty = false;
+}
+
+void SecondRender::DrawTestQuads() {
+    testQuadsDirty = true;
+    std::cout << "[SecondRender] DrawTestQuads requested, will rebuild on next render" << std::endl;
 }
 
 void SecondRender::DrawGrid(int cellSize, int gridSize) {
@@ -202,7 +230,6 @@ void SecondRender::DrawGridInternal() {
     int endX = startX + gridConfig.gridSize * gridConfig.cellSize;
     int endY = startY + gridConfig.gridSize * gridConfig.cellSize;
     
-    // Вертикальные линии
     for (int i = 0; i <= gridConfig.gridSize; i++) {
         int x = startX + i * gridConfig.cellSize;
         if (x >= viewportX && x <= viewportX + viewportW && x + 1 <= viewportX + viewportW) {
@@ -215,7 +242,6 @@ void SecondRender::DrawGridInternal() {
         }
     }
     
-    // Горизонтальные линии
     for (int i = 0; i <= gridConfig.gridSize; i++) {
         int y = startY + i * gridConfig.cellSize;
         if (y >= viewportY && y <= viewportY + viewportH && y + 1 <= viewportY + viewportH) {
@@ -233,16 +259,22 @@ void SecondRender::RenderBackground() {
     if (!backgroundEnabled || !vulkan) return;
     
     UpdateViewportRect();
+    RebuildTestQuadsIfNeeded();
     
-    std::cout << "[SecondRender] RenderBackground: " << backgroundQuads.size() << " quads" << std::endl;
+    std::vector<Quad2D> quadsToRender;
     
-    // Рисуем сетку
+    // Сначала тестовые квады
+    quadsToRender.insert(quadsToRender.end(), testBackgroundQuads.begin(), testBackgroundQuads.end());
+    // Потом динамические квады
+    quadsToRender.insert(quadsToRender.end(), backgroundQuads.begin(), backgroundQuads.end());
+    
+    std::cout << "[SecondRender] RenderBackground: " << quadsToRender.size() << " quads (test=" 
+              << testBackgroundQuads.size() << ", dynamic=" << backgroundQuads.size() << ")" << std::endl;
+    
     DrawGridInternal();
     
-    // Рисуем все фоновые квадраты через Vulkan::drawBackground
-    for (const auto& quad : backgroundQuads) {
+    for (const auto& quad : quadsToRender) {
         if (quad.useTexture && quad.textureId) {
-            // Для текстур используем drawImage (через drawBackground?)
             vulkan->drawImageUV(quad.x1, quad.y1, quad.x2, quad.y2, 
                                 (VulkanTexture*)quad.textureId,
                                 quad.u1, quad.v1, quad.u2, quad.v2);
@@ -250,17 +282,26 @@ void SecondRender::RenderBackground() {
             vulkan->drawBackground(quad.x1, quad.y1, quad.x2, quad.y2, quad.r, quad.g, quad.b);
         }
     }
+    
+    // Динамические квады очищаем после рендера
+    backgroundQuads.clear();
 }
 
 void SecondRender::RenderOverlay() {
     if (!overlayEnabled || !vulkan) return;
     
     UpdateViewportRect();
+    RebuildTestQuadsIfNeeded();
     
-    std::cout << "[SecondRender] RenderOverlay: " << overlayQuads.size() << " quads" << std::endl;
+    std::vector<Quad2D> quadsToRender;
     
-    // Рисуем все оверлейные квадраты через обычный drawQuad
-    for (const auto& quad : overlayQuads) {
+    quadsToRender.insert(quadsToRender.end(), testOverlayQuads.begin(), testOverlayQuads.end());
+    quadsToRender.insert(quadsToRender.end(), overlayQuads.begin(), overlayQuads.end());
+    
+    std::cout << "[SecondRender] RenderOverlay: " << quadsToRender.size() << " quads (test=" 
+              << testOverlayQuads.size() << ", dynamic=" << overlayQuads.size() << ")" << std::endl;
+    
+    for (const auto& quad : quadsToRender) {
         if (quad.useTexture && quad.textureId) {
             vulkan->drawImageUV(quad.x1, quad.y1, quad.x2, quad.y2, 
                                 (VulkanTexture*)quad.textureId,
@@ -269,15 +310,17 @@ void SecondRender::RenderOverlay() {
             vulkan->drawQuad(quad.x1, quad.y1, quad.x2, quad.y2, quad.r, quad.g, quad.b);
         }
     }
+    
+    overlayQuads.clear();
 }
 
 void SecondRender::ClearBackground() {
-    std::cout << "[SecondRender] ClearBackground: " << backgroundQuads.size() << " quads cleared" << std::endl;
+    std::cout << "[SecondRender] ClearBackground: " << backgroundQuads.size() << " dynamic quads cleared" << std::endl;
     backgroundQuads.clear();
 }
 
 void SecondRender::ClearOverlay() {
-    std::cout << "[SecondRender] ClearOverlay: " << overlayQuads.size() << " quads cleared" << std::endl;
+    std::cout << "[SecondRender] ClearOverlay: " << overlayQuads.size() << " dynamic quads cleared" << std::endl;
     overlayQuads.clear();
 }
 
@@ -286,4 +329,5 @@ void SecondRender::UpdateScreenSize(int width, int height) {
     screenH = height;
     std::cout << "[SecondRender] UpdateScreenSize: " << width << "x" << height << std::endl;
     UpdateViewportRect();
+    testQuadsDirty = true;
 }
