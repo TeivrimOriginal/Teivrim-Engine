@@ -1,22 +1,18 @@
-// SecondRender.h - оставляем только это определение GridConfig
 #ifndef SECOND_RENDER_H
 #define SECOND_RENDER_H
 
 #include <windows.h>
 #include <vector>
 #include <string>
-#include <functional>
 #include <iostream>
 #include <glm/glm.hpp>
+#include <vulkan/vulkan.h>
 
 class Vulkan;
 class RenderUI;
 class InterfaceManager;
-class Panel;
 struct VulkanTexture;
-class Camera;
 
-// ЕДИНСТВЕННОЕ ОПРЕДЕЛЕНИЕ GridConfig
 struct GridConfig {
     int cellSize;
     int gridSize;
@@ -27,6 +23,7 @@ struct GridConfig {
     float gridSpacing;
     float fadeDistance;
     float yOffset;
+    float lineThickness;
 };
 
 struct Quad2D {
@@ -38,11 +35,9 @@ struct Quad2D {
     int layer;
 };
 
-struct GridLine {
-    glm::vec3 start;
-    glm::vec3 end;
-    float alpha;
-    bool isCenter;
+struct LineVertex {
+    glm::vec2 pos;
+    glm::vec3 color;
 };
 
 class SecondRender {
@@ -59,14 +54,10 @@ public:
     
     void DrawBackgroundQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
     void DrawOverlayQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
-    void DrawBackgroundImage(float x1, float y1, float x2, float y2, void* texture);
-    void DrawOverlayImage(float x1, float y1, float x2, float y2, void* texture);
     
-    void DrawGrid(int cellSize = 50, int gridSize = 20);
     void SetGridConfig(const GridConfig& config);
     void SetCamera(const glm::mat4& viewMatrix, const glm::mat4& projMatrix, const glm::vec3& cameraPos);
     
-    void DrawTestQuads();
     void MarkTestQuadsDirty() { testQuadsDirty = true; }
     
     void RenderBackground();
@@ -84,6 +75,9 @@ public:
 private:
     SecondRender();
     ~SecondRender();
+    
+    void DestroyLineResources();
+    bool CreateLinePipeline();
     
     Vulkan* vulkan;
     RenderUI* renderUI;
@@ -108,10 +102,14 @@ private:
     glm::vec3 currentCameraPos;
     bool cameraMatrixValid;
     
-    void DrawGridInternal();
+    VkPipeline linePipeline;
+    VkPipelineLayout linePipelineLayout;
+    VkBuffer lineVertexBuffer;
+    VkDeviceMemory lineVertexBufferMemory;
+    uint32_t lineVertexCount;
+    
     void RebuildTestQuadsIfNeeded();
-    std::vector<GridLine> CalculateGridLines();
-    void DrawInfiniteGridLines(const std::vector<GridLine>& lines);
+    std::vector<std::pair<glm::vec3, glm::vec3>> CalculateGridLines();
 };
 
 #endif

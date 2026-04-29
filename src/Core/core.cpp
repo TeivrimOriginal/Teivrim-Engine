@@ -300,6 +300,7 @@ void Core::GetViewportClip(int& x, int& y, int& w, int& h) const {
     h = clipH;
 }
 
+// core.cpp - FULL GameLoop function only
 void Core::GameLoop() {
     std::thread inputThread([]() {
         while (true) {
@@ -361,12 +362,11 @@ void Core::GameLoop() {
     
     SecondRender::Instance().MarkTestQuadsDirty();
     
-    // Настройка бесконечной грид
     GridConfig gridConf;
     gridConf.enabled = true;
     gridConf.infiniteGrid = true;
-    gridConf.gridSpacing = 10.0f;
-    gridConf.fadeDistance = 150.0f;
+    gridConf.gridSpacing = 20.0f;
+    gridConf.fadeDistance = 200.0f;
     gridConf.yOffset = 0.0f;
     gridConf.lineColor[0] = 0.3f;
     gridConf.lineColor[1] = 0.3f;
@@ -374,6 +374,7 @@ void Core::GameLoop() {
     gridConf.centerLineColor[0] = 0.6f;
     gridConf.centerLineColor[1] = 0.6f;
     gridConf.centerLineColor[2] = 0.7f;
+    gridConf.lineThickness = 1.0f;
     SecondRender::Instance().SetGridConfig(gridConf);
     
     win32Window->onResize = [this](int width, int height) {
@@ -509,23 +510,18 @@ void Core::GameLoop() {
                 
                 vulkan->renderScene();
                 
-                // БЕСКОНЕЧНАЯ ГРИД С Z-ТЕСТОМ
                 if (gridEnabled) {
-                    // Отключаем viewport clip для грид (рисуем поверх всего)
                     DisableViewportClip();
                     vulkan->DisableViewportClip();
                     
-                    // Устанавливаем матрицы камеры для грид
                     SecondRender::Instance().SetCamera(
                         app.getCamera().GetViewMatrix(),
                         glm::perspective(glm::radians(app.getCamera().GetZoom()), (float)cw/ch, 0.1f, 1000.0f),
                         app.getCamera().GetPosition()
                     );
                     
-                    // Рендерим бесконечную грид
                     SecondRender::Instance().RenderInfiniteGrid();
                     
-                    // Возвращаем viewport clip если был
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                         SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
                                         currentView3D->getW(), currentView3D->getH());
@@ -556,10 +552,6 @@ void Core::GameLoop() {
                               currentView3D->getW(), currentView3D->getH());
                 }
                 
-                // OpenGL рендер моделей
-                // SceneManager::Instance().RenderAll(nullptr);
-                
-                // OpenGL грид
                 if (gridEnabled) {
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                         glDisable(GL_SCISSOR_TEST);

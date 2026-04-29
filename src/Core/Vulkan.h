@@ -1,4 +1,3 @@
-// Vulkan.h - FULL REFACTORED WITH PROPER LAYERS
 #ifndef VULKAN_H
 #define VULKAN_H
 
@@ -73,6 +72,14 @@ public:
     void recreateSwapchain();
 
     VkDevice getDevice() const { return device; }
+    VkRenderPass getRenderPass() const { return renderPass; }
+    VkCommandBuffer getCurrentCommandBuffer() const { return commandBuffers[currentFrame]; }
+    
+    VkCommandBuffer beginSingleTimeCommands();
+    void endSingleTimeCommands(VkCommandBuffer cmdBuffer);
+    
+    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+    
     bool isWindowValid() const { return hwnd && IsWindow(hwnd); }
 
     void SetViewportClip(int x, int y, int w, int h);
@@ -84,10 +91,16 @@ public:
     void renderBackground();
     void renderScene();
     void renderOverlay();
-// Vulkan.h - добавляем в public секцию:
+    
     glm::mat4 getViewMatrix() const { return viewMat; }
     glm::mat4 getProjectionMatrix() const { return projMat; }
+    // Добавьте в public секцию Vulkan.h:
+    VkShaderModule getLineVertShader() const { return lineVertShader; }
+    VkShaderModule getLineFragShader() const { return lineFragShader; }
+    void setLineShaders(VkShaderModule vert, VkShaderModule frag) { lineVertShader = vert; lineFragShader = frag; }
 private:
+    VkShaderModule lineVertShader = VK_NULL_HANDLE;
+    VkShaderModule lineFragShader = VK_NULL_HANDLE;
     struct VertexGPU {
         glm::vec3 pos;
         glm::vec3 color;
@@ -222,7 +235,7 @@ private:
     void ApplyClipping(float& x1, float& y1, float& x2, float& y2);
     void renderBackgroundImmediate();
 
-    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+    uint32_t findMemoryTypePrivate(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     VkShaderModule createShaderModule(const std::string& filename);
     bool initializeFont();
 

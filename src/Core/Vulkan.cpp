@@ -32,6 +32,10 @@ static void compileShaders() {
     const char* uiImageVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec2 inTexCoord; layout(location = 0) out vec2 fragTexCoord; void main() { gl_Position = vec4(inPos, 0.0, 1.0); fragTexCoord = inTexCoord; }";
     const char* uiImageFragCode = "#version 450\nlayout(binding = 0) uniform sampler2D imageSampler; layout(location = 0) in vec2 fragTexCoord; layout(location = 0) out vec4 outColor; void main() { outColor = texture(imageSampler, fragTexCoord); }";
     
+    // НОВЫЕ ШЕЙДЕРЫ ДЛЯ ЛИНИЙ ГРИД
+    const char* lineVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec3 inColor; layout(push_constant) uniform PushConstants { mat4 projView; } pc; layout(location = 0) out vec3 fragColor; void main() { gl_Position = pc.projView * vec4(inPos.x, 0.0, inPos.y, 1.0); fragColor = inColor; }";
+    const char* lineFragCode = "#version 450\nlayout(location = 0) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { outColor = vec4(fragColor, 1.0); }";
+    
     std::ofstream vertFile("autoshadertest/vert.vert"); vertFile << vertCode; vertFile.close();
     std::ofstream fragFile("autoshadertest/frag.frag"); fragFile << fragCode; fragFile.close();
     std::ofstream uiVertFile("autoshadertest/ui_vert.vert"); uiVertFile << uiVertCode; uiVertFile.close();
@@ -41,6 +45,10 @@ static void compileShaders() {
     std::ofstream uiImageVertFile("autoshadertest/ui_image_vert.vert"); uiImageVertFile << uiImageVertCode; uiImageVertFile.close();
     std::ofstream uiImageFragFile("autoshadertest/ui_image_frag.frag"); uiImageFragFile << uiImageFragCode; uiImageFragFile.close();
     
+    // СОХРАНЯЕМ ШЕЙДЕРЫ ГРИД
+    std::ofstream lineVertFile("autoshadertest/line_vert.vert"); lineVertFile << lineVertCode; lineVertFile.close();
+    std::ofstream lineFragFile("autoshadertest/line_frag.frag"); lineFragFile << lineFragCode; lineFragFile.close();
+    
     system("glslc autoshadertest/vert.vert -o autoshadertest/vert.spv");
     system("glslc autoshadertest/frag.frag -o autoshadertest/frag.spv");
     system("glslc autoshadertest/ui_vert.vert -o autoshadertest/ui_vert.spv");
@@ -49,8 +57,9 @@ static void compileShaders() {
     system("glslc autoshadertest/ui_text_frag.frag -o autoshadertest/ui_text_frag.spv");
     system("glslc autoshadertest/ui_image_vert.vert -o autoshadertest/ui_image_vert.spv");
     system("glslc autoshadertest/ui_image_frag.frag -o autoshadertest/ui_image_frag.spv");
+    system("glslc autoshadertest/line_vert.vert -o autoshadertest/line_vert.spv");
+    system("glslc autoshadertest/line_frag.frag -o autoshadertest/line_frag.spv");
 }
-
 bool Vulkan::initializeFont() {
     if (fontInitialized) return true;
     
@@ -166,6 +175,7 @@ bool Vulkan::initializeFont() {
     std::cout << "Font initialized successfully" << std::endl;
     return true;
 }
+// Vulkan.cpp - Constructor and Destructor
 
 Vulkan::Vulkan(HWND hwnd, int width, int height) 
     : hwnd(hwnd), width(width), height(height), initialized(false), currentFrame(0), 
@@ -183,7 +193,8 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
       uiTextVertexBuffer(VK_NULL_HANDLE), uiTextVertexBufferMemory(VK_NULL_HANDLE),
       uiImageVertexBuffer(VK_NULL_HANDLE), uiImageVertexBufferMemory(VK_NULL_HANDLE),
       fontInitialized(false),
-      viewportClipEnabled(false), clipX(0), clipY(0), clipW(0), clipH(0)
+      viewportClipEnabled(false), clipX(0), clipY(0), clipW(0), clipH(0),
+      lineVertShader(VK_NULL_HANDLE), lineFragShader(VK_NULL_HANDLE)
 {
     memset(&fontTexture, 0, sizeof(fontTexture));
     memset(glyphs, 0, sizeof(glyphs));
@@ -301,6 +312,14 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     
     initializeFont();
     
+    lineVertShader = createShaderModule("autoshadertest/line_vert.spv");
+    lineFragShader = createShaderModule("autoshadertest/line_frag.spv");
+    if (lineVertShader == VK_NULL_HANDLE || lineFragShader == VK_NULL_HANDLE) {
+        std::cerr << "Warning: Failed to load line shaders for grid" << std::endl;
+    } else {
+        std::cout << "Line shaders loaded successfully" << std::endl;
+    }
+    
     viewMat = glm::lookAt(glm::vec3(0.0f, 50.0f, 150.0f), glm::vec3(0, 50, 0), glm::vec3(0, 1, 0));
     projMat = glm::perspective(glm::radians(45.0f), (float)width/height, 0.1f, 1000.0f);
     projMat[1][1] *= -1;
@@ -345,6 +364,9 @@ Vulkan::~Vulkan() {
         vkFreeMemory(device, uiTextVertexBufferMemory, nullptr);
         vkDestroyBuffer(device, uiImageVertexBuffer, nullptr);
         vkFreeMemory(device, uiImageVertexBufferMemory, nullptr);
+        
+        if (lineVertShader) vkDestroyShaderModule(device, lineVertShader, nullptr);
+        if (lineFragShader) vkDestroyShaderModule(device, lineFragShader, nullptr);
         
         vkDestroyImageView(device, depthImageView, nullptr);
         vkDestroyImage(device, depthImage, nullptr);
@@ -1941,4 +1963,35 @@ void Vulkan::renderOverlay() {
     renderUI();
     renderUIText();
     renderUIImage();
+}
+// Vulkan.cpp - добавьте в конец файла:
+
+VkCommandBuffer Vulkan::beginSingleTimeCommands() {
+    VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    allocInfo.commandPool = commandPools[0];
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = 1;
+    
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+    
+    VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+    
+    return commandBuffer;
+}
+
+void Vulkan::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
+    vkEndCommandBuffer(commandBuffer);
+    
+    VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+    
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(graphicsQueue);
+    
+    vkFreeCommandBuffers(device, commandPools[0], 1, &commandBuffer);
+
 }
