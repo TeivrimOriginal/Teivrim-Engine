@@ -492,8 +492,10 @@ void Core::GameLoop() {
                 vulkan->beginFrame();
                 
                 vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
-                vulkan->setProjectionMatrix(glm::perspective(glm::radians(app.getCamera().GetZoom()), 
-                                         (float)cw/ch, 0.1f, 1000.0f));
+                glm::mat4 proj = glm::perspective(glm::radians(app.getCamera().GetZoom()), 
+                                        (float)cw/ch, 0.1f, 1000.0f);
+                proj[1][1] *= -1;  // Инвертируем Y
+                vulkan->setProjectionMatrix(proj);
                 
                 SecondRender::Instance().RenderBackground();
                 vulkan->renderBackground();
