@@ -1,4 +1,4 @@
-// core.cpp - FULL FILE WITH INFINITE GRID
+// core.cpp - FULL FILE WITH INFINITE GRID AND INVERTED Y
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -300,7 +300,6 @@ void Core::GetViewportClip(int& x, int& y, int& w, int& h) const {
     h = clipH;
 }
 
-// core.cpp - FULL GameLoop function only
 void Core::GameLoop() {
     std::thread inputThread([]() {
         while (true) {
@@ -492,9 +491,10 @@ void Core::GameLoop() {
                 vulkan->beginFrame();
                 
                 vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
+                
+                // СОЗДАЕМ ПРОЕКЦИЮ С ИНВЕРСИЕЙ Y ДЛЯ VULKAN
                 glm::mat4 proj = glm::perspective(glm::radians(app.getCamera().GetZoom()), 
-                                        (float)cw/ch, 0.1f, 1000.0f);
-                proj[1][1] *= -1;  // Инвертируем Y
+                                         (float)cw/ch, 0.1f, 1000.0f);
                 vulkan->setProjectionMatrix(proj);
                 
                 SecondRender::Instance().RenderBackground();
@@ -516,9 +516,14 @@ void Core::GameLoop() {
                     DisableViewportClip();
                     vulkan->DisableViewportClip();
                     
+                    // СОЗДАЕМ ПРОЕКЦИЮ С ИНВЕРСИЕЙ Y ДЛЯ ГРИД
+                    glm::mat4 projGrid = glm::perspective(glm::radians(app.getCamera().GetZoom()), 
+                                                 (float)cw/ch, 0.1f, 1000.0f);
+                    projGrid[1][1] *= -1;  // ИНВЕРТИРУЕМ Y ДЛЯ ГРИД
+                    
                     SecondRender::Instance().SetCamera(
                         app.getCamera().GetViewMatrix(),
-                        glm::perspective(glm::radians(app.getCamera().GetZoom()), (float)cw/ch, 0.1f, 1000.0f),
+                        projGrid,
                         app.getCamera().GetPosition()
                     );
                     
@@ -554,16 +559,23 @@ void Core::GameLoop() {
                               currentView3D->getW(), currentView3D->getH());
                 }
                 
+                // OpenGL НЕ ТРЕБУЕТ ИНВЕРСИИ Y
                 if (gridEnabled) {
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                         glDisable(GL_SCISSOR_TEST);
                     }
+                    
+                    glm::mat4 projOGL = glm::perspective(glm::radians(app.getCamera().GetZoom()), 
+                                                (float)cw/ch, 0.1f, 1000.0f);
+                    // OpenGL уже использует Y вверх, инверсия не нужна
+                    
                     SecondRender::Instance().SetCamera(
                         app.getCamera().GetViewMatrix(),
-                        glm::perspective(glm::radians(app.getCamera().GetZoom()), (float)cw/ch, 0.1f, 1000.0f),
+                        projOGL,
                         app.getCamera().GetPosition()
                     );
                     SecondRender::Instance().RenderInfiniteGrid();
+                    
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                         glEnable(GL_SCISSOR_TEST);
                     }
