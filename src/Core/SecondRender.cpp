@@ -27,6 +27,9 @@ SecondRender::SecondRender()
     , lineVertexBuffer(VK_NULL_HANDLE)
     , lineVertexBufferMemory(VK_NULL_HANDLE)
     , lineVertexCount(0)
+    , needBufferUpdate(true)
+    , lastCamX(0.0f)
+    , lastCamZ(0.0f)
 {
     gridConfig.cellSize = 50;
     gridConfig.gridSize = 20;
@@ -57,6 +60,8 @@ void SecondRender::DestroyLineResources() {
     
     VkDevice device = vulkan->getDevice();
     if (device == VK_NULL_HANDLE) return;
+    
+    vkDeviceWaitIdle(device);
     
     if (linePipeline != VK_NULL_HANDLE) {
         vkDestroyPipeline(device, linePipeline, nullptr);
@@ -90,7 +95,7 @@ bool SecondRender::CreateLinePipeline() {
         return false;
     }
     
-    DestroyLineResources();
+    if (linePipeline != VK_NULL_HANDLE) return true;
     
     VkVertexInputBindingDescription bindingDesc{};
     bindingDesc.binding = 0;
@@ -218,6 +223,7 @@ void SecondRender::Initialize(Vulkan* vk, RenderUI* ui, InterfaceManager* manage
     if (initialized) {
         testQuadsDirty = true;
         CreateLinePipeline();
+        needBufferUpdate = true;
     }
 }
 
@@ -285,6 +291,7 @@ void SecondRender::DrawOverlayQuad(float x1, float y1, float x2, float y2, float
 
 void SecondRender::SetGridConfig(const GridConfig& config) {
     gridConfig = config;
+    needBufferUpdate = true;
 }
 
 void SecondRender::SetCamera(const glm::mat4& viewMatrix, const glm::mat4& projMatrix, const glm::vec3& cameraPos) {
@@ -292,6 +299,16 @@ void SecondRender::SetCamera(const glm::mat4& viewMatrix, const glm::mat4& projM
     currentProjMat = projMatrix;
     currentCameraPos = cameraPos;
     cameraMatrixValid = true;
+    
+    // Проверяем, нужно ли обновлять буфер
+    float newCamX = cameraPos.x;
+    float newCamZ = cameraPos.z;
+    if (fabs(newCamX - lastCamX) > gridConfig.gridSpacing * 0.5f ||
+        fabs(newCamZ - lastCamZ) > gridConfig.gridSpacing * 0.5f) {
+        needBufferUpdate = true;
+        lastCamX = newCamX;
+        lastCamZ = newCamZ;
+    }
 }
 
 std::vector<std::pair<glm::vec3, glm::vec3>> SecondRender::CalculateGridLines() {
@@ -300,63 +317,33 @@ std::vector<std::pair<glm::vec3, glm::vec3>> SecondRender::CalculateGridLines() 
     if (!gridConfig.infiniteGrid || !cameraMatrixValid) return lines;
     
     float spacing = gridConfig.gridSpacing;
-    float fadeDist = gridConfig.fadeDistance;
     float yOffset = gridConfig.yOffset;
-    
-    glm::mat4 VP = currentProjMat * currentViewMat;
-    glm::mat4 invVP = glm::inverse(VP);
-    
-    glm::vec4 frustumCorners[8];
-    for (int i = 0; i < 8; i++) {
-        float x = (i & 1) ? 1.0f : -1.0f;
-        float y = (i & 2) ? 1.0f : -1.0f;
-        float z = (i & 4) ? 1.0f : -1.0f;
-        glm::vec4 clipSpace(x, y, z, 1.0f);
-        glm::vec4 worldSpace = invVP * clipSpace;
-        worldSpace /= worldSpace.w;
-        frustumCorners[i] = worldSpace;
-    }
-    
-    float minX = FLT_MAX, maxX = -FLT_MAX;
-    float minZ = FLT_MAX, maxZ = -FLT_MAX;
-    
-    for (int i = 0; i < 8; i++) {
-        minX = std::min(minX, frustumCorners[i].x);
-        maxX = std::max(maxX, frustumCorners[i].x);
-        minZ = std::min(minZ, frustumCorners[i].z);
-        maxZ = std::max(maxZ, frustumCorners[i].z);
-    }
     
     float camX = currentCameraPos.x;
     float camZ = currentCameraPos.z;
-    float range = std::max(maxX - minX, maxZ - minZ) * 1.5f;
     
-    minX = std::min(minX, camX - range);
-    maxX = std::max(maxX, camX + range);
-    minZ = std::min(minZ, camZ - range);
-    maxZ = std::max(maxZ, camZ + range);
+    int gridSize = 30;
+    int startX = (int)(camX / spacing) - gridSize;
+    int endX = (int)(camX / spacing) + gridSize;
+    int startZ = (int)(camZ / spacing) - gridSize;
+    int endZ = (int)(camZ / spacing) + gridSize;
     
-    minX = floor(minX / spacing) * spacing;
-    maxX = ceil(maxX / spacing) * spacing;
-    minZ = floor(minZ / spacing) * spacing;
-    maxZ = ceil(maxZ / spacing) * spacing;
+    float range = gridSize * spacing;
+    float minX = camX - range;
+    float maxX = camX + range;
+    float minZ = camZ - range;
+    float maxZ = camZ + range;
     
-    int maxLines = 100;
-    int xSteps = std::min((int)((maxX - minX) / spacing + 1), maxLines);
-    int zSteps = std::min((int)((maxZ - minZ) / spacing + 1), maxLines);
-    
-    for (int i = -xSteps/2; i <= xSteps/2; i++) {
-        float x = camX + i * spacing;
-        x = round(x / spacing) * spacing;
+    for (int i = startX; i <= endX; i++) {
+        float x = i * spacing;
         
         glm::vec3 start(x, yOffset, minZ);
         glm::vec3 end(x, yOffset, maxZ);
         lines.push_back({start, end});
     }
     
-    for (int i = -zSteps/2; i <= zSteps/2; i++) {
-        float z = camZ + i * spacing;
-        z = round(z / spacing) * spacing;
+    for (int i = startZ; i <= endZ; i++) {
+        float z = i * spacing;
         
         glm::vec3 start(minX, yOffset, z);
         glm::vec3 end(maxX, yOffset, z);
@@ -366,13 +353,8 @@ std::vector<std::pair<glm::vec3, glm::vec3>> SecondRender::CalculateGridLines() 
     return lines;
 }
 
-void SecondRender::RenderInfiniteGrid() {
-    if (!gridConfig.enabled || !gridConfig.infiniteGrid || !vulkan) return;
-    if (!cameraMatrixValid) return;
-    
-    if (linePipeline == VK_NULL_HANDLE) {
-        if (!CreateLinePipeline()) return;
-    }
+void SecondRender::UpdateGridBuffer() {
+    if (!vulkan || !cameraMatrixValid || !needBufferUpdate) return;
     
     auto lines = CalculateGridLines();
     if (lines.empty()) return;
@@ -420,6 +402,9 @@ void SecondRender::RenderInfiniteGrid() {
     
     VkDeviceSize bufferSize = vertices.size() * sizeof(LineVertex);
     
+    // Ждём завершения предыдущих команд перед уничтожением буфера
+    vkDeviceWaitIdle(device);
+    
     if (lineVertexBuffer != VK_NULL_HANDLE) {
         vkDestroyBuffer(device, lineVertexBuffer, nullptr);
         lineVertexBuffer = VK_NULL_HANDLE;
@@ -432,7 +417,11 @@ void SecondRender::RenderInfiniteGrid() {
     VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     bufferInfo.size = bufferSize;
     bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    vkCreateBuffer(device, &bufferInfo, nullptr, &lineVertexBuffer);
+    
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &lineVertexBuffer) != VK_SUCCESS) {
+        std::cerr << "[SecondRender] Failed to create line vertex buffer" << std::endl;
+        return;
+    }
     
     VkMemoryRequirements memReq;
     vkGetBufferMemoryRequirements(device, lineVertexBuffer, &memReq);
@@ -442,7 +431,13 @@ void SecondRender::RenderInfiniteGrid() {
     allocInfo.memoryTypeIndex = vulkan->findMemoryType(memReq.memoryTypeBits, 
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     
-    vkAllocateMemory(device, &allocInfo, nullptr, &lineVertexBufferMemory);
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &lineVertexBufferMemory) != VK_SUCCESS) {
+        std::cerr << "[SecondRender] Failed to allocate line vertex buffer memory" << std::endl;
+        vkDestroyBuffer(device, lineVertexBuffer, nullptr);
+        lineVertexBuffer = VK_NULL_HANDLE;
+        return;
+    }
+    
     vkBindBufferMemory(device, lineVertexBuffer, lineVertexBufferMemory, 0);
     
     void* data;
@@ -451,8 +446,26 @@ void SecondRender::RenderInfiniteGrid() {
     vkUnmapMemory(device, lineVertexBufferMemory);
     
     lineVertexCount = (uint32_t)vertices.size();
+    needBufferUpdate = false;
+    
+    // std::cout << "[SecondRender] Grid buffer updated: " << lineVertexCount << " vertices" << std::endl;
+}
+
+void SecondRender::RenderInfiniteGrid() {
+    if (!gridConfig.enabled || !gridConfig.infiniteGrid || !vulkan) return;
+    if (!cameraMatrixValid) return;
+    if (linePipeline == VK_NULL_HANDLE) {
+        if (!CreateLinePipeline()) return;
+    }
+    
+    if (needBufferUpdate) {
+        UpdateGridBuffer();
+    }
+    
+    if (lineVertexBuffer == VK_NULL_HANDLE || lineVertexCount == 0) return;
     
     VkCommandBuffer cmdBuffer = vulkan->getCurrentCommandBuffer();
+    if (cmdBuffer == VK_NULL_HANDLE) return;
     
     vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, linePipeline);
     
@@ -536,4 +549,5 @@ void SecondRender::UpdateScreenSize(int width, int height) {
     screenH = height;
     UpdateViewportRect();
     testQuadsDirty = true;
+    needBufferUpdate = true;
 }

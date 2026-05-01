@@ -78,6 +78,7 @@ private:
     
     void DestroyLineResources();
     bool CreateLinePipeline();
+    void UpdateGridBuffer();
     
     Vulkan* vulkan;
     RenderUI* renderUI;
@@ -101,6 +102,8 @@ private:
     glm::mat4 currentProjMat;
     glm::vec3 currentCameraPos;
     bool cameraMatrixValid;
+    bool needBufferUpdate;
+    float lastCamX, lastCamZ;
     
     VkPipeline linePipeline;
     VkPipelineLayout linePipelineLayout;

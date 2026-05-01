@@ -27,15 +27,15 @@
     "x": 220,
     "y": 40,
     "w": 1424,
-    "h": 831,
+    "h": 781,
     "visible": true,
     "collapsed": false
   },
-  "Console": {
+  "Asset Browser": {
     "x": 220,
-    "y": 871,
-    "w": 1684,
-    "h": 150,
+    "y": 821,
+    "w": 1424,
+    "h": 200,
     "visible": true,
     "collapsed": false
   }
