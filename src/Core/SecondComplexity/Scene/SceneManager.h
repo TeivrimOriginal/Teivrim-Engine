@@ -1,22 +1,23 @@
+// SceneManager.h - FULL WITH ALL METHODS
 #ifndef SCENE_MANAGER_H
 #define SCENE_MANAGER_H
 
 #include <string>
 #include <vector>
+#include <map>
+#include <memory>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include "../../Render/Parser/parser.h"
-#include "../../SecondRender.h"  // Добавляем включение SecondRender.h
 
-class Vulkan;
-class Camera;
+class ModelParser;
 
+// Структура трансформа
 struct Transform {
     glm::vec3 position = glm::vec3(0.0f);
     glm::vec3 rotation = glm::vec3(0.0f);
     glm::vec3 scale = glm::vec3(1.0f);
     
-    glm::mat4 GetMatrix() const {
+    glm::mat4 getLocalMatrix() const {
         glm::mat4 mat = glm::translate(glm::mat4(1.0f), position);
         mat = glm::rotate(mat, glm::radians(rotation.x), glm::vec3(1, 0, 0));
         mat = glm::rotate(mat, glm::radians(rotation.y), glm::vec3(0, 1, 0));
@@ -26,20 +27,45 @@ struct Transform {
     }
 };
 
-struct SceneObject {
+struct GlobalTransform {
+    glm::mat4 matrix = glm::mat4(1.0f);
+    bool dirty = true;
+};
+
+enum class ObjectType {
+    EMPTY,
+    MODEL,
+    LIGHT,
+    CAMERA,
+    TERRAIN
+};
+
+using ObjectID = uint32_t;
+
+class SceneObject {
+public:
+    ObjectID id;
     std::string name;
-    std::string modelPath;
-    ModelParser* parser;
-    Transform localTransform;
-    Transform worldTransform;
-    SceneObject* parent;
-    std::vector<SceneObject*> children;
-    bool visible;
-    bool loaded;
-    int meshCount;
+    ObjectType type = ObjectType::EMPTY;
     
-    SceneObject() : parser(nullptr), parent(nullptr), visible(true), loaded(false), meshCount(0) {}
-    ~SceneObject() {}
+    ObjectID parentID = 0;
+    std::vector<ObjectID> childrenIDs;
+    
+    Transform localTransform;
+    GlobalTransform globalTransform;
+    
+    bool loaded = false;
+    bool visible = true;
+    ModelParser* parser = nullptr;
+    std::string modelPath;
+    uint32_t meshCount = 0;
+    
+    SceneObject() : id(0) {}
+    explicit SceneObject(ObjectID _id) : id(_id) {}
+    
+    void markDirty() { globalTransform.dirty = true; }
+    bool isDirty() const { return globalTransform.dirty; }
+    void clean() { globalTransform.dirty = false; }
 };
 
 class SceneManager {
@@ -49,162 +75,84 @@ public:
         return instance;
     }
     
-    SceneObject* CreateEmpty(const std::string& name) {
-        SceneObject* obj = new SceneObject();
-        obj->name = name;
-        obj->parent = nullptr;
-        rootObjects.push_back(obj);
-        allObjects.push_back(obj);
-        return obj;
-    }
+    SceneManager(const SceneManager&) = delete;
+    void operator=(const SceneManager&) = delete;
     
-    SceneObject* AddModel(const std::string& name, ModelParser* parser) {
-        SceneObject* obj = new SceneObject();
-        obj->name = name;
-        obj->parser = parser;
-        obj->loaded = true;
-        obj->meshCount = (int)parser->getMeshes().size();
-        obj->parent = nullptr;
-        
-        rootObjects.push_back(obj);
-        allObjects.push_back(obj);
-        return obj;
-    }
+    // ----- УПРАВЛЕНИЕ ОБЪЕКТАМИ -----
+    ObjectID CreateObject(const std::string& name = "GameObject");
+    ObjectID CreateCamera(const std::string& name = "MainCamera");
+    void DestroyObject(ObjectID id);
+    void DestroyObject(const std::string& name);
     
-    SceneObject* LoadModel(const std::string& name, const std::string& path) {
-        SceneObject* obj = new SceneObject();
-        obj->name = name;
-        obj->modelPath = path;
-        obj->parser = new ModelParser();
-        obj->parent = nullptr;
-        
-        if (obj->parser->loadModel(path)) {
-            obj->loaded = true;
-            obj->meshCount = (int)obj->parser->getMeshes().size();
-            std::cout << "[SceneManager] Loaded model: " << name << " (" << obj->meshCount << " meshes)" << std::endl;
-        } else {
-            obj->loaded = false;
-            obj->meshCount = 0;
-            std::cerr << "[SceneManager] Failed to load: " << path << std::endl;
-        }
-        
-        rootObjects.push_back(obj);
-        allObjects.push_back(obj);
-        return obj;
-    }
+    SceneObject* GetObject(ObjectID id);
+    SceneObject* GetObject(const std::string& name);
+    const std::vector<SceneObject*>& GetAllObjects() const { return m_objectsOrdered; }
     
-    void DeleteObject(SceneObject* obj) {
-        if (!obj) return;
-        
-        if (obj->parent) {
-            for (auto it = obj->parent->children.begin(); it != obj->parent->children.end(); ++it) {
-                if (*it == obj) {
-                    obj->parent->children.erase(it);
-                    break;
-                }
-            }
-        } else {
-            for (auto it = rootObjects.begin(); it != rootObjects.end(); ++it) {
-                if (*it == obj) {
-                    rootObjects.erase(it);
-                    break;
-                }
-            }
-        }
-        
-        for (auto it = allObjects.begin(); it != allObjects.end(); ++it) {
-            if (*it == obj) {
-                allObjects.erase(it);
-                break;
-            }
-        }
-        
-        for (auto child : obj->children) {
-            child->parent = nullptr;
-            DeleteObject(child);
-        }
-        
-        delete obj;
-    }
+    // ----- ТРАНСФОРМЫ -----
+    void SetPosition(ObjectID id, const glm::vec3& pos);
+    void SetRotation(ObjectID id, const glm::vec3& rot);
+    void SetScale(ObjectID id, const glm::vec3& scale);
+    void SetTransform(ObjectID id, const Transform& transform);
     
-    void SetPosition(SceneObject* obj, float x, float y, float z) {
-        if (obj) obj->localTransform.position = glm::vec3(x, y, z);
-    }
+    glm::mat4 GetWorldMatrix(ObjectID id);
+    Transform GetWorldTransform(ObjectID id);
     
-    void SetRotation(SceneObject* obj, float pitch, float yaw, float roll) {
-        if (obj) obj->localTransform.rotation = glm::vec3(pitch, yaw, roll);
-    }
+    // ----- КАМЕРА -----
+    void SetMainCamera(ObjectID cameraID);
+    ObjectID GetMainCameraID() const { return m_mainCameraID; }
+    SceneObject* GetMainCameraObject();
     
-    void SetScale(SceneObject* obj, float x, float y, float z) {
-        if (obj) obj->localTransform.scale = glm::vec3(x, y, z);
-    }
+    void UpdateCameraAspect(float aspect);
+    void UpdateCameraMatrices();
+    void UpdateTransforms();
     
-    void UpdateWorldTransforms() {
-        for (auto obj : rootObjects) {
-            UpdateTransformRecursive(obj, glm::mat4(1.0f));
-        }
-    }
+    glm::mat4 GetViewMatrix() const;
+    glm::mat4 GetProjectionMatrix() const;
+    glm::vec3 GetCameraPosition() const;
     
-    void RenderAll(Vulkan* vk, Camera* camera = nullptr) {
-        if (!vk) return;
-        
-        UpdateWorldTransforms();
-        
-        for (auto obj : allObjects) {
-            if (obj->visible && obj->loaded && obj->parser) {
-                vk->setModelTransform(obj->name, obj->worldTransform.GetMatrix());
-            }
-        }
-        
-        vk->renderAllModels();
-    }
+    // ----- МОДЕЛИ -----
+    void AddModel(const std::string& name, ModelParser* parser);
+    void RemoveModel(const std::string& name);
+    ModelParser* GetModelParser(const std::string& name);
     
-    void RenderModel(Vulkan* vk, const std::string& name) {
-        if (!vk) return;
-        auto obj = FindByName(name);
-        if (obj && obj->visible && obj->loaded && obj->parser) {
-            vk->setModelTransform(name, obj->worldTransform.GetMatrix());
-            vk->renderModel(name);
-        }
-    }
+    // ----- ОБНОВЛЕНИЕ -----
+    void Update(float deltaTime);
+    void UpdateWorldTransforms();
     
-    SceneObject* FindByName(const std::string& name) {
-        for (auto obj : allObjects) {
-            if (obj->name == name) return obj;
-        }
-        return nullptr;
-    }
+    // ----- ОЧИСТКА -----
+    void ClearScene();
     
-    std::vector<SceneObject*> GetAllObjects() const { return allObjects; }
-    std::vector<SceneObject*> GetRootObjects() const { return rootObjects; }
-    
-    void Clear() {
-        for (auto obj : allObjects) {
-            delete obj;
-        }
-        allObjects.clear();
-        rootObjects.clear();
-    }
+    // ----- ОТЛАДКА -----
+    void PrintSceneHierarchy();
+    size_t GetObjectCount() const { return m_objects.size(); }
     
 private:
-    SceneManager() = default;
-    ~SceneManager() { Clear(); }
+    SceneManager();
+    ~SceneManager();
     
-    void UpdateTransformRecursive(SceneObject* obj, const glm::mat4& parentMatrix) {
-        glm::mat4 localMatrix = obj->localTransform.GetMatrix();
-        glm::mat4 worldMatrix = parentMatrix * localMatrix;
-        
-        obj->worldTransform.position = glm::vec3(worldMatrix[3]);
-        obj->worldTransform.rotation = obj->localTransform.rotation;
-        obj->worldTransform.scale = obj->localTransform.scale;
-        
-        for (auto child : obj->children) {
-            UpdateTransformRecursive(child, worldMatrix);
-        }
-    }
+    ObjectID GenerateNewID();
+    void UpdateGlobalTransform(ObjectID id);
+    void UpdateChildrenTransforms(ObjectID parentID);
     
-    std::vector<SceneObject*> allObjects;
-    std::vector<SceneObject*> rootObjects;
+    std::map<ObjectID, std::unique_ptr<SceneObject>> m_objects;
+    std::vector<SceneObject*> m_objectsOrdered;
+    std::map<std::string, ObjectID> m_nameToID;
+    std::map<std::string, ModelParser*> m_modelParsers;
+    
+    // Параметры камеры
+    ObjectID m_mainCameraID = 0;
+    float m_cameraFOV = 45.0f;
+    float m_cameraNear = 0.1f;
+    float m_cameraFar = 1000.0f;
+    float m_cameraAspect = 16.0f / 9.0f;
+    bool m_cameraDirty = true;
+    
+    glm::mat4 m_cachedViewMatrix = glm::mat4(1.0f);
+    glm::mat4 m_cachedProjMatrix = glm::mat4(1.0f);
+    glm::vec3 m_cachedCameraPos = glm::vec3(0.0f, 50.0f, 150.0f);
+    
+    ObjectID m_nextID = 1;
+    bool m_transformsDirty = true;
 };
 
 #endif

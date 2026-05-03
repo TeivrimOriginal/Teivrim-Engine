@@ -1,3 +1,4 @@
+// SecondRender.h
 #ifndef SECOND_RENDER_H
 #define SECOND_RENDER_H
 
@@ -54,10 +55,14 @@ public:
     
     void DrawBackgroundQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
     void DrawOverlayQuad(float x1, float y1, float x2, float y2, float r, float g, float b);
+    void DrawBackgroundImage(float x1, float y1, float x2, float y2, void* texture);
+    void DrawOverlayImage(float x1, float y1, float x2, float y2, void* texture);
     
+    void DrawGrid(int cellSize = 50, int gridSize = 20);
     void SetGridConfig(const GridConfig& config);
     void SetCamera(const glm::mat4& viewMatrix, const glm::mat4& projMatrix, const glm::vec3& cameraPos);
     
+    void DrawTestQuads();
     void MarkTestQuadsDirty() { testQuadsDirty = true; }
     
     void RenderBackground();

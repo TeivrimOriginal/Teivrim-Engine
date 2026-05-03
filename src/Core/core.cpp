@@ -1,4 +1,4 @@
-// core.cpp - FULL FILE WITH INFINITE GRID AND INVERTED Y
+// core.cpp - FULL WORKING VERSION (с синхронизацией камеры и отключенными тестовыми квадратами)
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -10,7 +10,7 @@
 #include "SecondComplexity/Scene/SceneManager.h"
 #include "../Interface/BufferLayer.h"
 #include "SecondComplexity/Icon/IconManager.h"
-#include "Otlad.h"
+
 #include "SecondRender.h"
 #include <iostream>
 #include <string>
@@ -244,14 +244,15 @@ bool Core::loadModelFromPath(const std::string& path) {
     }
     
     modelPath = path;
-    
     std::string modelName = path.substr(path.find_last_of("/\\") + 1);
     
+    // Добавляем в Vulkan рендер
     if (currentAPI == RenderAPI::VULKAN && vulkan) {
         vulkan->addModel(modelName, newParser->getMeshes());
         vulkan->setModelTransform(modelName, glm::scale(glm::mat4(1.0f), glm::vec3(0.01f)));
     }
     
+    // Добавляем в SceneManager
     SceneManager::Instance().AddModel(modelName, newParser);
     
     return true;
@@ -301,29 +302,6 @@ void Core::GetViewportClip(int& x, int& y, int& w, int& h) const {
 }
 
 void Core::GameLoop() {
-    std::thread inputThread([]() {
-        while (true) {
-            std::string input;
-            std::getline(std::cin, input);
-            
-            if (input == "1") {
-                Otlad1();
-            }
-            else if (input == "2") {
-                Otlad2();
-            }
-            else if (input == "3") {
-                Otlad3();
-            }
-            else if (input == "4") {
-                Otlad4();
-            }
-            else if (input == "0") {
-                OtladClear();
-            }
-        }
-    });
-    inputThread.detach();
     
     Application app;
     if (!app.createApplication()) return;
@@ -486,14 +464,18 @@ void Core::GameLoop() {
             }
             
             if (currentAPI == RenderAPI::VULKAN && vulkan) {
-                ProcessOtladCommands(vulkan, g_uiManager);
                 
                 vulkan->beginFrame();
                 
-                vulkan->setViewMatrix(app.getCamera().GetViewMatrix());
+                // ПОЛУЧАЕМ МАТРИЦЫ КАМЕРЫ ОДИН РАЗ ДЛЯ ВСЕГО
+                glm::mat4 viewMat = app.getCamera().GetViewMatrix();
+                glm::vec3 camPos = app.getCamera().GetPosition();
+                float zoom = app.getCamera().GetZoom();
                 
-                // СОЗДАЕМ ПРОЕКЦИЮ С ИНВЕРСИЕЙ Y ДЛЯ VULKAN
-                glm::mat4 proj = glm::perspective(glm::radians(app.getCamera().GetZoom()), 
+                // Для Vulkan рендера моделей
+                vulkan->setViewMatrix(viewMat);
+                
+                glm::mat4 proj = glm::perspective(glm::radians(zoom), 
                                          (float)cw/ch, 0.1f, 1000.0f);
                 vulkan->setProjectionMatrix(proj);
                 
@@ -513,22 +495,19 @@ void Core::GameLoop() {
                 vulkan->renderScene();
                 
                 if (gridEnabled) {
+                    // Временно отключаем clip для грид
                     DisableViewportClip();
                     vulkan->DisableViewportClip();
                     
-                    // СОЗДАЕМ ПРОЕКЦИЮ С ИНВЕРСИЕЙ Y ДЛЯ ГРИД
-                    glm::mat4 projGrid = glm::perspective(glm::radians(app.getCamera().GetZoom()), 
+                    // ИСПОЛЬЗУЕМ ТЕ ЖЕ САМЫЕ МАТРИЦЫ ДЛЯ ГРИД
+                    glm::mat4 projGrid = glm::perspective(glm::radians(zoom), 
                                                  (float)cw/ch, 0.1f, 1000.0f);
-                    projGrid[1][1] *= -1;  // ИНВЕРТИРУЕМ Y ДЛЯ ГРИД
+                    projGrid[1][1] *= -1;  // Инвертируем Y для грид
                     
-                    SecondRender::Instance().SetCamera(
-                        app.getCamera().GetViewMatrix(),
-                        projGrid,
-                        app.getCamera().GetPosition()
-                    );
-                    
+                    SecondRender::Instance().SetCamera(viewMat, projGrid, camPos);
                     SecondRender::Instance().RenderInfiniteGrid();
                     
+                    // Восстанавливаем clip
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                         SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
                                         currentView3D->getW(), currentView3D->getH());
@@ -559,21 +538,18 @@ void Core::GameLoop() {
                               currentView3D->getW(), currentView3D->getH());
                 }
                 
-                // OpenGL НЕ ТРЕБУЕТ ИНВЕРСИИ Y
+                // OpenGL не требует инверсии Y
                 if (gridEnabled) {
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                         glDisable(GL_SCISSOR_TEST);
                     }
                     
+                    glm::mat4 viewMat = app.getCamera().GetViewMatrix();
                     glm::mat4 projOGL = glm::perspective(glm::radians(app.getCamera().GetZoom()), 
                                                 (float)cw/ch, 0.1f, 1000.0f);
-                    // OpenGL уже использует Y вверх, инверсия не нужна
+                    glm::vec3 camPos = app.getCamera().GetPosition();
                     
-                    SecondRender::Instance().SetCamera(
-                        app.getCamera().GetViewMatrix(),
-                        projOGL,
-                        app.getCamera().GetPosition()
-                    );
+                    SecondRender::Instance().SetCamera(viewMat, projOGL, camPos);
                     SecondRender::Instance().RenderInfiniteGrid();
                     
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {

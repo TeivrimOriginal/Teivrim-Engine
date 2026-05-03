@@ -1,3 +1,4 @@
+// SecondRender.cpp
 #include "SecondRender.h"
 #include "Vulkan.h"
 #include "Render/Win32/RenderUI.h"
@@ -269,6 +270,8 @@ void SecondRender::DrawBackgroundQuad(float x1, float y1, float x2, float y2, fl
     quad.useTexture = false;
     quad.textureId = nullptr;
     quad.layer = 0;
+    quad.u1 = quad.v1 = 0.0f;
+    quad.u2 = quad.v2 = 1.0f;
     
     backgroundQuads.push_back(quad);
 }
@@ -285,8 +288,53 @@ void SecondRender::DrawOverlayQuad(float x1, float y1, float x2, float y2, float
     quad.useTexture = false;
     quad.textureId = nullptr;
     quad.layer = 1;
+    quad.u1 = quad.v1 = 0.0f;
+    quad.u2 = quad.v2 = 1.0f;
     
     overlayQuads.push_back(quad);
+}
+
+void SecondRender::DrawBackgroundImage(float x1, float y1, float x2, float y2, void* texture) {
+    if (!backgroundEnabled || !texture) return;
+    
+    Quad2D quad;
+    quad.x1 = x1 + viewportX;
+    quad.y1 = y1 + viewportY;
+    quad.x2 = x2 + viewportX;
+    quad.y2 = y2 + viewportY;
+    quad.r = quad.g = quad.b = 1.0f;
+    quad.useTexture = true;
+    quad.textureId = texture;
+    quad.layer = 0;
+    quad.u1 = 0.0f; quad.v1 = 0.0f;
+    quad.u2 = 1.0f; quad.v2 = 1.0f;
+    
+    backgroundQuads.push_back(quad);
+}
+
+void SecondRender::DrawOverlayImage(float x1, float y1, float x2, float y2, void* texture) {
+    if (!overlayEnabled || !texture) return;
+    
+    Quad2D quad;
+    quad.x1 = x1 + viewportX;
+    quad.y1 = y1 + viewportY;
+    quad.x2 = x2 + viewportX;
+    quad.y2 = y2 + viewportY;
+    quad.r = quad.g = quad.b = 1.0f;
+    quad.useTexture = true;
+    quad.textureId = texture;
+    quad.layer = 1;
+    quad.u1 = 0.0f; quad.v1 = 0.0f;
+    quad.u2 = 1.0f; quad.v2 = 1.0f;
+    
+    overlayQuads.push_back(quad);
+}
+
+void SecondRender::DrawGrid(int cellSize, int gridSize) {
+    if (!backgroundEnabled || !gridConfig.enabled) return;
+    
+    gridConfig.cellSize = cellSize;
+    gridConfig.gridSize = gridSize;
 }
 
 void SecondRender::SetGridConfig(const GridConfig& config) {
@@ -495,10 +543,51 @@ void SecondRender::RenderInfiniteGrid() {
     vkCmdDraw(cmdBuffer, lineVertexCount, 1, 0, 0);
 }
 
+void SecondRender::DrawTestQuads() {
+    testQuadsDirty = true;
+    std::cout << "[SecondRender] DrawTestQuads requested, will rebuild on next render" << std::endl;
+}
+
 void SecondRender::RebuildTestQuadsIfNeeded() {
     if (!testQuadsDirty) return;
+    
     testBackgroundQuads.clear();
     testOverlayQuads.clear();
+    
+    std::cout << "[SecondRender] Rebuilding test quads: viewportW=" << viewportW << ", viewportH=" << viewportH << std::endl;
+    
+    Quad2D quad;
+    
+    // Серый квадрат в BACKGROUND слое (ПОД 3D моделью)
+    quad.useTexture = false;
+    quad.textureId = nullptr;
+    quad.layer = 0;
+    quad.x1 = 200.0f + viewportX;
+    quad.y1 = 200.0f + viewportY;
+    quad.x2 = 300.0f + viewportX;
+    quad.y2 = 300.0f + viewportY;
+    quad.r = 0.3f; quad.g = 0.3f; quad.b = 0.4f;
+    testBackgroundQuads.push_back(quad);
+    
+    // Белые квадраты в OVERLAY слое (ПОВЕРХ 3D модели)
+    quad.layer = 1;
+    
+    quad.x1 = 50.0f + viewportX;
+    quad.y1 = 50.0f + viewportY;
+    quad.x2 = 150.0f + viewportX;
+    quad.y2 = 150.0f + viewportY;
+    quad.r = 1.0f; quad.g = 1.0f; quad.b = 1.0f;
+    testOverlayQuads.push_back(quad);
+    
+    quad.x1 = (viewportW - 150.0f) + viewportX;
+    quad.y1 = 50.0f + viewportY;
+    quad.x2 = (viewportW - 50.0f) + viewportX;
+    quad.y2 = 150.0f + viewportY;
+    testOverlayQuads.push_back(quad);
+    
+    std::cout << "[SecondRender] Test quads rebuilt: bg=" << testBackgroundQuads.size() 
+              << ", ov=" << testOverlayQuads.size() << std::endl;
+    
     testQuadsDirty = false;
 }
 
@@ -509,13 +598,23 @@ void SecondRender::RenderBackground() {
     RebuildTestQuadsIfNeeded();
     
     std::vector<Quad2D> quadsToRender;
+    
+    // Сначала тестовые квады
     quadsToRender.insert(quadsToRender.end(), testBackgroundQuads.begin(), testBackgroundQuads.end());
+    // Потом динамические квады
     quadsToRender.insert(quadsToRender.end(), backgroundQuads.begin(), backgroundQuads.end());
     
     for (const auto& quad : quadsToRender) {
-        vulkan->drawBackground(quad.x1, quad.y1, quad.x2, quad.y2, quad.r, quad.g, quad.b);
+        if (quad.useTexture && quad.textureId) {
+            vulkan->drawImageUV(quad.x1, quad.y1, quad.x2, quad.y2, 
+                                (VulkanTexture*)quad.textureId,
+                                quad.u1, quad.v1, quad.u2, quad.v2);
+        } else {
+            vulkan->drawBackground(quad.x1, quad.y1, quad.x2, quad.y2, quad.r, quad.g, quad.b);
+        }
     }
     
+    // Динамические квады очищаем после рендера
     backgroundQuads.clear();
 }
 
@@ -526,11 +625,18 @@ void SecondRender::RenderOverlay() {
     RebuildTestQuadsIfNeeded();
     
     std::vector<Quad2D> quadsToRender;
+    
     quadsToRender.insert(quadsToRender.end(), testOverlayQuads.begin(), testOverlayQuads.end());
     quadsToRender.insert(quadsToRender.end(), overlayQuads.begin(), overlayQuads.end());
     
     for (const auto& quad : quadsToRender) {
-        vulkan->drawQuad(quad.x1, quad.y1, quad.x2, quad.y2, quad.r, quad.g, quad.b);
+        if (quad.useTexture && quad.textureId) {
+            vulkan->drawImageUV(quad.x1, quad.y1, quad.x2, quad.y2, 
+                                (VulkanTexture*)quad.textureId,
+                                quad.u1, quad.v1, quad.u2, quad.v2);
+        } else {
+            vulkan->drawQuad(quad.x1, quad.y1, quad.x2, quad.y2, quad.r, quad.g, quad.b);
+        }
     }
     
     overlayQuads.clear();
