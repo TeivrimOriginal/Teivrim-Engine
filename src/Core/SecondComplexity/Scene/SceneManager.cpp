@@ -1,12 +1,124 @@
-// SceneManager.cpp - FULL IMPLEMENTATION
-#include "SceneManager.h"
-#include "../../Render/Parser/parser.h"
-#include <iostream>
-#include <queue>
-#include <fstream>
+#define GLM_ENABLE_EXPERIMENTAL
+#define GLM_FORCE_RADIANS
 
+#include "../../Render/Parser/parser.h"
+#include "SceneManager.h"
+#include <iostream>
+#include <cmath>
+
+// CameraComponent implementation
+void CameraComponent::updateMatrices(float aspect) {
+    aspectRatio = aspect;
+    
+    if (isOrbital) {
+        viewMatrix = glm::lookAt(position, target, glm::vec3(0, 1, 0));
+    } else {
+        glm::quat rot = glm::quat(glm::vec3(glm::radians(pitch), glm::radians(yaw), 0.0f));
+        glm::vec3 forward = rot * glm::vec3(0, 0, -1);
+        glm::vec3 up = rot * glm::vec3(0, 1, 0);
+        viewMatrix = glm::lookAt(position, position + forward, up);
+    }
+    
+    projectionMatrix = glm::perspective(glm::radians(fov), aspect, nearPlane, farPlane);
+    matricesDirty = false;
+}
+
+void CameraComponent::updatePosition() {
+    if (isOrbital) {
+        float radYaw = glm::radians(yaw);
+        float radPitch = glm::radians(pitch);
+        
+        float x = distance * cos(radPitch) * cos(radYaw);
+        float y = distance * sin(radPitch);
+        float z = distance * cos(radPitch) * sin(radYaw);
+        
+        position = target + glm::vec3(x, y, z);
+    }
+    matricesDirty = true;
+}
+
+void CameraComponent::rotate(float deltaYaw, float deltaPitch) {
+    yaw += deltaYaw;
+    pitch += deltaPitch;
+    
+    if (pitch > maxPitch) pitch = maxPitch;
+    if (pitch < minPitch) pitch = minPitch;
+    
+    if (yaw > 360.0f) yaw -= 360.0f;
+    if (yaw < -360.0f) yaw += 360.0f;
+    
+    updatePosition();
+}
+
+void CameraComponent::zoom(float delta) {
+    distance -= delta * distance * 0.1f;
+    if (distance < minDistance) distance = minDistance;
+    if (distance > maxDistance) distance = maxDistance;
+    updatePosition();
+}
+
+void CameraComponent::setTarget(const glm::vec3& newTarget) {
+    target = newTarget;
+    updatePosition();
+}
+
+void CameraComponent::setDistance(float newDistance) {
+    distance = newDistance;
+    if (distance < minDistance) distance = minDistance;
+    if (distance > maxDistance) distance = maxDistance;
+    updatePosition();
+}
+
+void CameraComponent::setFov(float newFov) {
+    fov = newFov;
+    if (fov < minFov) fov = minFov;
+    if (fov > maxFov) fov = maxFov;
+    matricesDirty = true;
+}
+
+void CameraComponent::reset() {
+    yaw = -90.0f;
+    pitch = 30.0f;
+    distance = DEFAULT_CAMERA_DISTANCE;
+    target = SCENE_CENTER;
+    fov = DEFAULT_FOV;
+    updatePosition();
+    matricesDirty = true;
+}
+
+// SceneObject implementation
+void SceneObject::calculateBoundingBox() {
+    if (!parser || parser->getMeshes().empty()) return;
+    
+    boundingBoxMin = glm::vec3(FLT_MAX);
+    boundingBoxMax = glm::vec3(-FLT_MAX);
+    
+    for (const auto& mesh : parser->getMeshes()) {
+        for (const auto& vertex : mesh.vertices) {
+            glm::vec3 pos(vertex.position[0], vertex.position[1], vertex.position[2]);
+            boundingBoxMin = glm::min(boundingBoxMin, pos);
+            boundingBoxMax = glm::max(boundingBoxMax, pos);
+        }
+    }
+    
+    hasBoundingBox = true;
+}
+
+glm::vec3 SceneObject::getCenter() const {
+    if (!hasBoundingBox) return glm::vec3(0.0f);
+    return (boundingBoxMin + boundingBoxMax) * 0.5f;
+}
+
+void SceneObject::centerToWorldOrigin() {
+    if (!hasBoundingBox) calculateBoundingBox();
+    glm::vec3 center = getCenter();
+    localTransform.position = -center;
+    markDirty();
+}
+
+// SceneManager implementation
 SceneManager::SceneManager() {
-    std::cout << "[SceneManager] Initialized" << std::endl;
+    std::cout << "[SceneManager] Initialized with scene center at (0,0,0)" << std::endl;
 }
 
 SceneManager::~SceneManager() {
@@ -32,9 +144,13 @@ ObjectID SceneManager::CreateObject(const std::string& name) {
 
 ObjectID SceneManager::CreateCamera(const std::string& name) {
     ObjectID id = CreateObject(name);
-    auto obj = GetObject(id);
+    auto obj = GetSceneObject(id);
     if (obj) {
         obj->type = ObjectType::CAMERA;
+        CameraComponent camera;
+        camera.target = SCENE_CENTER;
+        camera.updatePosition();
+        m_cameras[id] = camera;
     }
     if (m_mainCameraID == 0) {
         SetMainCamera(id);
@@ -58,6 +174,7 @@ void SceneManager::DestroyObject(ObjectID id) {
     }
     
     m_nameToID.erase(it->second->name);
+    m_cameras.erase(id);
     m_objects.erase(it);
     
     if (m_mainCameraID == id) {
@@ -74,82 +191,60 @@ void SceneManager::DestroyObject(const std::string& name) {
     }
 }
 
-SceneObject* SceneManager::GetObject(ObjectID id) {
+SceneObject* SceneManager::GetSceneObject(ObjectID id) {
     auto it = m_objects.find(id);
     return (it != m_objects.end()) ? it->second.get() : nullptr;
 }
 
-SceneObject* SceneManager::GetObject(const std::string& name) {
+SceneObject* SceneManager::GetSceneObject(const std::string& name) {
     auto it = m_nameToID.find(name);
-    return (it != m_nameToID.end()) ? GetObject(it->second) : nullptr;
+    return (it != m_nameToID.end()) ? GetSceneObject(it->second) : nullptr;
 }
 
 void SceneManager::SetPosition(ObjectID id, const glm::vec3& pos) {
-    SceneObject* obj = GetObject(id);
+    SceneObject* obj = GetSceneObject(id);
     if (!obj) return;
     obj->localTransform.position = pos;
     obj->markDirty();
     m_transformsDirty = true;
-    
-    if (id == m_mainCameraID) {
-        m_cameraDirty = true;
-    }
 }
 
-void SceneManager::SetRotation(ObjectID id, const glm::vec3& rot) {
-    SceneObject* obj = GetObject(id);
+void SceneManager::SetRotation(ObjectID id, const glm::quat& rot) {
+    SceneObject* obj = GetSceneObject(id);
     if (!obj) return;
     obj->localTransform.rotation = rot;
     obj->markDirty();
     m_transformsDirty = true;
-    
-    if (id == m_mainCameraID) {
-        m_cameraDirty = true;
-    }
 }
 
 void SceneManager::SetScale(ObjectID id, const glm::vec3& scale) {
-    SceneObject* obj = GetObject(id);
+    SceneObject* obj = GetSceneObject(id);
     if (!obj) return;
     obj->localTransform.scale = scale;
     obj->markDirty();
     m_transformsDirty = true;
 }
 
-void SceneManager::SetTransform(ObjectID id, const Transform& transform) {
-    SceneObject* obj = GetObject(id);
-    if (!obj) return;
-    obj->localTransform = transform;
-    obj->markDirty();
-    m_transformsDirty = true;
-    
-    if (id == m_mainCameraID) {
-        m_cameraDirty = true;
-    }
+glm::vec3 SceneManager::GetWorldPosition(ObjectID id) {
+    glm::mat4 world = GetWorldMatrix(id);
+    return glm::vec3(world[3]);
 }
 
 glm::mat4 SceneManager::GetWorldMatrix(ObjectID id) {
     if (m_transformsDirty) {
         UpdateWorldTransforms();
     }
-    SceneObject* obj = GetObject(id);
+    SceneObject* obj = GetSceneObject(id);
     return obj ? obj->globalTransform.matrix : glm::mat4(1.0f);
 }
 
-Transform SceneManager::GetWorldTransform(ObjectID id) {
-    glm::mat4 world = GetWorldMatrix(id);
-    Transform result;
-    result.position = glm::vec3(world[3]);
-    return result;
-}
-
 void SceneManager::UpdateGlobalTransform(ObjectID id) {
-    SceneObject* obj = GetObject(id);
+    SceneObject* obj = GetSceneObject(id);
     if (!obj) return;
     if (!obj->isDirty()) return;
     
     if (obj->parentID != 0) {
-        SceneObject* parent = GetObject(obj->parentID);
+        SceneObject* parent = GetSceneObject(obj->parentID);
         if (parent) {
             if (parent->isDirty()) {
                 UpdateGlobalTransform(parent->id);
@@ -166,11 +261,11 @@ void SceneManager::UpdateGlobalTransform(ObjectID id) {
 }
 
 void SceneManager::UpdateChildrenTransforms(ObjectID parentID) {
-    SceneObject* parent = GetObject(parentID);
+    SceneObject* parent = GetSceneObject(parentID);
     if (!parent) return;
     
     for (ObjectID childID : parent->childrenIDs) {
-        SceneObject* child = GetObject(childID);
+        SceneObject* child = GetSceneObject(childID);
         if (child && child->isDirty()) {
             child->globalTransform.matrix = parent->globalTransform.matrix * child->localTransform.getLocalMatrix();
             child->clean();
@@ -190,81 +285,134 @@ void SceneManager::UpdateWorldTransforms() {
 }
 
 void SceneManager::SetMainCamera(ObjectID cameraID) {
-    SceneObject* obj = GetObject(cameraID);
+    SceneObject* obj = GetSceneObject(cameraID);
     if (obj && obj->type == ObjectType::CAMERA) {
         m_mainCameraID = cameraID;
-        m_cameraDirty = true;
         std::cout << "[SceneManager] Main camera set to: " << obj->name << std::endl;
     }
 }
 
 SceneObject* SceneManager::GetMainCameraObject() {
-    return GetObject(m_mainCameraID);
+    return GetSceneObject(m_mainCameraID);
+}
+
+CameraComponent* SceneManager::GetMainCamera() {
+    auto it = m_cameras.find(m_mainCameraID);
+    return (it != m_cameras.end()) ? &it->second : nullptr;
+}
+
+void SceneManager::UpdateCamera(float deltaTime) {
+    CameraComponent* cam = GetMainCamera();
+    if (!cam) return;
+    cam->updatePosition();
+    cam->matricesDirty = true;
 }
 
 void SceneManager::UpdateCameraAspect(float aspect) {
-    m_cameraAspect = aspect;
-    m_cameraDirty = true;
+    CameraComponent* cam = GetMainCamera();
+    if (cam) {
+        cam->updateMatrices(aspect);
+    }
 }
 
-void SceneManager::UpdateCameraMatrices() {
-    if (!m_cameraDirty && !m_transformsDirty) return;
-    
-    SceneObject* camObj = GetMainCameraObject();
-    if (!camObj) {
-        // Камера по умолчанию
-        m_cachedViewMatrix = glm::lookAt(glm::vec3(0, 50, 150), glm::vec3(0, 50, 0), glm::vec3(0, 1, 0));
-        m_cachedProjMatrix = glm::perspective(glm::radians(45.0f), m_cameraAspect, m_cameraNear, m_cameraFar);
-        m_cachedCameraPos = glm::vec3(0, 50, 150);
-        m_cameraDirty = false;
-        return;
+void SceneManager::RotateCamera(float deltaYaw, float deltaPitch) {
+    CameraComponent* cam = GetMainCamera();
+    if (cam) {
+        cam->rotate(deltaYaw, deltaPitch);
     }
-    
-    if (m_transformsDirty) {
-        UpdateWorldTransforms();
-    }
-    
-    // View matrix = inverse of world transform
-    m_cachedViewMatrix = glm::inverse(camObj->globalTransform.matrix);
-    m_cachedCameraPos = glm::vec3(camObj->globalTransform.matrix[3]);
-    
-    // Projection matrix
-    m_cachedProjMatrix = glm::perspective(glm::radians(m_cameraFOV), m_cameraAspect, m_cameraNear, m_cameraFar);
-    
-    m_cameraDirty = false;
 }
 
-void SceneManager::UpdateTransforms() {
-    UpdateWorldTransforms();
-    UpdateCameraMatrices();
+void SceneManager::ZoomCamera(float delta) {
+    CameraComponent* cam = GetMainCamera();
+    if (cam) {
+        cam->zoom(delta);
+    }
+}
+
+void SceneManager::SetCameraTarget(const glm::vec3& target) {
+    CameraComponent* cam = GetMainCamera();
+    if (cam) {
+        cam->setTarget(target);
+    }
+}
+
+void SceneManager::SetCameraDistance(float distance) {
+    CameraComponent* cam = GetMainCamera();
+    if (cam) {
+        cam->setDistance(distance);
+    }
+}
+
+void SceneManager::SetCameraFov(float fov) {
+    CameraComponent* cam = GetMainCamera();
+    if (cam) {
+        cam->setFov(fov);
+    }
+}
+
+void SceneManager::ResetCamera() {
+    CameraComponent* cam = GetMainCamera();
+    if (cam) {
+        cam->reset();
+    }
 }
 
 glm::mat4 SceneManager::GetViewMatrix() const {
-    return m_cachedViewMatrix;
+    auto it = m_cameras.find(m_mainCameraID);
+    if (it != m_cameras.end()) {
+        return it->second.viewMatrix;
+    }
+    return glm::lookAt(glm::vec3(0, 10, 20), SCENE_CENTER, glm::vec3(0, 1, 0));
 }
 
 glm::mat4 SceneManager::GetProjectionMatrix() const {
-    return m_cachedProjMatrix;
+    auto it = m_cameras.find(m_mainCameraID);
+    if (it != m_cameras.end()) {
+        return it->second.projectionMatrix;
+    }
+    return glm::perspective(glm::radians(60.0f), 16.0f/9.0f, 0.1f, 1000.0f);
 }
 
 glm::vec3 SceneManager::GetCameraPosition() const {
-    return m_cachedCameraPos;
+    auto it = m_cameras.find(m_mainCameraID);
+    if (it != m_cameras.end()) {
+        return it->second.position;
+    }
+    return glm::vec3(0, 10, 20);
+}
+
+glm::vec3 SceneManager::GetCameraTarget() const {
+    auto it = m_cameras.find(m_mainCameraID);
+    if (it != m_cameras.end()) {
+        return it->second.target;
+    }
+    return SCENE_CENTER;
+}
+
+float SceneManager::GetCameraDistance() const {
+    auto it = m_cameras.find(m_mainCameraID);
+    if (it != m_cameras.end()) {
+        return it->second.distance;
+    }
+    return DEFAULT_CAMERA_DISTANCE;
 }
 
 void SceneManager::AddModel(const std::string& name, ModelParser* parser) {
     m_modelParsers[name] = parser;
     
-    // Создаём объект сцены для модели
     ObjectID id = CreateObject(name);
-    SceneObject* obj = GetObject(id);
+    SceneObject* obj = GetSceneObject(id);
     if (obj) {
         obj->type = ObjectType::MODEL;
         obj->parser = parser;
         obj->loaded = true;
-        obj->meshCount = parser->getMeshes().size();
+        obj->meshCount = (uint32_t)parser->getMeshes().size();
+        
+        obj->calculateBoundingBox();
+        obj->centerToWorldOrigin();
     }
     
-    std::cout << "[SceneManager] Added model: " << name << std::endl;
+    std::cout << "[SceneManager] Added model: " << name << " centered at world origin" << std::endl;
 }
 
 void SceneManager::RemoveModel(const std::string& name) {
@@ -290,9 +438,22 @@ ModelParser* SceneManager::GetModelParser(const std::string& name) {
     return (it != m_modelParsers.end()) ? it->second : nullptr;
 }
 
+void SceneManager::CenterModelToWorld(ObjectID id) {
+    SceneObject* obj = GetSceneObject(id);
+    if (obj) {
+        obj->centerToWorldOrigin();
+    }
+}
+
 void SceneManager::Update(float deltaTime) {
-    // Обновление сцены (анимации, физика и т.д.)
-    UpdateTransforms();
+    UpdateWorldTransforms();
+}
+
+void SceneManager::UpdateAllMatrices() {
+    UpdateWorldTransforms();
+    for (auto& pair : m_cameras) {
+        pair.second.updateMatrices(pair.second.aspectRatio);
+    }
 }
 
 void SceneManager::ClearScene() {
@@ -303,16 +464,17 @@ void SceneManager::ClearScene() {
     m_objects.clear();
     m_objectsOrdered.clear();
     m_nameToID.clear();
+    m_cameras.clear();
     m_mainCameraID = 0;
     m_nextID = 1;
     m_transformsDirty = true;
-    m_cameraDirty = true;
     
     std::cout << "[SceneManager] Scene cleared" << std::endl;
 }
 
 void SceneManager::PrintSceneHierarchy() {
     std::cout << "\n========== SCENE HIERARCHY ==========" << std::endl;
+    std::cout << "Scene Center: (0, 0, 0)" << std::endl;
     
     for (auto obj : m_objectsOrdered) {
         if (obj->parentID == 0) {
@@ -320,14 +482,24 @@ void SceneManager::PrintSceneHierarchy() {
             if (obj->type == ObjectType::CAMERA) std::cout << ", CAMERA";
             if (obj->type == ObjectType::MODEL) std::cout << ", MODEL";
             std::cout << ")" << std::endl;
+            std::cout << "  Position: (" << obj->localTransform.position.x << ", " 
+                      << obj->localTransform.position.y << ", " << obj->localTransform.position.z << ")" << std::endl;
             
             for (ObjectID childID : obj->childrenIDs) {
-                SceneObject* child = GetObject(childID);
+                SceneObject* child = GetSceneObject(childID);
                 if (child) {
                     std::cout << "  └─ " << child->name << " (ID: " << child->id << ")" << std::endl;
                 }
             }
         }
     }
+    
+    CameraComponent* cam = GetMainCamera();
+    if (cam) {
+        std::cout << "\nCamera: FOV=" << cam->fov 
+                  << ", Distance=" << cam->distance
+                  << ", Target=(" << cam->target.x << ", " << cam->target.y << ", " << cam->target.z << ")" << std::endl;
+    }
+    
     std::cout << "=====================================\n" << std::endl;
 }

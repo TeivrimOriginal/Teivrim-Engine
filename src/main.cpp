@@ -3,6 +3,6 @@
 int main() {
     
     Core engine;
-    engine.GameLoop();         // Запуск игрового цикла
+    engine.GameLoop();
     return 0;
 }

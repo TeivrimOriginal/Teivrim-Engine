@@ -1,27 +1,27 @@
 #ifndef INPUT_H
 #define INPUT_H
 
-#include <GL/glew.h>
-#include <glm/glm.hpp>
-#include "camera.h"
 #include "../Application/application.h"
 #include "../Interface/InterfaceManager.h"
+#include <windows.h>
 
 class Input {
 public:
     Input(Application& app, InterfaceManager* interf);
+    ~Input() = default;
     
-    void processInput(float deltaTime);
     void processInputWin32(float deltaTime, HWND hwnd);
     void processMouseWin32(float xpos, float ypos);
-    void SetMouseCapture(bool capture);
-    bool IsMouseCaptured() const;
+    void processMouseWheel(int delta, HWND hwnd);
     void Update(float deltaTime);
+    void processInput(float deltaTime);
     void EnableDebug(bool enable);
+    bool IsMouseCaptured() const;
+    void SetMouseCapture(bool capture);
     
 private:
-    void UpdateKeyboardMovement(float deltaTime, HWND hwnd);
     void UpdateMouseCapture(HWND hwnd);
+    void UpdateKeyboardMovement(float deltaTime, HWND hwnd);
     
     Application& app;
     Camera& camera;
@@ -31,9 +31,9 @@ private:
     bool rightMouseDown;
     float lastX, lastY;
     bool firstMouse;
-    bool keys[6];
     float mouseSensitivityScale;
     bool debugEnabled;
+    bool keys[6];
 };
 
 #endif

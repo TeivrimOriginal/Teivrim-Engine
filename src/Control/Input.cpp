@@ -1,5 +1,6 @@
 #include "Input.h"
 #include "../Interface/BufferLayer.h"
+#include "../Core/SecondComplexity/Scene/SceneManager.h"
 #include <windows.h>
 #include <iostream>
 
@@ -95,11 +96,17 @@ void Input::UpdateKeyboardMovement(float deltaTime, HWND hwnd) {
     
     static bool rPressed = false;
     if (GetAsyncKeyState('R') & 0x8000) {
-        if (!rPressed) { rPressed = true; camera.ResetCamera(); }
+        if (!rPressed) {
+            rPressed = true;
+            auto& sm = SceneManager::Instance();
+            sm.ResetCamera();
+            camera.ResetCamera();
+        }
     } else { 
         rPressed = false; 
     }
 }
+
 void Input::processInputWin32(float deltaTime, HWND hwnd) {
     UpdateMouseCapture(hwnd);
     UpdateKeyboardMovement(deltaTime, hwnd);
@@ -117,11 +124,45 @@ void Input::processMouseWin32(float xpos, float ypos) {
     
     camera.ProcessMouseMovement(xoffset, yoffset, true);
     
+    auto& sm = SceneManager::Instance();
+    sm.RotateCamera(xoffset, yoffset);
+    
     lastX = xpos;
     lastY = ypos;
 }
 
-void Input::Update(float deltaTime) { camera.UpdateSmoothRotation(deltaTime); }
+void Input::processMouseWheel(int delta, HWND hwnd) {
+    POINT mousePos;
+    GetCursorPos(&mousePos);
+    ScreenToClient(hwnd, &mousePos);
+    
+    RECT clientRect;
+    GetClientRect(hwnd, &clientRect);
+    
+    Panel* view3D = interf->getPanelManager()->get3D();
+    if (view3D && view3D->visible) {
+        int viewY = clientRect.bottom - (view3D->getY() + view3D->getH());
+        bool isInViewport = (mousePos.x >= view3D->getX() && mousePos.x <= view3D->getX() + view3D->getW() &&
+                             mousePos.y >= viewY && mousePos.y <= viewY + view3D->getH());
+        
+        if (isInViewport) {
+            auto& sm = SceneManager::Instance();
+            float zoomDelta = (float)delta / 120.0f;
+            sm.ZoomCamera(zoomDelta);
+        }
+    }
+}
+
+void Input::Update(float deltaTime) { 
+    camera.UpdateSmoothRotation(deltaTime); 
+}
+
 void Input::processInput(float deltaTime) {}
-void Input::EnableDebug(bool enable) { debugEnabled = enable; }
-bool Input::IsMouseCaptured() const { return mouseCaptured; }
+
+void Input::EnableDebug(bool enable) { 
+    debugEnabled = enable; 
+}
+
+bool Input::IsMouseCaptured() const { 
+    return mouseCaptured; 
+}

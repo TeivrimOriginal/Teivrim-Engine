@@ -19,10 +19,13 @@ struct GridConfig {
     int gridSize;
     float lineColor[3];
     float centerLineColor[3];
+    float axisXColor[3];    // Красный для оси X
+    float axisZColor[3];    // Зеленый для оси Z
     bool enabled;
     bool infiniteGrid;
+    bool showAxes;
     float gridSpacing;
-    float fadeDistance;
+    float fadeDistance;      // Расстояние от центра сцены, на котором линии исчезают
     float yOffset;
     float lineThickness;
 };
@@ -84,6 +87,7 @@ private:
     void DestroyLineResources();
     bool CreateLinePipeline();
     void UpdateGridBuffer();
+    void UpdateAxesBuffer();
     
     Vulkan* vulkan;
     RenderUI* renderUI;
@@ -108,16 +112,21 @@ private:
     glm::vec3 currentCameraPos;
     bool cameraMatrixValid;
     bool needBufferUpdate;
+    bool needAxesUpdate;
     float lastCamX, lastCamZ;
     
     VkPipeline linePipeline;
     VkPipelineLayout linePipelineLayout;
     VkBuffer lineVertexBuffer;
+    VkBuffer axesVertexBuffer;
     VkDeviceMemory lineVertexBufferMemory;
+    VkDeviceMemory axesVertexBufferMemory;
     uint32_t lineVertexCount;
+    uint32_t axesVertexCount;
     
     void RebuildTestQuadsIfNeeded();
     std::vector<std::pair<glm::vec3, glm::vec3>> CalculateGridLines();
+    std::vector<std::pair<glm::vec3, glm::vec3>> CalculateAxesLines();
 };
 
 #endif

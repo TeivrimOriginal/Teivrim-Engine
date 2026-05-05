@@ -23,14 +23,18 @@ SecondRender::SecondRender()
     , viewportW(0)
     , viewportH(0)
     , cameraMatrixValid(false)
+    , needBufferUpdate(true)
+    , needAxesUpdate(true)
+    , lastCamX(0.0f)
+    , lastCamZ(0.0f)
     , linePipeline(VK_NULL_HANDLE)
     , linePipelineLayout(VK_NULL_HANDLE)
     , lineVertexBuffer(VK_NULL_HANDLE)
+    , axesVertexBuffer(VK_NULL_HANDLE)
     , lineVertexBufferMemory(VK_NULL_HANDLE)
+    , axesVertexBufferMemory(VK_NULL_HANDLE)
     , lineVertexCount(0)
-    , needBufferUpdate(true)
-    , lastCamX(0.0f)
-    , lastCamZ(0.0f)
+    , axesVertexCount(0)
 {
     gridConfig.cellSize = 50;
     gridConfig.gridSize = 20;
@@ -40,10 +44,17 @@ SecondRender::SecondRender()
     gridConfig.centerLineColor[0] = 0.8f;
     gridConfig.centerLineColor[1] = 0.8f;
     gridConfig.centerLineColor[2] = 1.0f;
+    gridConfig.axisXColor[0] = 1.0f;
+    gridConfig.axisXColor[1] = 0.0f;
+    gridConfig.axisXColor[2] = 0.0f;
+    gridConfig.axisZColor[0] = 0.0f;
+    gridConfig.axisZColor[1] = 1.0f;
+    gridConfig.axisZColor[2] = 0.0f;
     gridConfig.enabled = true;
     gridConfig.infiniteGrid = true;
+    gridConfig.showAxes = true;
     gridConfig.gridSpacing = 20.0f;
-    gridConfig.fadeDistance = 200.0f;
+    gridConfig.fadeDistance = 500.0f;
     gridConfig.yOffset = 0.0f;
     gridConfig.lineThickness = 1.0f;
     
@@ -54,6 +65,15 @@ SecondRender::~SecondRender() {
     ClearBackground();
     ClearOverlay();
     DestroyLineResources();
+    
+    if (axesVertexBuffer != VK_NULL_HANDLE && vulkan) {
+        vkDestroyBuffer(vulkan->getDevice(), axesVertexBuffer, nullptr);
+        axesVertexBuffer = VK_NULL_HANDLE;
+    }
+    if (axesVertexBufferMemory != VK_NULL_HANDLE && vulkan) {
+        vkFreeMemory(vulkan->getDevice(), axesVertexBufferMemory, nullptr);
+        axesVertexBufferMemory = VK_NULL_HANDLE;
+    }
 }
 
 void SecondRender::DestroyLineResources() {
@@ -225,6 +245,7 @@ void SecondRender::Initialize(Vulkan* vk, RenderUI* ui, InterfaceManager* manage
         testQuadsDirty = true;
         CreateLinePipeline();
         needBufferUpdate = true;
+        needAxesUpdate = true;
     }
 }
 
@@ -340,6 +361,7 @@ void SecondRender::DrawGrid(int cellSize, int gridSize) {
 void SecondRender::SetGridConfig(const GridConfig& config) {
     gridConfig = config;
     needBufferUpdate = true;
+    needAxesUpdate = true;
 }
 
 void SecondRender::SetCamera(const glm::mat4& viewMatrix, const glm::mat4& projMatrix, const glm::vec3& cameraPos) {
@@ -347,62 +369,61 @@ void SecondRender::SetCamera(const glm::mat4& viewMatrix, const glm::mat4& projM
     currentProjMat = projMatrix;
     currentCameraPos = cameraPos;
     cameraMatrixValid = true;
-    
-    // Проверяем, нужно ли обновлять буфер
-    float newCamX = cameraPos.x;
-    float newCamZ = cameraPos.z;
-    if (fabs(newCamX - lastCamX) > gridConfig.gridSpacing * 0.5f ||
-        fabs(newCamZ - lastCamZ) > gridConfig.gridSpacing * 0.5f) {
-        needBufferUpdate = true;
-        lastCamX = newCamX;
-        lastCamZ = newCamZ;
-    }
 }
 
 std::vector<std::pair<glm::vec3, glm::vec3>> SecondRender::CalculateGridLines() {
     std::vector<std::pair<glm::vec3, glm::vec3>> lines;
     
-    if (!gridConfig.infiniteGrid || !cameraMatrixValid) return lines;
+    if (!gridConfig.infiniteGrid) return lines;
     
     float spacing = gridConfig.gridSpacing;
     float yOffset = gridConfig.yOffset;
     
-    float camX = currentCameraPos.x;
-    float camZ = currentCameraPos.z;
+    // Мировые границы сетки (фиксированные, не зависят от камеры)
+    float worldMin = -500.0f;
+    float worldMax = 500.0f;
     
-    int gridSize = 30;
-    int startX = (int)(camX / spacing) - gridSize;
-    int endX = (int)(camX / spacing) + gridSize;
-    int startZ = (int)(camZ / spacing) - gridSize;
-    int endZ = (int)(camZ / spacing) + gridSize;
+    float minX = worldMin;
+    float maxX = worldMax;
+    float minZ = worldMin;
+    float maxZ = worldMax;
     
-    float range = gridSize * spacing;
-    float minX = camX - range;
-    float maxX = camX + range;
-    float minZ = camZ - range;
-    float maxZ = camZ + range;
+    // Округляем до шага сетки
+    minX = floor(minX / spacing) * spacing;
+    maxX = ceil(maxX / spacing) * spacing;
+    minZ = floor(minZ / spacing) * spacing;
+    maxZ = ceil(maxZ / spacing) * spacing;
     
-    for (int i = startX; i <= endX; i++) {
-        float x = i * spacing;
-        
-        glm::vec3 start(x, yOffset, minZ);
-        glm::vec3 end(x, yOffset, maxZ);
-        lines.push_back({start, end});
+    // Линии по X (вертикальные линии вдоль оси Z)
+    for (float x = minX; x <= maxX + 0.1f; x += spacing) {
+        lines.push_back({glm::vec3(x, yOffset, minZ), glm::vec3(x, yOffset, maxZ)});
     }
     
-    for (int i = startZ; i <= endZ; i++) {
-        float z = i * spacing;
-        
-        glm::vec3 start(minX, yOffset, z);
-        glm::vec3 end(maxX, yOffset, z);
-        lines.push_back({start, end});
+    // Линии по Z (горизонтальные линии вдоль оси X)
+    for (float z = minZ; z <= maxZ + 0.1f; z += spacing) {
+        lines.push_back({glm::vec3(minX, yOffset, z), glm::vec3(maxX, yOffset, z)});
     }
     
     return lines;
 }
 
+std::vector<std::pair<glm::vec3, glm::vec3>> SecondRender::CalculateAxesLines() {
+    std::vector<std::pair<glm::vec3, glm::vec3>> lines;
+    
+    float axisLength = gridConfig.fadeDistance;
+    float yOffset = gridConfig.yOffset;
+    
+    // Ось X - бесконечная (красная)
+    lines.push_back({glm::vec3(-axisLength, yOffset, 0.0f), glm::vec3(axisLength, yOffset, 0.0f)});
+    
+    // Ось Z - бесконечная (зеленая)
+    lines.push_back({glm::vec3(0.0f, yOffset, -axisLength), glm::vec3(0.0f, yOffset, axisLength)});
+    
+    return lines;
+}
+
 void SecondRender::UpdateGridBuffer() {
-    if (!vulkan || !cameraMatrixValid || !needBufferUpdate) return;
+    if (!vulkan || !needBufferUpdate) return;
     
     auto lines = CalculateGridLines();
     if (lines.empty()) return;
@@ -412,20 +433,20 @@ void SecondRender::UpdateGridBuffer() {
     std::vector<LineVertex> vertices;
     vertices.reserve(lines.size() * 2);
     
-    float camX = currentCameraPos.x;
-    float camZ = currentCameraPos.z;
     float fadeDist = gridConfig.fadeDistance;
+    float centerX = 0.0f;
+    float centerZ = 0.0f;
     
     for (const auto& line : lines) {
-        float distToLine;
+        float distToCenter;
         if (fabs(line.first.x - line.second.x) < 0.1f) {
-            distToLine = fabs(line.first.x - camX);
+            distToCenter = fabs(line.first.x - centerX);
         } else {
-            distToLine = fabs(line.first.z - camZ);
+            distToCenter = fabs(line.first.z - centerZ);
         }
         
-        float alpha = 1.0f - std::min(1.0f, distToLine / fadeDist);
-        if (alpha < 0.1f) continue;
+        float alpha = 1.0f - std::min(1.0f, distToCenter / fadeDist);
+        if (alpha < 0.05f) continue;
         
         bool isCenter = (fabs(line.first.x) < 1.0f && fabs(line.second.x - line.first.x) > 0.1f) ||
                         (fabs(line.first.z) < 1.0f && fabs(line.second.z - line.first.z) > 0.1f);
@@ -436,21 +457,14 @@ void SecondRender::UpdateGridBuffer() {
         
         glm::vec3 color(r * alpha, g * alpha, b * alpha);
         
-        LineVertex v1, v2;
-        v1.pos = glm::vec2(line.first.x, line.first.z);
-        v1.color = color;
-        v2.pos = glm::vec2(line.second.x, line.second.z);
-        v2.color = color;
-        
-        vertices.push_back(v1);
-        vertices.push_back(v2);
+        vertices.push_back({glm::vec2(line.first.x, line.first.z), color});
+        vertices.push_back({glm::vec2(line.second.x, line.second.z), color});
     }
     
     if (vertices.empty()) return;
     
     VkDeviceSize bufferSize = vertices.size() * sizeof(LineVertex);
     
-    // Ждём завершения предыдущих команд перед уничтожением буфера
     vkDeviceWaitIdle(device);
     
     if (lineVertexBuffer != VK_NULL_HANDLE) {
@@ -496,7 +510,93 @@ void SecondRender::UpdateGridBuffer() {
     lineVertexCount = (uint32_t)vertices.size();
     needBufferUpdate = false;
     
-    // std::cout << "[SecondRender] Grid buffer updated: " << lineVertexCount << " vertices" << std::endl;
+    std::cout << "[SecondRender] Grid buffer updated: " << lineVertexCount << " vertices" << std::endl;
+}
+
+void SecondRender::UpdateAxesBuffer() {
+    if (!vulkan || !needAxesUpdate) return;
+    
+    auto lines = CalculateAxesLines();
+    if (lines.empty()) return;
+    
+    VkDevice device = vulkan->getDevice();
+    
+    std::vector<LineVertex> vertices;
+    vertices.reserve(lines.size() * 2);
+    
+    float fadeDist = gridConfig.fadeDistance;
+    
+    for (const auto& line : lines) {
+        float distToCenter;
+        if (fabs(line.first.x - line.second.x) < 0.1f) {
+            distToCenter = fabs(line.first.x);
+        } else {
+            distToCenter = fabs(line.first.z);
+        }
+        
+        float alpha = 1.0f - std::min(1.0f, distToCenter / fadeDist);
+        if (alpha < 0.05f) continue;
+        
+        glm::vec3 color;
+        if (fabs(line.first.z - line.second.z) < 0.1f && line.first.z == 0.0f) {
+            color = glm::vec3(gridConfig.axisXColor[0], gridConfig.axisXColor[1], gridConfig.axisXColor[2]);
+        } else {
+            color = glm::vec3(gridConfig.axisZColor[0], gridConfig.axisZColor[1], gridConfig.axisZColor[2]);
+        }
+        color *= alpha;
+        
+        vertices.push_back({glm::vec2(line.first.x, line.first.z), color});
+        vertices.push_back({glm::vec2(line.second.x, line.second.z), color});
+    }
+    
+    if (vertices.empty()) return;
+    
+    VkDeviceSize bufferSize = vertices.size() * sizeof(LineVertex);
+    
+    vkDeviceWaitIdle(device);
+    
+    if (axesVertexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, axesVertexBuffer, nullptr);
+        axesVertexBuffer = VK_NULL_HANDLE;
+    }
+    if (axesVertexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, axesVertexBufferMemory, nullptr);
+        axesVertexBufferMemory = VK_NULL_HANDLE;
+    }
+    
+    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &axesVertexBuffer) != VK_SUCCESS) {
+        std::cerr << "[SecondRender] Failed to create axes vertex buffer" << std::endl;
+        return;
+    }
+    
+    VkMemoryRequirements memReq;
+    vkGetBufferMemoryRequirements(device, axesVertexBuffer, &memReq);
+    
+    VkMemoryAllocateInfo allocInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocInfo.allocationSize = memReq.size;
+    allocInfo.memoryTypeIndex = vulkan->findMemoryType(memReq.memoryTypeBits, 
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &axesVertexBufferMemory) != VK_SUCCESS) {
+        std::cerr << "[SecondRender] Failed to allocate axes vertex buffer memory" << std::endl;
+        vkDestroyBuffer(device, axesVertexBuffer, nullptr);
+        axesVertexBuffer = VK_NULL_HANDLE;
+        return;
+    }
+    
+    vkBindBufferMemory(device, axesVertexBuffer, axesVertexBufferMemory, 0);
+    
+    void* data;
+    vkMapMemory(device, axesVertexBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, vertices.data(), bufferSize);
+    vkUnmapMemory(device, axesVertexBufferMemory);
+    
+    axesVertexCount = (uint32_t)vertices.size();
+    needAxesUpdate = false;
 }
 
 void SecondRender::RenderInfiniteGrid() {
@@ -510,7 +610,9 @@ void SecondRender::RenderInfiniteGrid() {
         UpdateGridBuffer();
     }
     
-    if (lineVertexBuffer == VK_NULL_HANDLE || lineVertexCount == 0) return;
+    if (needAxesUpdate && gridConfig.showAxes) {
+        UpdateAxesBuffer();
+    }
     
     VkCommandBuffer cmdBuffer = vulkan->getCurrentCommandBuffer();
     if (cmdBuffer == VK_NULL_HANDLE) return;
@@ -535,17 +637,27 @@ void SecondRender::RenderInfiniteGrid() {
     
     vkCmdSetLineWidth(cmdBuffer, gridConfig.lineThickness);
     
+    // Используем ТЕ ЖЕ МАТРИЦЫ, что и для модели
     glm::mat4 projView = currentProjMat * currentViewMat;
     vkCmdPushConstants(cmdBuffer, linePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &projView);
     
-    VkDeviceSize offsets = 0;
-    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &lineVertexBuffer, &offsets);
-    vkCmdDraw(cmdBuffer, lineVertexCount, 1, 0, 0);
+    // Рисуем сетку
+    if (lineVertexBuffer != VK_NULL_HANDLE && lineVertexCount > 0) {
+        VkDeviceSize offsets = 0;
+        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &lineVertexBuffer, &offsets);
+        vkCmdDraw(cmdBuffer, lineVertexCount, 1, 0, 0);
+    }
+    
+    // Рисуем оси поверх сетки
+    if (gridConfig.showAxes && axesVertexBuffer != VK_NULL_HANDLE && axesVertexCount > 0) {
+        VkDeviceSize offsets = 0;
+        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &axesVertexBuffer, &offsets);
+        vkCmdDraw(cmdBuffer, axesVertexCount, 1, 0, 0);
+    }
 }
 
 void SecondRender::DrawTestQuads() {
     testQuadsDirty = true;
-    std::cout << "[SecondRender] DrawTestQuads requested, will rebuild on next render" << std::endl;
 }
 
 void SecondRender::RebuildTestQuadsIfNeeded() {
@@ -554,11 +666,8 @@ void SecondRender::RebuildTestQuadsIfNeeded() {
     testBackgroundQuads.clear();
     testOverlayQuads.clear();
     
-    std::cout << "[SecondRender] Rebuilding test quads: viewportW=" << viewportW << ", viewportH=" << viewportH << std::endl;
-    
     Quad2D quad;
     
-    // Серый квадрат в BACKGROUND слое (ПОД 3D моделью)
     quad.useTexture = false;
     quad.textureId = nullptr;
     quad.layer = 0;
@@ -569,9 +678,7 @@ void SecondRender::RebuildTestQuadsIfNeeded() {
     quad.r = 0.3f; quad.g = 0.3f; quad.b = 0.4f;
     testBackgroundQuads.push_back(quad);
     
-    // Белые квадраты в OVERLAY слое (ПОВЕРХ 3D модели)
     quad.layer = 1;
-    
     quad.x1 = 50.0f + viewportX;
     quad.y1 = 50.0f + viewportY;
     quad.x2 = 150.0f + viewportX;
@@ -585,9 +692,6 @@ void SecondRender::RebuildTestQuadsIfNeeded() {
     quad.y2 = 150.0f + viewportY;
     testOverlayQuads.push_back(quad);
     
-    std::cout << "[SecondRender] Test quads rebuilt: bg=" << testBackgroundQuads.size() 
-              << ", ov=" << testOverlayQuads.size() << std::endl;
-    
     testQuadsDirty = false;
 }
 
@@ -598,10 +702,7 @@ void SecondRender::RenderBackground() {
     RebuildTestQuadsIfNeeded();
     
     std::vector<Quad2D> quadsToRender;
-    
-    // Сначала тестовые квады
     quadsToRender.insert(quadsToRender.end(), testBackgroundQuads.begin(), testBackgroundQuads.end());
-    // Потом динамические квады
     quadsToRender.insert(quadsToRender.end(), backgroundQuads.begin(), backgroundQuads.end());
     
     for (const auto& quad : quadsToRender) {
@@ -614,7 +715,6 @@ void SecondRender::RenderBackground() {
         }
     }
     
-    // Динамические квады очищаем после рендера
     backgroundQuads.clear();
 }
 
@@ -625,7 +725,6 @@ void SecondRender::RenderOverlay() {
     RebuildTestQuadsIfNeeded();
     
     std::vector<Quad2D> quadsToRender;
-    
     quadsToRender.insert(quadsToRender.end(), testOverlayQuads.begin(), testOverlayQuads.end());
     quadsToRender.insert(quadsToRender.end(), overlayQuads.begin(), overlayQuads.end());
     
@@ -656,4 +755,5 @@ void SecondRender::UpdateScreenSize(int width, int height) {
     UpdateViewportRect();
     testQuadsDirty = true;
     needBufferUpdate = true;
+    needAxesUpdate = true;
 }

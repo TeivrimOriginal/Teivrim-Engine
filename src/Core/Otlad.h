@@ -119,7 +119,10 @@ inline void ProcessOtladCommands(Vulkan* vk, InterfaceManager* uiManager) {
                       << " visible=" << (obj->visible ? "Y" : "N")
                       << " meshes=" << obj->meshCount << "]";
             
-            if (obj->parent) std::cout << " parent=" << obj->parent->name;
+if (obj->parentID != 0) {
+    auto* parent = sm.GetSceneObject(obj->parentID);
+    if (parent) std::cout << " parent=" << parent->name;
+}
             if (!obj->modelPath.empty()) std::cout << " path=" << obj->modelPath;
             
             std::cout << std::endl;

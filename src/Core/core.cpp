@@ -1,4 +1,4 @@
-// core.cpp - FULL WORKING VERSION (с синхронизацией камеры и отключенными тестовыми квадратами)
+// core.cpp - FULL WORKING VERSION
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -10,7 +10,7 @@
 #include "SecondComplexity/Scene/SceneManager.h"
 #include "../Interface/BufferLayer.h"
 #include "SecondComplexity/Icon/IconManager.h"
-
+#include "Otlad.h"
 #include "SecondRender.h"
 #include <iostream>
 #include <string>
@@ -25,6 +25,7 @@ using namespace std;
 
 InterfaceManager* g_uiManager = nullptr;
 static bool gridEnabled = true;
+static Input* g_input = nullptr;
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -97,6 +98,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             int x = LOWORD(lParam), y = HIWORD(lParam);
             if (g_uiManager) g_uiManager->handleMouseMove(x, y);
             break;
+        }
+        
+        case WM_MOUSEWHEEL: {
+            int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+            if (g_input) g_input->processMouseWheel(delta, hwnd);
+            SceneManager::Instance().ZoomCamera((float)delta / 120.0f);
+            return 0;
         }
         
         case WM_SIZE: {
@@ -246,13 +254,11 @@ bool Core::loadModelFromPath(const std::string& path) {
     modelPath = path;
     std::string modelName = path.substr(path.find_last_of("/\\") + 1);
     
-    // Добавляем в Vulkan рендер
     if (currentAPI == RenderAPI::VULKAN && vulkan) {
         vulkan->addModel(modelName, newParser->getMeshes());
         vulkan->setModelTransform(modelName, glm::scale(glm::mat4(1.0f), glm::vec3(0.01f)));
     }
     
-    // Добавляем в SceneManager
     SceneManager::Instance().AddModel(modelName, newParser);
     
     return true;
@@ -302,6 +308,29 @@ void Core::GetViewportClip(int& x, int& y, int& w, int& h) const {
 }
 
 void Core::GameLoop() {
+    std::thread inputThread([]() {
+        while (true) {
+            std::string input;
+            std::getline(std::cin, input);
+            
+            if (input == "1") {
+                Otlad1();
+            }
+            else if (input == "2") {
+                Otlad2();
+            }
+            else if (input == "3") {
+                Otlad3();
+            }
+            else if (input == "4") {
+                Otlad4();
+            }
+            else if (input == "0") {
+                OtladClear();
+            }
+        }
+    });
+    inputThread.detach();
     
     Application app;
     if (!app.createApplication()) return;
@@ -342,8 +371,9 @@ void Core::GameLoop() {
     GridConfig gridConf;
     gridConf.enabled = true;
     gridConf.infiniteGrid = true;
+    gridConf.showAxes = true;
     gridConf.gridSpacing = 20.0f;
-    gridConf.fadeDistance = 200.0f;
+    gridConf.fadeDistance = 500.0f;
     gridConf.yOffset = 0.0f;
     gridConf.lineColor[0] = 0.3f;
     gridConf.lineColor[1] = 0.3f;
@@ -351,6 +381,12 @@ void Core::GameLoop() {
     gridConf.centerLineColor[0] = 0.6f;
     gridConf.centerLineColor[1] = 0.6f;
     gridConf.centerLineColor[2] = 0.7f;
+    gridConf.axisXColor[0] = 1.0f;
+    gridConf.axisXColor[1] = 0.0f;
+    gridConf.axisXColor[2] = 0.0f;
+    gridConf.axisZColor[0] = 0.0f;
+    gridConf.axisZColor[1] = 1.0f;
+    gridConf.axisZColor[2] = 0.0f;
     gridConf.lineThickness = 1.0f;
     SecondRender::Instance().SetGridConfig(gridConf);
     
@@ -371,6 +407,9 @@ void Core::GameLoop() {
             }
             SecondRender::Instance().UpdateScreenSize(width, height);
             SecondRender::Instance().MarkTestQuadsDirty();
+            
+            auto& sm = SceneManager::Instance();
+            sm.UpdateCameraAspect((float)width / (float)height);
         } else if (currentAPI == RenderAPI::OPENGL) {
             glViewport(0, 0, width, height);
             if (g_uiManager) {
@@ -390,7 +429,7 @@ void Core::GameLoop() {
     SetWindowLongPtr(win32Window->getHWND(), GWLP_WNDPROC, (LONG_PTR)WndProc);
     
     Input input(app, g_uiManager);
-    input.EnableDebug(false);
+    g_input = &input;
     
     POINT lastMousePos; 
     GetCursorPos(&lastMousePos);
@@ -407,6 +446,16 @@ void Core::GameLoop() {
     } else {
         DisableViewportClip();
     }
+    
+    // Инициализация SceneManager и камеры
+    auto& sm = SceneManager::Instance();
+    if (sm.GetMainCameraID() == 0) {
+        sm.CreateCamera("MainCamera");
+    }
+    sm.SetCameraDistance(20.0f);
+    sm.SetCameraFov(60.0f);
+    sm.SetCameraTarget(glm::vec3(0.0f, 0.0f, 0.0f));
+    sm.UpdateCameraAspect((float)w / (float)h);
     
     while (!win32Window->shouldClose()) {
         QueryPerformanceCounter(&currentTime);
@@ -463,25 +512,33 @@ void Core::GameLoop() {
                 }
             }
             
+            // Обновляем камеру в SceneManager
+            sm.UpdateCameraAspect((float)cw / (float)ch);
+            sm.Update(deltaTime);
+            
+            // Получаем матрицы и позицию камеры
+            glm::mat4 viewMat = sm.GetViewMatrix();
+            glm::mat4 projMat = sm.GetProjectionMatrix();
+            glm::vec3 camPos = sm.GetCameraPosition();
+            
             if (currentAPI == RenderAPI::VULKAN && vulkan) {
+                ProcessOtladCommands(vulkan, g_uiManager);
                 
                 vulkan->beginFrame();
                 
-                // ПОЛУЧАЕМ МАТРИЦЫ КАМЕРЫ ОДИН РАЗ ДЛЯ ВСЕГО
-                glm::mat4 viewMat = app.getCamera().GetViewMatrix();
-                glm::vec3 camPos = app.getCamera().GetPosition();
-                float zoom = app.getCamera().GetZoom();
-                
-                // Для Vulkan рендера моделей
+                // Устанавливаем матрицы в Vulkan
                 vulkan->setViewMatrix(viewMat);
                 
-                glm::mat4 proj = glm::perspective(glm::radians(zoom), 
-                                         (float)cw/ch, 0.1f, 1000.0f);
-                vulkan->setProjectionMatrix(proj);
+                // Инвертируем Y для Vulkan
+                glm::mat4 projVulkan = projMat;
+                projVulkan[1][1] *= -1;
+                vulkan->setProjectionMatrix(projVulkan);
                 
+                // 1. Рендерим фон (background)
                 SecondRender::Instance().RenderBackground();
                 vulkan->renderBackground();
                 
+                // 2. Настраиваем viewport clipping для 3D viewport
                 if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                     SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
                                     currentView3D->getW(), currentView3D->getH());
@@ -492,22 +549,19 @@ void Core::GameLoop() {
                     vulkan->DisableViewportClip();
                 }
                 
+                // 3. Рендерим 3D модель
                 vulkan->renderScene();
                 
+                // 4. Рендерим грид (с отключенным clipping)
                 if (gridEnabled) {
-                    // Временно отключаем clip для грид
                     DisableViewportClip();
                     vulkan->DisableViewportClip();
                     
-                    // ИСПОЛЬЗУЕМ ТЕ ЖЕ САМЫЕ МАТРИЦЫ ДЛЯ ГРИД
-                    glm::mat4 projGrid = glm::perspective(glm::radians(zoom), 
-                                                 (float)cw/ch, 0.1f, 1000.0f);
-                    projGrid[1][1] *= -1;  // Инвертируем Y для грид
-                    
-                    SecondRender::Instance().SetCamera(viewMat, projGrid, camPos);
+                    // Передаем ТЕ ЖЕ МАТРИЦЫ, что и для модели
+                    SecondRender::Instance().SetCamera(viewMat, projMat, camPos);
                     SecondRender::Instance().RenderInfiniteGrid();
                     
-                    // Восстанавливаем clip
+                    // Возвращаем clipping
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                         SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
                                         currentView3D->getW(), currentView3D->getH());
@@ -516,10 +570,14 @@ void Core::GameLoop() {
                     }
                 }
                 
+                // 5. Отключаем clipping для UI
                 DisableViewportClip();
                 vulkan->DisableViewportClip();
+                
+                // 6. Рендерим UI
                 g_uiManager->renderStatic();
                 
+                // 7. Рендерим overlay (поверх всего)
                 SecondRender::Instance().RenderOverlay();
                 vulkan->renderOverlay();
                 
@@ -538,18 +596,15 @@ void Core::GameLoop() {
                               currentView3D->getW(), currentView3D->getH());
                 }
                 
-                // OpenGL не требует инверсии Y
+                // OpenGL рендер модели (если есть)
+                // ...
+                
                 if (gridEnabled) {
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                         glDisable(GL_SCISSOR_TEST);
                     }
                     
-                    glm::mat4 viewMat = app.getCamera().GetViewMatrix();
-                    glm::mat4 projOGL = glm::perspective(glm::radians(app.getCamera().GetZoom()), 
-                                                (float)cw/ch, 0.1f, 1000.0f);
-                    glm::vec3 camPos = app.getCamera().GetPosition();
-                    
-                    SecondRender::Instance().SetCamera(viewMat, projOGL, camPos);
+                    SecondRender::Instance().SetCamera(viewMat, projMat, camPos);
                     SecondRender::Instance().RenderInfiniteGrid();
                     
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
@@ -568,6 +623,7 @@ void Core::GameLoop() {
                 win32Window->swapBuffers();
             }
         }
+        
         lastMousePos = currentMousePos;
         if (deltaTime < 0.016f) Sleep(1);
     }
