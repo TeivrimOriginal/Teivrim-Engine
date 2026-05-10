@@ -1,3 +1,4 @@
+// SceneManager.h
 #ifndef SCENE_MANAGER_H
 #define SCENE_MANAGER_H
 
@@ -115,6 +116,7 @@ public:
     
     bool loaded = false;
     bool visible = true;
+    bool selected = false;
     ModelParser* parser = nullptr;
     std::string modelPath;
     uint32_t meshCount = 0;
@@ -147,8 +149,18 @@ public:
     void DestroyObject(const std::string& name);
     
     SceneObject* GetSceneObject(ObjectID id);
+    const SceneObject* GetSceneObject(ObjectID id) const;
     SceneObject* GetSceneObject(const std::string& name);
     const std::vector<SceneObject*>& GetAllObjects() const { return m_objectsOrdered; }
+    
+    // Выбор объекта
+    void SelectObject(ObjectID id);
+    void SelectObject(const std::string& name);
+    void DeselectObject();
+    SceneObject* GetSelectedObject();
+    const SceneObject* GetSelectedObject() const;
+    ObjectID GetSelectedObjectID() const { return m_selectedObjectID; }
+    bool IsObjectSelected(ObjectID id) const;
     
     void SetPosition(ObjectID id, const glm::vec3& pos);
     void SetRotation(ObjectID id, const glm::quat& rot);
@@ -207,6 +219,7 @@ private:
     std::map<ObjectID, CameraComponent> m_cameras;
     
     ObjectID m_mainCameraID = 0;
+    ObjectID m_selectedObjectID = 0;
     
     ObjectID m_nextID = 1;
     bool m_transformsDirty = true;

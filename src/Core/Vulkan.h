@@ -98,7 +98,8 @@ public:
     VkShaderModule getLineVertShader() const { return lineVertShader; }
     VkShaderModule getLineFragShader() const { return lineFragShader; }
     void setLineShaders(VkShaderModule vert, VkShaderModule frag) { lineVertShader = vert; lineFragShader = frag; }
-private:
+
+    private:
     VkShaderModule lineVertShader = VK_NULL_HANDLE;
     VkShaderModule lineFragShader = VK_NULL_HANDLE;
     struct VertexGPU {

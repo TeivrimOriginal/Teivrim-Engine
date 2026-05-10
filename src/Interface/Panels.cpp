@@ -2,7 +2,7 @@
 #include <sstream>
 
 Panel::Panel(const std::string& n, int _x, int _y, int _w, int _h, bool _3D)
-    : name(n), visible(true), collapsed(false), is3D(_3D), showTypeMenu(false), pathLabelIndex(-1) {
+    : name(n), visible(true), collapsed(false), is3D(_3D), showTypeMenu(false), pathLabelIndex(-1), hierarchyStartY(0) {
     r.x = _x; r.y = _y; r.w = _w; r.h = _h;
     r.update();
 }
@@ -56,11 +56,6 @@ bool Panel::onMenuBtn(int px, int py) const {
     if (!visible) return false;
     int cx = r.right - 80, cy = r.y + 5;
     return px >= cx && px <= cx + 12 && py >= cy && py <= cy + 12;
-}
-bool Panel::onTypeSwitchButton(int px, int py) const {
-    if (!visible) return false;
-    int bx = r.x + 5, by = r.y + 5;
-    return px >= bx && px <= bx + 12 && py >= by && py <= by + 12;
 }
 
 int Panel::getEdge(int px, int py, int s) const {
@@ -119,6 +114,9 @@ void Panel::render(RenderUI& render) {
         for (auto& lbl : labels) {
             render.drawText(r.x + lbl.x, r.y + lbl.y, lbl.text, lbl.r, lbl.g, lbl.b);
         }
+        
+        // Сохраняем Y позицию начала иерархии (после кнопок и меток)
+        hierarchyStartY = r.y + 130;
     }
 }
 
@@ -166,7 +164,7 @@ void PanelManager::registerCallback(const std::string& name, std::function<void(
 
 void PanelManager::update(int sw, int sh) {
     screenW = sw; screenH = sh;
-    int topH = 0, leftW = 220, rightW = 260, consoleH = 150;
+    int topH = 0, leftW = 220, rightW = 260, consoleH = 200;
     
     for (auto p : panels) {
         if (p->name == "TopBar") topH = p->getH();
@@ -393,49 +391,8 @@ void PanelManager::onMouseMove(int x, int y) {
             if (nw < 100) nw = 100;
             if (nh < 30) nh = 30;
             
-            int delta = 0;
-            if (dragEdge == 0) { delta = nw - dragW1; nx = dragging->getX() + (dragW1 - nw); }
-            else if (dragEdge == 1) { delta = nw - dragW1; }
-            else if (dragEdge == 2) { delta = nh - dragH1; ny = dragging->getY() + (dragH1 - nh); }
-            else if (dragEdge == 3) { delta = nh - dragH1; }
-            
             dragging->setPos(nx, ny);
             dragging->setSize(nw, nh);
-            
-            if (dragging->name == "TopBar" && dragEdge == 3) {
-                for (auto other : panels) {
-                    if (other == dragging || !other->visible) continue;
-                    int newY = other->getY() + delta;
-                    if (newY >= dragging->getH()) other->setPos(other->getX(), newY);
-                }
-            }
-            else if (dragging->name == "Asset Browser" && dragEdge == 3) {
-                int newH = dragging->getH();
-                if (newH >= 100 && newH <= 400) {
-                    dragging->setPos(dragging->getX(), screenH - newH);
-                }
-            }
-            else {
-                for (auto other : panels) {
-                    if (other == dragging || !other->visible) continue;
-                    if (dragEdge == 1 && abs(other->r.x - dragging->r.right) < 5) {
-                        int newW = other->getW() - dx, newX = other->getX() + dx;
-                        if (newW >= 100) { other->setPos(newX, other->getY()); other->setSize(newW, other->getH()); }
-                    }
-                    else if (dragEdge == 0 && abs(other->r.right - dragging->r.x) < 5) {
-                        int newW = other->getW() + dx;
-                        if (newW >= 100) other->setSize(newW, other->getH());
-                    }
-                    else if (dragEdge == 3 && abs(other->r.y - dragging->r.bottom) < 5) {
-                        int newH = other->getH() - dy, newY = other->getY() + dy;
-                        if (newH >= 50) { other->setPos(other->getX(), newY); other->setSize(other->getW(), newH); }
-                    }
-                    else if (dragEdge == 2 && abs(other->r.bottom - dragging->r.y) < 5) {
-                        int newH = other->getH() + dy;
-                        if (newH >= 50) other->setSize(other->getW(), newH);
-                    }
-                }
-            }
         }
         
         dragX = x; dragY = y;

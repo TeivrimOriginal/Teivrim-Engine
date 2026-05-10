@@ -376,30 +376,28 @@ std::vector<std::pair<glm::vec3, glm::vec3>> SecondRender::CalculateGridLines() 
     
     if (!gridConfig.infiniteGrid) return lines;
     
-    float spacing = gridConfig.gridSpacing;
+    float spacing = GetDynamicSpacing();
     float yOffset = gridConfig.yOffset;
     
-    // Мировые границы сетки (фиксированные, не зависят от камеры)
-    float worldMin = -500.0f;
-    float worldMax = 500.0f;
+    float distance = glm::length(currentCameraPos);
+    float worldSize = std::max(200.0f, distance * 1.5f);
+    float worldMin = -worldSize;
+    float worldMax = worldSize;
     
-    float minX = worldMin;
-    float maxX = worldMax;
-    float minZ = worldMin;
-    float maxZ = worldMax;
+    float minX = std::max(worldMin, -500.0f);
+    float maxX = std::min(worldMax, 500.0f);
+    float minZ = std::max(worldMin, -500.0f);
+    float maxZ = std::min(worldMax, 500.0f);
     
-    // Округляем до шага сетки
     minX = floor(minX / spacing) * spacing;
     maxX = ceil(maxX / spacing) * spacing;
     minZ = floor(minZ / spacing) * spacing;
     maxZ = ceil(maxZ / spacing) * spacing;
     
-    // Линии по X (вертикальные линии вдоль оси Z)
     for (float x = minX; x <= maxX + 0.1f; x += spacing) {
         lines.push_back({glm::vec3(x, yOffset, minZ), glm::vec3(x, yOffset, maxZ)});
     }
     
-    // Линии по Z (горизонтальные линии вдоль оси X)
     for (float z = minZ; z <= maxZ + 0.1f; z += spacing) {
         lines.push_back({glm::vec3(minX, yOffset, z), glm::vec3(maxX, yOffset, z)});
     }
@@ -756,4 +754,117 @@ void SecondRender::UpdateScreenSize(int width, int height) {
     testQuadsDirty = true;
     needBufferUpdate = true;
     needAxesUpdate = true;
+}
+float SecondRender::GetDynamicSpacing() {
+    float baseSpacing = 5.0f;
+    float distance = glm::length(currentCameraPos);
+    float zoomFactor = std::max(0.5f, std::min(10.0f, distance / 20.0f));
+    
+    if (zoomFactor < 1.0f) return baseSpacing * 0.5f;
+    if (zoomFactor < 2.0f) return baseSpacing;
+    if (zoomFactor < 4.0f) return baseSpacing * 2.0f;
+    if (zoomFactor < 8.0f) return baseSpacing * 4.0f;
+    return baseSpacing * 8.0f;
+}
+
+void SecondRender::SetZoomLevel(float zoom) {
+    currentZoom = zoom;
+    needBufferUpdate = true;
+}
+void SecondRender::RenderContour(ObjectID objectId, float thickness, float r, float g, float b) {
+    if (!vulkan || !gridConfig.enabled) return;
+    if (objectId == 0) return;
+    
+    contourThickness = thickness;
+    contourColor[0] = r;
+    contourColor[1] = g;
+    contourColor[2] = b;
+    currentContourObject = objectId;
+    
+    // Получаем объект из SceneManager
+    auto& sm = SceneManager::Instance();
+    SceneObject* obj = sm.GetSceneObject(objectId);
+    if (!obj || !obj->parser) return;
+    
+    // Получаем bounding box объекта
+    if (!obj->hasBoundingBox) {
+        obj->calculateBoundingBox();
+    }
+    
+    glm::vec3 min = obj->boundingBoxMin;
+    glm::vec3 max = obj->boundingBoxMax;
+    
+    // Создаем линии для рамки вокруг объекта (8 угловых точек, 12 линий)
+    std::vector<std::pair<glm::vec3, glm::vec3>> contourLines;
+    
+    // Нижняя грань (Y = min.y)
+    contourLines.push_back({glm::vec3(min.x, min.y, min.z), glm::vec3(max.x, min.y, min.z)});
+    contourLines.push_back({glm::vec3(max.x, min.y, min.z), glm::vec3(max.x, min.y, max.z)});
+    contourLines.push_back({glm::vec3(max.x, min.y, max.z), glm::vec3(min.x, min.y, max.z)});
+    contourLines.push_back({glm::vec3(min.x, min.y, max.z), glm::vec3(min.x, min.y, min.z)});
+    
+    // Верхняя грань (Y = max.y)
+    contourLines.push_back({glm::vec3(min.x, max.y, min.z), glm::vec3(max.x, max.y, min.z)});
+    contourLines.push_back({glm::vec3(max.x, max.y, min.z), glm::vec3(max.x, max.y, max.z)});
+    contourLines.push_back({glm::vec3(max.x, max.y, max.z), glm::vec3(min.x, max.y, max.z)});
+    contourLines.push_back({glm::vec3(min.x, max.y, max.z), glm::vec3(min.x, max.y, min.z)});
+    
+    // Вертикальные линии (соединяем нижнюю и верхнюю грани)
+    contourLines.push_back({glm::vec3(min.x, min.y, min.z), glm::vec3(min.x, max.y, min.z)});
+    contourLines.push_back({glm::vec3(max.x, min.y, min.z), glm::vec3(max.x, max.y, min.z)});
+    contourLines.push_back({glm::vec3(max.x, min.y, max.z), glm::vec3(max.x, max.y, max.z)});
+    contourLines.push_back({glm::vec3(min.x, min.y, max.z), glm::vec3(min.x, max.y, max.z)});
+    
+    // Применяем трансформацию объекта к вершинам рамки
+    glm::mat4 worldMat = sm.GetWorldMatrix(objectId);
+    
+    std::vector<LineVertex> vertices;
+    for (const auto& line : contourLines) {
+        glm::vec4 p1 = worldMat * glm::vec4(line.first, 1.0f);
+        glm::vec4 p2 = worldMat * glm::vec4(line.second, 1.0f);
+        
+        vertices.push_back({glm::vec2(p1.x, p1.z), glm::vec3(r, g, b)});
+        vertices.push_back({glm::vec2(p2.x, p2.z), glm::vec3(r, g, b)});
+    }
+    
+    if (vertices.empty()) return;
+    
+    // Рисуем контур
+    VkCommandBuffer cmdBuffer = vulkan->getCurrentCommandBuffer();
+    if (cmdBuffer == VK_NULL_HANDLE) return;
+    
+    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, linePipeline);
+    
+    VkDeviceSize bufferSize = vertices.size() * sizeof(LineVertex);
+    
+    // Создаем временный буфер для контура
+    VkBuffer tempBuffer;
+    VkDeviceMemory tempMemory;
+    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    vkCreateBuffer(vulkan->getDevice(), &bufferInfo, nullptr, &tempBuffer);
+    
+    VkMemoryRequirements memReq;
+    vkGetBufferMemoryRequirements(vulkan->getDevice(), tempBuffer, &memReq);
+    VkMemoryAllocateInfo allocInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocInfo.allocationSize = memReq.size;
+    allocInfo.memoryTypeIndex = vulkan->findMemoryType(memReq.memoryTypeBits, 
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    vkAllocateMemory(vulkan->getDevice(), &allocInfo, nullptr, &tempMemory);
+    vkBindBufferMemory(vulkan->getDevice(), tempBuffer, tempMemory, 0);
+    
+    void* data;
+    vkMapMemory(vulkan->getDevice(), tempMemory, 0, bufferSize, 0, &data);
+    memcpy(data, vertices.data(), bufferSize);
+    vkUnmapMemory(vulkan->getDevice(), tempMemory);
+    
+    vkCmdSetLineWidth(cmdBuffer, thickness);
+    
+    VkDeviceSize offsets = 0;
+    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &tempBuffer, &offsets);
+    vkCmdDraw(cmdBuffer, (uint32_t)vertices.size(), 1, 0, 0);
+    
+    vkDestroyBuffer(vulkan->getDevice(), tempBuffer, nullptr);
+    vkFreeMemory(vulkan->getDevice(), tempMemory, nullptr);
 }

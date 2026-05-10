@@ -2,17 +2,25 @@
 #ifndef SECOND_RENDER_H
 #define SECOND_RENDER_H
 
-#include <windows.h>
-#include <vector>
-#include <string>
-#include <iostream>
-#include <glm/glm.hpp>
-#include <vulkan/vulkan.h>
+// SecondRender.cpp
+#include "SecondRender.h"
+#include "Vulkan.h"
+#include "Render/Win32/RenderUI.h"
+#include "../Interface/InterfaceManager.h"
+#include "../Interface/Panels.h"
+#include "SecondComplexity/Scene/SceneManager.h"
+#include <glm/gtc/matrix_transform.hpp>
+#include <algorithm>
+#include <cmath>
+#include <float.h>
 
 class Vulkan;
 class RenderUI;
 class InterfaceManager;
 struct VulkanTexture;
+
+// Добавьте определение ObjectID
+typedef unsigned int ObjectID;
 
 struct GridConfig {
     int cellSize;
@@ -80,6 +88,14 @@ public:
     
     bool IsInitialized() const { return initialized; }
     
+    // Контур для выбранного объекта
+    void RenderContour(ObjectID objectId, float thickness = 3.0f, 
+                       float r = 1.0f, float g = 0.5f, float b = 0.0f);
+    void SetContourEnabled(bool enabled) { contourEnabled = enabled; }
+    
+    void SetZoomLevel(float zoom);
+    float GetZoomLevel() const { return currentZoom; }
+    
 private:
     SecondRender();
     ~SecondRender();
@@ -88,6 +104,7 @@ private:
     bool CreateLinePipeline();
     void UpdateGridBuffer();
     void UpdateAxesBuffer();
+    float GetDynamicSpacing();
     
     Vulkan* vulkan;
     RenderUI* renderUI;
@@ -123,6 +140,12 @@ private:
     VkDeviceMemory axesVertexBufferMemory;
     uint32_t lineVertexCount;
     uint32_t axesVertexCount;
+    
+    float currentZoom = 1.0f;
+    bool contourEnabled = true;
+    float contourThickness = 3.0f;
+    float contourColor[3] = {1.0f, 0.5f, 0.0f};
+    ObjectID currentContourObject = 0;
     
     void RebuildTestQuadsIfNeeded();
     std::vector<std::pair<glm::vec3, glm::vec3>> CalculateGridLines();

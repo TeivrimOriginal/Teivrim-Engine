@@ -3,6 +3,7 @@
 #include "../Core/core.h"
 #include "../Core/Vulkan.h"
 #include "../Core/SecondComplexity/Asset/AssetManager.h"
+#include "../Core/SecondComplexity/Scene/SceneManager.h"
 #include "BufferLayer.h"
 #include "../Core/SecondComplexity/Icon/IconManager.h"
 #include <iostream>
@@ -29,15 +30,6 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
     });
     panels->registerCallback("Stop", [this]() { 
         if (core) SwapFlag(*core); 
-    });
-    panels->registerCallback("Create Empty", []() { 
-        std::cout << "Create Empty" << std::endl; 
-    });
-    panels->registerCallback("Create Cube", []() { 
-        std::cout << "Create Cube" << std::endl; 
-    });
-    panels->registerCallback("Create Sphere", []() { 
-        std::cout << "Create Sphere" << std::endl; 
     });
     panels->registerCallback("Apply", []() { 
         std::cout << "Apply" << std::endl; 
@@ -70,17 +62,11 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
     
     auto hierarchy = panels->getPanel("Hierarchy");
     if (hierarchy) {
-        hierarchy->addButton("Create Empty", 10, 35, 100, 24, 0.4f, 0.4f, 0.5f, []() { 
-            std::cout << "Create Empty" << std::endl; 
-        });
-        hierarchy->addButton("Create Cube", 10, 65, 100, 24, 0.4f, 0.4f, 0.5f, []() { 
-            std::cout << "Create Cube" << std::endl; 
-        });
-        hierarchy->addButton("Create Sphere", 10, 95, 100, 24, 0.4f, 0.4f, 0.5f, []() { 
-            std::cout << "Create Sphere" << std::endl; 
-        });
-        hierarchy->addLabel("Objects: 0", 10, 130, 12, false, 0.7f, 0.7f, 0.7f);
-        hierarchy->addLabel("Selected: None", 10, 150, 12, false, 0.7f, 0.7f, 0.7f);
+        // Убираем кнопки создания куба и т.д.
+        // Добавляем только метки
+        hierarchy->addLabel("Scene Objects:", 10, 130, 12, true, 0.8f, 0.8f, 0.9f);
+        hierarchy->addLabel("Click object to select", 10, 150, 10, false, 0.5f, 0.5f, 0.5f);
+        hierarchy->addLabel("Selected: None", 10, 170, 11, false, 0.7f, 0.5f, 0.3f);
     }
     
     auto inspector = panels->getPanel("Inspector");
@@ -94,6 +80,7 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
         inspector->addLabel("Position: 0,0,0", 10, 70, 12, false, 0.8f, 0.8f, 0.8f);
         inspector->addLabel("Rotation: 0,0,0", 10, 90, 12, false, 0.8f, 0.8f, 0.8f);
         inspector->addLabel("Scale: 1,1,1", 10, 110, 12, false, 0.8f, 0.8f, 0.8f);
+        inspector->addLabel("Type: None", 10, 130, 12, false, 0.7f, 0.7f, 0.9f);
     }
     
     auto view3D = panels->getPanel("3D Viewport");
@@ -256,6 +243,74 @@ void InterfaceManager::renderStatic() {
             }
         }
         
+        // Hierarchy panel - отображение иерархии сцены с возможностью выбора
+        Panel* hierarchy = panels->getPanel("Hierarchy");
+        if (hierarchy && hierarchy->visible && !hierarchy->collapsed) {
+            auto& sm = SceneManager::Instance();
+            auto objects = sm.GetAllObjects();
+            
+            int startY = hierarchy->getY() + 195;
+            int xOffset = hierarchy->getX() + 10;
+            int lineHeight = 18;
+            
+            // Обновляем метку выбранного объекта
+            SceneObject* selected = sm.GetSelectedObject();
+            if (selected) {
+                for (auto& lbl : hierarchy->labels) {
+                    if (lbl.text.find("Selected:") == 0) {
+                        lbl.text = "Selected: " + selected->name;
+                        break;
+                    }
+                }
+            } else {
+                for (auto& lbl : hierarchy->labels) {
+                    if (lbl.text.find("Selected:") == 0) {
+                        lbl.text = "Selected: None";
+                        break;
+                    }
+                }
+            }
+            
+            int maxItems = (hierarchy->getH() - (startY - hierarchy->getY()) - 20) / lineHeight;
+            if (maxItems < 1) maxItems = 1;
+            
+            for (size_t i = 0; i < objects.size() && i < (size_t)maxItems; i++) {
+                auto obj = objects[i];
+                if (!obj) continue;
+                
+                int yPos = startY + i * lineHeight;
+                
+                std::string displayName = obj->name;
+                if (obj->type == ObjectType::CAMERA) displayName += " [CAM]";
+                if (obj->type == ObjectType::MODEL) displayName += " [M]";
+                
+                if (displayName.length() > 25) {
+                    displayName = displayName.substr(0, 22) + "...";
+                }
+                
+                // Выделение выбранного объекта оранжевым
+                float colorR, colorG, colorB;
+                if (obj->selected) {
+                    colorR = 1.0f; colorG = 0.5f; colorB = 0.0f; // Оранжевый для выбранного
+                    // Рисуем фон для выбранного
+                    renderer.drawQuad(xOffset, yPos - 2, 
+                                     hierarchy->getX() + hierarchy->getW() - 10, 
+                                     yPos + 14, 
+                                     0.3f, 0.2f, 0.1f);
+                } else if (obj->visible) {
+                    colorR = 0.7f; colorG = 0.8f; colorB = 0.7f;
+                } else {
+                    colorR = 0.4f; colorG = 0.4f; colorB = 0.4f;
+                }
+                
+                renderer.drawText(xOffset + 10, yPos, displayName, colorR, colorG, colorB);
+            }
+            
+            char objCount[64];
+            sprintf_s(objCount, "Total: %zu objects", objects.size());
+            renderer.drawText(xOffset, startY + maxItems * lineHeight + 5, objCount, 0.5f, 0.5f, 0.5f);
+        }
+        
         renderer.drawText(10, d.height - 25, "3D Viewer", 1.0f, 1.0f, 1.0f);
         if (core && core->modelLoaded) {
             std::string s = "Model: " + core->modelPath.substr(core->modelPath.find_last_of("/\\") + 1);
@@ -301,6 +356,74 @@ void InterfaceManager::renderStatic() {
                     BufferLayer::Instance().VivodAsset(renderer, contentX, contentY, contentW, contentH, this);
                 }
             }
+        }
+        
+        // Hierarchy panel - отображение иерархии сцены с возможностью выбора
+        Panel* hierarchy = panels->getPanel("Hierarchy");
+        if (hierarchy && hierarchy->visible && !hierarchy->collapsed) {
+            auto& sm = SceneManager::Instance();
+            auto objects = sm.GetAllObjects();
+            
+            int startY = hierarchy->getY() + 195;
+            int xOffset = hierarchy->getX() + 10;
+            int lineHeight = 18;
+            
+            // Обновляем метку выбранного объекта
+            SceneObject* selected = sm.GetSelectedObject();
+            if (selected) {
+                for (auto& lbl : hierarchy->labels) {
+                    if (lbl.text.find("Selected:") == 0) {
+                        lbl.text = "Selected: " + selected->name;
+                        break;
+                    }
+                }
+            } else {
+                for (auto& lbl : hierarchy->labels) {
+                    if (lbl.text.find("Selected:") == 0) {
+                        lbl.text = "Selected: None";
+                        break;
+                    }
+                }
+            }
+            
+            int maxItems = (hierarchy->getH() - (startY - hierarchy->getY()) - 20) / lineHeight;
+            if (maxItems < 1) maxItems = 1;
+            
+            for (size_t i = 0; i < objects.size() && i < (size_t)maxItems; i++) {
+                auto obj = objects[i];
+                if (!obj) continue;
+                
+                int yPos = startY + i * lineHeight;
+                
+                std::string displayName = obj->name;
+                if (obj->type == ObjectType::CAMERA) displayName += " [CAM]";
+                if (obj->type == ObjectType::MODEL) displayName += " [M]";
+                
+                if (displayName.length() > 25) {
+                    displayName = displayName.substr(0, 22) + "...";
+                }
+                
+                // Выделение выбранного объекта оранжевым
+                float colorR, colorG, colorB;
+                if (obj->selected) {
+                    colorR = 1.0f; colorG = 0.5f; colorB = 0.0f; // Оранжевый для выбранного
+                    // Рисуем фон для выбранного
+                    renderer.drawQuad(xOffset, yPos - 2, 
+                                     hierarchy->getX() + hierarchy->getW() - 10, 
+                                     yPos + 14, 
+                                     0.3f, 0.2f, 0.1f);
+                } else if (obj->visible) {
+                    colorR = 0.7f; colorG = 0.8f; colorB = 0.7f;
+                } else {
+                    colorR = 0.4f; colorG = 0.4f; colorB = 0.4f;
+                }
+                
+                renderer.drawText(xOffset + 10, yPos, displayName, colorR, colorG, colorB);
+            }
+            
+            char objCount[64];
+            sprintf_s(objCount, "Total: %zu objects", objects.size());
+            renderer.drawText(xOffset, startY + maxItems * lineHeight + 5, objCount, 0.5f, 0.5f, 0.5f);
         }
         
         if (testTexture && testTexture->valid) {
@@ -364,6 +487,38 @@ void InterfaceManager::handleRightClick(int x, int y) {
 
 void InterfaceManager::handleClick(int x, int y) {
     isClick = true;
+    
+    // Проверяем клик в панели Hierarchy для выбора объекта
+    Panel* hierarchy = panels->getPanel("Hierarchy");
+    if (hierarchy && hierarchy->visible && !hierarchy->collapsed) {
+        int startY = hierarchy->getY() + 195;
+        int xOffset = hierarchy->getX() + 10;
+        int lineHeight = 18;
+        
+        auto& sm = SceneManager::Instance();
+        auto objects = sm.GetAllObjects();
+        
+        int maxItems = objects.size();
+        
+        for (size_t i = 0; i < objects.size() && i < (size_t)maxItems; i++) {
+            int yPos = startY + i * lineHeight;
+            
+            // Проверяем попадание по строке объекта
+            if (x >= xOffset && x <= hierarchy->getX() + hierarchy->getW() - 10 &&
+                y >= yPos - 2 && y <= yPos + 14) {
+                
+                SceneObject* clicked = objects[i];
+                if (clicked) {
+                    // Выбираем объект
+                    sm.SelectObject(clicked->id);
+                    std::cout << "[UI] Selected object: " << clicked->name << std::endl;
+                } else {
+                    sm.DeselectObject();
+                }
+                return;
+            }
+        }
+    }
     
     Panel* assetPanel = panels->getPanel("Asset Browser");
     if (assetPanel && assetPanel->visible && !assetPanel->collapsed) {

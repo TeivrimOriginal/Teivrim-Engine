@@ -53,7 +53,6 @@ public:
     Panel(const std::string& n, int x, int y, int w, int h, bool _3D = false);
     void addButton(const std::string& text, int x, int y, int w, int h, float cr, float cg, float cb, std::function<void()> callback);
     void addLabel(const std::string& text, int x, int y, int fontSize, bool bold, float cr, float cg, float cb);
-    void addTypeSwitchButton();
     void setPos(int x, int y);
     void setSize(int w, int h);
     void setVisible(bool v);
@@ -64,7 +63,6 @@ public:
     bool onCollapseBtn(int px, int py) const;
     bool onCloseBtn(int px, int py) const;
     bool onMenuBtn(int px, int py) const;
-    bool onTypeSwitchButton(int px, int py) const;
     bool onClickButton(int px, int py);
     int getEdge(int px, int py, int s=10) const;
     
@@ -75,6 +73,9 @@ public:
     
     void render(RenderUI& render);
     void setCallback(const std::string& btnName, std::function<void()> cb);
+    
+    // Для отображения иерархии
+    int hierarchyStartY = 0;
 };
 
 class PanelManager {
@@ -95,7 +96,6 @@ private:
     std::map<std::string, std::function<void()>> globalCallbacks;
     
     void closeMenu();
-    void loadUIFromJSON(const std::string& filename);
     
 public:
     PanelManager();
@@ -115,7 +115,6 @@ public:
     
     void saveLayout(const std::string& filename);
     void loadLayout(const std::string& filename);
-    void loadConfig(const std::string& filename);
     
     void registerCallback(const std::string& name, std::function<void()> cb);
     

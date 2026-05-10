@@ -1,3 +1,4 @@
+// SceneManager.cpp
 #define GLM_ENABLE_EXPERIMENTAL
 #define GLM_FORCE_RADIANS
 
@@ -175,11 +176,16 @@ void SceneManager::DestroyObject(ObjectID id) {
     
     m_nameToID.erase(it->second->name);
     m_cameras.erase(id);
-    m_objects.erase(it);
+    
+    if (m_selectedObjectID == id) {
+        DeselectObject();
+    }
     
     if (m_mainCameraID == id) {
         m_mainCameraID = 0;
     }
+    
+    m_objects.erase(it);
     
     std::cout << "[SceneManager] Destroyed object ID: " << id << std::endl;
 }
@@ -196,9 +202,64 @@ SceneObject* SceneManager::GetSceneObject(ObjectID id) {
     return (it != m_objects.end()) ? it->second.get() : nullptr;
 }
 
+const SceneObject* SceneManager::GetSceneObject(ObjectID id) const {
+    auto it = m_objects.find(id);
+    return (it != m_objects.end()) ? it->second.get() : nullptr;
+}
+
 SceneObject* SceneManager::GetSceneObject(const std::string& name) {
     auto it = m_nameToID.find(name);
     return (it != m_nameToID.end()) ? GetSceneObject(it->second) : nullptr;
+}
+
+// Выбор объекта
+void SceneManager::SelectObject(ObjectID id) {
+    // Снимаем выделение с предыдущего
+    if (m_selectedObjectID != 0) {
+        SceneObject* prev = GetSceneObject(m_selectedObjectID);
+        if (prev) {
+            prev->selected = false;
+        }
+    }
+    
+    m_selectedObjectID = id;
+    
+    SceneObject* obj = GetSceneObject(id);
+    if (obj) {
+        obj->selected = true;
+        std::cout << "[SceneManager] Selected object: " << obj->name << " (ID: " << id << ")" << std::endl;
+    }
+}
+
+void SceneManager::SelectObject(const std::string& name) {
+    auto it = m_nameToID.find(name);
+    if (it != m_nameToID.end()) {
+        SelectObject(it->second);
+    }
+}
+
+void SceneManager::DeselectObject() {
+    if (m_selectedObjectID != 0) {
+        SceneObject* prev = GetSceneObject(m_selectedObjectID);
+        if (prev) {
+            prev->selected = false;
+        }
+    }
+    m_selectedObjectID = 0;
+    std::cout << "[SceneManager] Deselected object" << std::endl;
+}
+
+SceneObject* SceneManager::GetSelectedObject() {
+    return GetSceneObject(m_selectedObjectID);
+}
+
+const SceneObject* SceneManager::GetSelectedObject() const {
+    auto it = m_objects.find(m_selectedObjectID);
+    return (it != m_objects.end()) ? it->second.get() : nullptr;
+}
+
+bool SceneManager::IsObjectSelected(ObjectID id) const {
+    return m_selectedObjectID == id;
 }
 
 void SceneManager::SetPosition(ObjectID id, const glm::vec3& pos) {
@@ -466,6 +527,7 @@ void SceneManager::ClearScene() {
     m_nameToID.clear();
     m_cameras.clear();
     m_mainCameraID = 0;
+    m_selectedObjectID = 0;
     m_nextID = 1;
     m_transformsDirty = true;
     
@@ -481,6 +543,7 @@ void SceneManager::PrintSceneHierarchy() {
             std::cout << obj->name << " (ID: " << obj->id;
             if (obj->type == ObjectType::CAMERA) std::cout << ", CAMERA";
             if (obj->type == ObjectType::MODEL) std::cout << ", MODEL";
+            if (obj->selected) std::cout << ", SELECTED";
             std::cout << ")" << std::endl;
             std::cout << "  Position: (" << obj->localTransform.position.x << ", " 
                       << obj->localTransform.position.y << ", " << obj->localTransform.position.z << ")" << std::endl;
@@ -491,6 +554,13 @@ void SceneManager::PrintSceneHierarchy() {
                     std::cout << "  └─ " << child->name << " (ID: " << child->id << ")" << std::endl;
                 }
             }
+        }
+    }
+    
+    if (m_selectedObjectID != 0) {
+        const SceneObject* selected = GetSelectedObject();
+        if (selected) {
+            std::cout << "\nSelected: " << selected->name << std::endl;
         }
     }
     

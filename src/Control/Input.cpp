@@ -9,6 +9,7 @@ Input::Input(Application& app, InterfaceManager* interf)
       mouseCaptured(false), rightMouseDown(false), lastX(0), lastY(0),
       firstMouse(true), mouseSensitivityScale(1.0f), debugEnabled(true) {
     for (int i = 0; i < 6; i++) keys[i] = false;
+    std::cout << "[Input] Initialized" << std::endl;
 }
 
 void Input::SetMouseCapture(bool capture) {
@@ -38,9 +39,11 @@ void Input::SetMouseCapture(bool capture) {
         lastX = (float)center.x;
         lastY = (float)center.y;
         firstMouse = true;
+        std::cout << "[Input] Mouse captured" << std::endl;
     } else {
         ShowCursor(TRUE);
         ReleaseCapture();
+        std::cout << "[Input] Mouse released" << std::endl;
     }
 }
 
@@ -68,10 +71,32 @@ void Input::UpdateMouseCapture(HWND hwnd) {
     } else {
         rightMouseDown = false;
     }
+    
+    if (mouseCaptured) {
+        RECT rect;
+        GetClientRect(hwnd, &rect);
+        POINT center;
+        center.x = (rect.left + rect.right) / 2;
+        center.y = (rect.top + rect.bottom) / 2;
+        ClientToScreen(hwnd, &center);
+        
+        POINT currentPos;
+        GetCursorPos(&currentPos);
+        
+        if (currentPos.x != center.x || currentPos.y != center.y) {
+            float xoffset = (float)(currentPos.x - center.x);
+            float yoffset = (float)(currentPos.y - center.y);
+            camera.ProcessMouseMovement(xoffset, yoffset);
+            SetCursorPos(center.x, center.y);
+            lastX = (float)center.x;
+            lastY = (float)center.y;
+        }
+    }
 }
 
 void Input::UpdateKeyboardMovement(float deltaTime, HWND hwnd) {
-    if (!mouseCaptured) return;
+    HWND foreground = GetForegroundWindow();
+    if (foreground != hwnd) return;
     
     bool w = (GetAsyncKeyState('W') & 0x8000) != 0;
     bool s = (GetAsyncKeyState('S') & 0x8000) != 0;
@@ -87,6 +112,7 @@ void Input::UpdateKeyboardMovement(float deltaTime, HWND hwnd) {
     if (s) camera.ProcessKeyboard(BACKWARD, deltaTime);
     if (a) camera.ProcessKeyboard(LEFT, deltaTime);
     if (d) camera.ProcessKeyboard(RIGHT, deltaTime);
+    // Space - вверх, Ctrl - вниз (как и было, но убедимся)
     if (space) camera.ProcessKeyboard(UP, deltaTime);
     if (ctrl) camera.ProcessKeyboard(DOWN, deltaTime);
     
@@ -98,9 +124,8 @@ void Input::UpdateKeyboardMovement(float deltaTime, HWND hwnd) {
     if (GetAsyncKeyState('R') & 0x8000) {
         if (!rPressed) {
             rPressed = true;
-            auto& sm = SceneManager::Instance();
-            sm.ResetCamera();
             camera.ResetCamera();
+            std::cout << "[Input] Camera reset" << std::endl;
         }
     } else { 
         rPressed = false; 
@@ -113,22 +138,7 @@ void Input::processInputWin32(float deltaTime, HWND hwnd) {
 }
 
 void Input::processMouseWin32(float xpos, float ypos) {
-    if (!mouseCaptured) { firstMouse = true; return; }
-    
-    if (firstMouse) { lastX = xpos; lastY = ypos; firstMouse = false; }
-    
-    float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos;
-    xoffset *= camera.GetMouseSensitivity() * mouseSensitivityScale;
-    yoffset *= camera.GetMouseSensitivity() * mouseSensitivityScale;
-    
-    camera.ProcessMouseMovement(xoffset, yoffset, true);
-    
-    auto& sm = SceneManager::Instance();
-    sm.RotateCamera(xoffset, yoffset);
-    
-    lastX = xpos;
-    lastY = ypos;
+    // Не используется - центрирование мыши в UpdateMouseCapture
 }
 
 void Input::processMouseWheel(int delta, HWND hwnd) {
@@ -146,18 +156,15 @@ void Input::processMouseWheel(int delta, HWND hwnd) {
                              mousePos.y >= viewY && mousePos.y <= viewY + view3D->getH());
         
         if (isInViewport) {
-            auto& sm = SceneManager::Instance();
-            float zoomDelta = (float)delta / 120.0f;
-            sm.ZoomCamera(zoomDelta);
+            float yoffset = (float)delta / 120.0f;
+            camera.ProcessMouseScroll(yoffset);
         }
     }
 }
 
-void Input::Update(float deltaTime) { 
-    camera.UpdateSmoothRotation(deltaTime); 
-}
+void Input::Update(float deltaTime) { }
 
-void Input::processInput(float deltaTime) {}
+void Input::processInput(float deltaTime) { }
 
 void Input::EnableDebug(bool enable) { 
     debugEnabled = enable; 

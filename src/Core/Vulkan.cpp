@@ -1639,11 +1639,11 @@ float Vulkan::getTextWidth(const std::string& text) {
     }
     return width;
 }
-
 void Vulkan::drawText(int x, int y, const std::string& text, float r, float g, float b) {
     if (!fontInitialized) return;
     
     float curX = (float)x;
+    // Исправлено: Y теперь правильно выравнивается (было +4, убрал)
     float curY = (float)y;
     glm::vec3 color(r, g, b);
     
@@ -1803,6 +1803,7 @@ void Vulkan::renderUIText() {
 
 void Vulkan::beginFrame() {
     if (!hwnd || !IsWindow(hwnd)) return;
+    if (!initialized) return;
     
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     
@@ -1814,12 +1815,19 @@ void Vulkan::beginFrame() {
         return;
     }
     
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+        return;
+    }
+    
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo);
+    
+    if (vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo) != VK_SUCCESS) {
+        return;
+    }
     
     VkRenderPassBeginInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp.renderPass = renderPass;

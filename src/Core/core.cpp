@@ -12,6 +12,7 @@
 #include "SecondComplexity/Icon/IconManager.h"
 #include "Otlad.h"
 #include "SecondRender.h"
+#include "PublicAPI.h"
 #include <iostream>
 #include <string>
 #include <thread>
@@ -103,8 +104,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_MOUSEWHEEL: {
             int delta = GET_WHEEL_DELTA_WPARAM(wParam);
             if (g_input) g_input->processMouseWheel(delta, hwnd);
-            SceneManager::Instance().ZoomCamera((float)delta / 120.0f);
-            return 0;
+            break;
         }
         
         case WM_SIZE: {
@@ -393,7 +393,7 @@ void Core::GameLoop() {
     win32Window->onResize = [this](int width, int height) {
         if (width <= 0 || height <= 0) return;
         
-        if (currentAPI == RenderAPI::VULKAN && vulkan) {
+        if (currentAPI == RenderAPI::VULKAN && vulkan && vulkan->isInitialized()) {
             vulkan->recreateSwapchain();
             vulkan->setup2D(width, height);
             if (g_uiManager) {
@@ -457,6 +457,13 @@ void Core::GameLoop() {
     sm.SetCameraTarget(glm::vec3(0.0f, 0.0f, 0.0f));
     sm.UpdateCameraAspect((float)w / (float)h);
     
+    // Инициализация PublicAPI
+    if (!PublicAPI::Initialize()) {
+        std::cerr << "[ERROR] PublicAPI initialization failed!" << std::endl;
+    } else {
+        std::cout << "[INFO] PublicAPI initialized successfully!" << std::endl;
+    }
+    
     while (!win32Window->shouldClose()) {
         QueryPerformanceCounter(&currentTime);
         float deltaTime = (float)(currentTime.QuadPart - lastTime.QuadPart) / freq.QuadPart;
@@ -512,56 +519,49 @@ void Core::GameLoop() {
                 }
             }
             
-            // Обновляем камеру в SceneManager
+            // Получаем матрицы и позицию камеры из Camera класса
+            glm::mat4 viewMat = app.getCamera().GetViewMatrix();
+            glm::mat4 projMat = glm::perspective(glm::radians(app.getCamera().GetZoom()), 
+                                                  (float)cw / (float)ch, 0.1f, 1000.0f);
+            glm::vec3 camPos = app.getCamera().GetPosition();
+            
+            // Обновляем SceneManager для синхронизации
             sm.UpdateCameraAspect((float)cw / (float)ch);
-            sm.Update(deltaTime);
             
-            // Получаем матрицы и позицию камеры
-            glm::mat4 viewMat = sm.GetViewMatrix();
-            glm::mat4 projMat = sm.GetProjectionMatrix();
-            glm::vec3 camPos = sm.GetCameraPosition();
-            
+            // В Vulkan блоке - уберите дублирование
             if (currentAPI == RenderAPI::VULKAN && vulkan) {
                 ProcessOtladCommands(vulkan, g_uiManager);
                 
                 vulkan->beginFrame();
                 
-                // Устанавливаем матрицы в Vulkan
                 vulkan->setViewMatrix(viewMat);
-                
-                // Инвертируем Y для Vulkan
                 glm::mat4 projVulkan = projMat;
                 projVulkan[1][1] *= -1;
                 vulkan->setProjectionMatrix(projVulkan);
                 
-                // 1. Рендерим фон (background)
-                SecondRender::Instance().RenderBackground();
-                vulkan->renderBackground();
+                // НЕ ВЫЗЫВАЙТЕ ЭТИ ДВЕ СТРОКИ, ОНИ СОЗДАЮТ МИГАНИЕ:
+                // SecondRender::Instance().RenderBackground();
+                // vulkan->renderBackground();
                 
-                // 2. Настраиваем viewport clipping для 3D viewport
+                // Настраиваем viewport clipping для 3D viewport
                 if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                     SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
                                     currentView3D->getW(), currentView3D->getH());
                     vulkan->SetViewportClip(currentView3D->getX(), currentView3D->getY(),
                                             currentView3D->getW(), currentView3D->getH());
-                } else {
-                    DisableViewportClip();
-                    vulkan->DisableViewportClip();
                 }
                 
-                // 3. Рендерим 3D модель
+                // Рендерим 3D модель
                 vulkan->renderScene();
                 
-                // 4. Рендерим грид (с отключенным clipping)
+                // Рендерим грид
                 if (gridEnabled) {
                     DisableViewportClip();
                     vulkan->DisableViewportClip();
-                    
-                    // Передаем ТЕ ЖЕ МАТРИЦЫ, что и для модели
                     SecondRender::Instance().SetCamera(viewMat, projMat, camPos);
+                    SecondRender::Instance().SetZoomLevel(glm::length(camPos) / 20.0f);
                     SecondRender::Instance().RenderInfiniteGrid();
                     
-                    // Возвращаем clipping
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                         SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
                                         currentView3D->getW(), currentView3D->getH());
@@ -570,14 +570,14 @@ void Core::GameLoop() {
                     }
                 }
                 
-                // 5. Отключаем clipping для UI
+                // Отключаем clipping для UI
                 DisableViewportClip();
                 vulkan->DisableViewportClip();
                 
-                // 6. Рендерим UI
+                // Рендерим UI
                 g_uiManager->renderStatic();
                 
-                // 7. Рендерим overlay (поверх всего)
+                // Overlay
                 SecondRender::Instance().RenderOverlay();
                 vulkan->renderOverlay();
                 
@@ -596,8 +596,10 @@ void Core::GameLoop() {
                               currentView3D->getW(), currentView3D->getH());
                 }
                 
-                // OpenGL рендер модели (если есть)
-                // ...
+                // OpenGL рендер модели
+                if (modelLoaded && shaderProgram) {
+                    // OpenGL rendering code here
+                }
                 
                 if (gridEnabled) {
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
@@ -605,6 +607,7 @@ void Core::GameLoop() {
                     }
                     
                     SecondRender::Instance().SetCamera(viewMat, projMat, camPos);
+                    SecondRender::Instance().SetZoomLevel(glm::length(camPos) / 20.0f);
                     SecondRender::Instance().RenderInfiniteGrid();
                     
                     if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
