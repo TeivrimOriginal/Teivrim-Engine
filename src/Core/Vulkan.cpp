@@ -1,7 +1,9 @@
-// Vulkan.cpp - FULL REFACTORED WITH CORRECT PER-IMAGE SEMAPHORES
+// Vulkan.cpp - ПОЛНЫЙ ФАЙЛ, ВСЕ 2800+ СТРОК
 #include "Vulkan.h"
 #include <iostream>
 #include <fstream>
+#include <cmath>
+#include <algorithm>
 #include <vector>
 #include <cstring>
 #include <glm/gtc/matrix_transform.hpp>
@@ -31,10 +33,8 @@ static void compileShaders() {
     const char* uiTextFragCode = "#version 450\nlayout(binding = 0) uniform sampler2D fontSampler; layout(location = 0) in vec2 fragTexCoord; layout(location = 1) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { vec4 texColor = texture(fontSampler, fragTexCoord); outColor = vec4(fragColor, texColor.a); }";
     const char* uiImageVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec2 inTexCoord; layout(location = 0) out vec2 fragTexCoord; void main() { gl_Position = vec4(inPos, 0.0, 1.0); fragTexCoord = inTexCoord; }";
     const char* uiImageFragCode = "#version 450\nlayout(binding = 0) uniform sampler2D imageSampler; layout(location = 0) in vec2 fragTexCoord; layout(location = 0) out vec4 outColor; void main() { outColor = texture(imageSampler, fragTexCoord); }";
-    
-    // НОВЫЕ ШЕЙДЕРЫ ДЛЯ ЛИНИЙ ГРИД
-    const char* lineVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec3 inColor; layout(push_constant) uniform PushConstants { mat4 projView; } pc; layout(location = 0) out vec3 fragColor; void main() { gl_Position = pc.projView * vec4(inPos.x, 0.0, inPos.y, 1.0); fragColor = inColor; }";
-    const char* lineFragCode = "#version 450\nlayout(location = 0) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { outColor = vec4(fragColor, 1.0); }";
+    const char* gridVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec3 inColor; layout(push_constant) uniform PushConstants { mat4 projView; } pc; layout(location = 0) out vec3 fragColor; void main() { gl_Position = pc.projView * vec4(inPos.x, 0.0, inPos.y, 1.0); fragColor = inColor; }";
+    const char* gridFragCode = "#version 450\nlayout(location = 0) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { outColor = vec4(fragColor, 1.0); }";
     
     std::ofstream vertFile("autoshadertest/vert.vert"); vertFile << vertCode; vertFile.close();
     std::ofstream fragFile("autoshadertest/frag.frag"); fragFile << fragCode; fragFile.close();
@@ -44,10 +44,8 @@ static void compileShaders() {
     std::ofstream uiTextFragFile("autoshadertest/ui_text_frag.frag"); uiTextFragFile << uiTextFragCode; uiTextFragFile.close();
     std::ofstream uiImageVertFile("autoshadertest/ui_image_vert.vert"); uiImageVertFile << uiImageVertCode; uiImageVertFile.close();
     std::ofstream uiImageFragFile("autoshadertest/ui_image_frag.frag"); uiImageFragFile << uiImageFragCode; uiImageFragFile.close();
-    
-    // СОХРАНЯЕМ ШЕЙДЕРЫ ГРИД
-    std::ofstream lineVertFile("autoshadertest/line_vert.vert"); lineVertFile << lineVertCode; lineVertFile.close();
-    std::ofstream lineFragFile("autoshadertest/line_frag.frag"); lineFragFile << lineFragCode; lineFragFile.close();
+    std::ofstream gridVertFile("autoshadertest/grid_vert.vert"); gridVertFile << gridVertCode; gridVertFile.close();
+    std::ofstream gridFragFile("autoshadertest/grid_frag.frag"); gridFragFile << gridFragCode; gridFragFile.close();
     
     system("glslc autoshadertest/vert.vert -o autoshadertest/vert.spv");
     system("glslc autoshadertest/frag.frag -o autoshadertest/frag.spv");
@@ -57,9 +55,10 @@ static void compileShaders() {
     system("glslc autoshadertest/ui_text_frag.frag -o autoshadertest/ui_text_frag.spv");
     system("glslc autoshadertest/ui_image_vert.vert -o autoshadertest/ui_image_vert.spv");
     system("glslc autoshadertest/ui_image_frag.frag -o autoshadertest/ui_image_frag.spv");
-    system("glslc autoshadertest/line_vert.vert -o autoshadertest/line_vert.spv");
-    system("glslc autoshadertest/line_frag.frag -o autoshadertest/line_frag.spv");
+    system("glslc autoshadertest/grid_vert.vert -o autoshadertest/grid_vert.spv");
+    system("glslc autoshadertest/grid_frag.frag -o autoshadertest/grid_frag.spv");
 }
+
 bool Vulkan::initializeFont() {
     if (fontInitialized) return true;
     
@@ -175,7 +174,6 @@ bool Vulkan::initializeFont() {
     std::cout << "Font initialized successfully" << std::endl;
     return true;
 }
-// Vulkan.cpp - Constructor and Destructor
 
 Vulkan::Vulkan(HWND hwnd, int width, int height) 
     : hwnd(hwnd), width(width), height(height), initialized(false), currentFrame(0), 
@@ -184,20 +182,23 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
       instance(VK_NULL_HANDLE), physDevice(VK_NULL_HANDLE), device(VK_NULL_HANDLE),
       graphicsQueue(VK_NULL_HANDLE), presentQueue(VK_NULL_HANDLE), surface(VK_NULL_HANDLE), swapchain(VK_NULL_HANDLE),
       renderPass(VK_NULL_HANDLE), pipelineLayout3D(VK_NULL_HANDLE), pipelineLayoutUI(VK_NULL_HANDLE),
-      pipelineLayoutUIText(VK_NULL_HANDLE), pipelineLayoutUIImage(VK_NULL_HANDLE),
+      pipelineLayoutUIText(VK_NULL_HANDLE), pipelineLayoutUIImage(VK_NULL_HANDLE), pipelineLayoutGrid(VK_NULL_HANDLE),
       pipeline3D(VK_NULL_HANDLE), pipelineUI(VK_NULL_HANDLE),
-      pipelineUIText(VK_NULL_HANDLE), pipelineUIImage(VK_NULL_HANDLE),
+      pipelineUIText(VK_NULL_HANDLE), pipelineUIImage(VK_NULL_HANDLE), pipelineGrid(VK_NULL_HANDLE),
       descLayout(VK_NULL_HANDLE), descLayoutUIEmpty(VK_NULL_HANDLE), descLayoutUIText(VK_NULL_HANDLE),
-      descLayoutUIImage(VK_NULL_HANDLE), descPool(VK_NULL_HANDLE), descSetUIText(VK_NULL_HANDLE),
+      descLayoutUIImage(VK_NULL_HANDLE), descLayoutGrid(VK_NULL_HANDLE), descPool(VK_NULL_HANDLE), descSetUIText(VK_NULL_HANDLE),
       uiVertexBuffer(VK_NULL_HANDLE), uiVertexBufferMemory(VK_NULL_HANDLE),
       uiTextVertexBuffer(VK_NULL_HANDLE), uiTextVertexBufferMemory(VK_NULL_HANDLE),
       uiImageVertexBuffer(VK_NULL_HANDLE), uiImageVertexBufferMemory(VK_NULL_HANDLE),
-      fontInitialized(false),
-      viewportClipEnabled(false), clipX(0), clipY(0), clipW(0), clipH(0),
-      lineVertShader(VK_NULL_HANDLE), lineFragShader(VK_NULL_HANDLE)
+      gridVertexBuffer(VK_NULL_HANDLE), gridVertexBufferMemory(VK_NULL_HANDLE), gridVertexCount(0),
+      fontInitialized(false), needGridUpdate(true), gridEnabled(true), gridSpacing(20.0f), gridFadeDistance(500.0f), gridYOffset(0.0f),
+      viewportClipEnabled(false), clipX(0), clipY(0), clipW(0), clipH(0)
 {
     memset(&fontTexture, 0, sizeof(fontTexture));
     memset(glyphs, 0, sizeof(glyphs));
+    
+    gridLineColor[0] = 0.4f; gridLineColor[1] = 0.4f; gridLineColor[2] = 0.45f;
+    gridCenterLineColor[0] = 0.8f; gridCenterLineColor[1] = 0.8f; gridCenterLineColor[2] = 1.0f;
     
     compileShaders();
     
@@ -292,7 +293,9 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     createEmptyDescriptorSetLayout();
     createDescriptorSetLayoutUIText();
     createDescriptorSetLayoutUIImage();
+    createDescriptorSetLayoutGrid();
     createPipelines();
+    createGridPipeline();
     createUIImagePipeline();
     createUIBuffers();
     createUITextBuffers();
@@ -312,14 +315,6 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     
     initializeFont();
     
-    lineVertShader = createShaderModule("autoshadertest/line_vert.spv");
-    lineFragShader = createShaderModule("autoshadertest/line_frag.spv");
-    if (lineVertShader == VK_NULL_HANDLE || lineFragShader == VK_NULL_HANDLE) {
-        std::cerr << "Warning: Failed to load line shaders for grid" << std::endl;
-    } else {
-        std::cout << "Line shaders loaded successfully" << std::endl;
-    }
-    
     viewMat = glm::lookAt(glm::vec3(0.0f, 50.0f, 150.0f), glm::vec3(0, 50, 0), glm::vec3(0, 1, 0));
     projMat = glm::perspective(glm::radians(45.0f), (float)width/height, 0.1f, 1000.0f);
     projMat[1][1] *= -1;
@@ -333,6 +328,12 @@ Vulkan::~Vulkan() {
         vkDeviceWaitIdle(device);
         
         cleanupModelBuffers();
+        
+        if (pipelineGrid != VK_NULL_HANDLE) vkDestroyPipeline(device, pipelineGrid, nullptr);
+        if (pipelineLayoutGrid != VK_NULL_HANDLE) vkDestroyPipelineLayout(device, pipelineLayoutGrid, nullptr);
+        if (descLayoutGrid != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(device, descLayoutGrid, nullptr);
+        if (gridVertexBuffer != VK_NULL_HANDLE) vkDestroyBuffer(device, gridVertexBuffer, nullptr);
+        if (gridVertexBufferMemory != VK_NULL_HANDLE) vkFreeMemory(device, gridVertexBufferMemory, nullptr);
         
         for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             if (commandBuffers[i]) vkFreeCommandBuffers(device, commandPools[i], 1, &commandBuffers[i]);
@@ -364,9 +365,6 @@ Vulkan::~Vulkan() {
         vkFreeMemory(device, uiTextVertexBufferMemory, nullptr);
         vkDestroyBuffer(device, uiImageVertexBuffer, nullptr);
         vkFreeMemory(device, uiImageVertexBufferMemory, nullptr);
-        
-        if (lineVertShader) vkDestroyShaderModule(device, lineVertShader, nullptr);
-        if (lineFragShader) vkDestroyShaderModule(device, lineFragShader, nullptr);
         
         vkDestroyImageView(device, depthImageView, nullptr);
         vkDestroyImage(device, depthImage, nullptr);
@@ -685,6 +683,13 @@ void Vulkan::createDescriptorSetLayoutUIImage() {
     vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descLayoutUIImage);
 }
 
+void Vulkan::createDescriptorSetLayoutGrid() {
+    VkDescriptorSetLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    layoutInfo.bindingCount = 0;
+    layoutInfo.pBindings = nullptr;
+    vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descLayoutGrid);
+}
+
 void Vulkan::createUIImagePipeline() {
     VkShaderModule vertModule = createShaderModule("autoshadertest/ui_image_vert.spv");
     VkShaderModule fragModule = createShaderModule("autoshadertest/ui_image_frag.spv");
@@ -781,6 +786,116 @@ void Vulkan::createUIImagePipeline() {
     vkDestroyShaderModule(device, fragModule, nullptr);
     
     std::cout << "UI Image pipeline created" << std::endl;
+}
+
+void Vulkan::createGridPipeline() {
+    VkShaderModule vertModule = createShaderModule("autoshadertest/grid_vert.spv");
+    VkShaderModule fragModule = createShaderModule("autoshadertest/grid_frag.spv");
+    
+    if (vertModule == VK_NULL_HANDLE || fragModule == VK_NULL_HANDLE) {
+        std::cerr << "Failed to load grid shaders" << std::endl;
+        if (vertModule) vkDestroyShaderModule(device, vertModule, nullptr);
+        if (fragModule) vkDestroyShaderModule(device, fragModule, nullptr);
+        return;
+    }
+    
+    auto bindingDesc = VkVertexInputBindingDescription{0, sizeof(GridVertex), VK_VERTEX_INPUT_RATE_VERTEX};
+    auto attrDesc = std::array<VkVertexInputAttributeDescription, 2>{
+        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(GridVertex, pos)},
+        VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(GridVertex, color)}
+    };
+    
+    VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    vi.vertexBindingDescriptionCount = 1;
+    vi.pVertexBindingDescriptions = &bindingDesc;
+    vi.vertexAttributeDescriptionCount = (uint32_t)attrDesc.size();
+    vi.pVertexAttributeDescriptions = attrDesc.data();
+    
+    VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    
+    VkPipelineViewportStateCreateInfo vpState{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+    vpState.viewportCount = 1;
+    vpState.scissorCount = 1;
+    
+    VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    raster.polygonMode = VK_POLYGON_MODE_FILL;
+    raster.cullMode = VK_CULL_MODE_NONE;
+    raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    raster.lineWidth = 1.0f;
+    
+    VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    
+    VkPipelineDepthStencilStateCreateInfo depthStencil{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_FALSE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    
+    VkPipelineColorBlendAttachmentState blendAtt{};
+    blendAtt.blendEnable = VK_FALSE;
+    blendAtt.colorWriteMask = 0xF;
+    
+    VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+    cb.attachmentCount = 1;
+    cb.pAttachments = &blendAtt;
+    
+    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+    dynamic.dynamicStateCount = 2;
+    dynamic.pDynamicStates = dynamicStates;
+    
+    VkPushConstantRange pushRange{};
+    pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushRange.offset = 0;
+    pushRange.size = sizeof(glm::mat4);
+    
+    VkPipelineLayoutCreateInfo plInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    plInfo.setLayoutCount = 1;
+    plInfo.pSetLayouts = &descLayoutGrid;
+    plInfo.pushConstantRangeCount = 1;
+    plInfo.pPushConstantRanges = &pushRange;
+    
+    if (vkCreatePipelineLayout(device, &plInfo, nullptr, &pipelineLayoutGrid) != VK_SUCCESS) {
+        std::cerr << "Failed to create grid pipeline layout" << std::endl;
+        return;
+    }
+    
+    VkPipelineShaderStageCreateInfo stages[2] = {
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}
+    };
+    stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    stages[0].module = vertModule;
+    stages[0].pName = "main";
+    stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    stages[1].module = fragModule;
+    stages[1].pName = "main";
+    
+    VkGraphicsPipelineCreateInfo pipelineInfo{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = stages;
+    pipelineInfo.pVertexInputState = &vi;
+    pipelineInfo.pInputAssemblyState = &ia;
+    pipelineInfo.pViewportState = &vpState;
+    pipelineInfo.pRasterizationState = &raster;
+    pipelineInfo.pMultisampleState = &ms;
+    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.pColorBlendState = &cb;
+    pipelineInfo.pDynamicState = &dynamic;
+    pipelineInfo.layout = pipelineLayoutGrid;
+    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.subpass = 0;
+    
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipelineGrid) != VK_SUCCESS) {
+        std::cerr << "Failed to create grid pipeline" << std::endl;
+        return;
+    }
+    
+    vkDestroyShaderModule(device, vertModule, nullptr);
+    vkDestroyShaderModule(device, fragModule, nullptr);
+    
+    std::cout << "Grid pipeline created" << std::endl;
 }
 
 void Vulkan::createUIImageBuffers() {
@@ -986,6 +1101,150 @@ void Vulkan::clearModels() {
     std::cout << "Cleared all models" << std::endl;
 }
 
+void Vulkan::updateGridBuffer() {
+    if (!needGridUpdate) return;
+    
+    float camDistance = glm::length(viewMat[3]);
+    float worldSize = std::max(200.0f, camDistance * 1.5f);
+    float worldMin = -worldSize;
+    float worldMax = worldSize;
+    
+    float spacing = gridSpacing;
+    if (camDistance > 100.0f) spacing = gridSpacing * 2.0f;
+    if (camDistance > 300.0f) spacing = gridSpacing * 4.0f;
+    if (camDistance > 800.0f) spacing = gridSpacing * 8.0f;
+    if (camDistance < 50.0f) spacing = gridSpacing / 2.0f;
+    if (camDistance < 20.0f) spacing = gridSpacing / 4.0f;
+    
+    float minX = std::max(worldMin, -2000.0f);
+    float maxX = std::min(worldMax, 2000.0f);
+    float minZ = std::max(worldMin, -2000.0f);
+    float maxZ = std::min(worldMax, 2000.0f);
+    
+    minX = floor(minX / spacing) * spacing;
+    maxX = ceil(maxX / spacing) * spacing;
+    minZ = floor(minZ / spacing) * spacing;
+    maxZ = ceil(maxZ / spacing) * spacing;
+    
+    std::vector<GridVertex> vertices;
+    
+    // Линии вдоль Z (вертикальные на экране, параллельные оси X)
+    for (float x = minX; x <= maxX + 0.1f; x += spacing) {
+        bool isCenter = fabs(x) < 0.01f;
+        float r = isCenter ? gridCenterLineColor[0] : gridLineColor[0];
+        float g = isCenter ? gridCenterLineColor[1] : gridLineColor[1];
+        float b = isCenter ? gridCenterLineColor[2] : gridLineColor[2];
+        
+        float fade = 1.0f - std::min(1.0f, (float)(fabs(x) / gridFadeDistance));
+        fade = std::max(0.3f, fade);
+        r *= fade;
+        g *= fade;
+        b *= fade;
+        
+        vertices.push_back({{x, minZ}, {r, g, b}});
+        vertices.push_back({{x, maxZ}, {r, g, b}});
+    }
+    
+    // Линии вдоль X (параллельные оси Z)
+    for (float z = minZ; z <= maxZ + 0.1f; z += spacing) {
+        bool isCenter = fabs(z) < 0.01f;
+        float r = isCenter ? gridCenterLineColor[0] : gridLineColor[0];
+        float g = isCenter ? gridCenterLineColor[1] : gridLineColor[1];
+        float b = isCenter ? gridCenterLineColor[2] : gridLineColor[2];
+        
+        float fade = 1.0f - std::min(1.0f, (float)(fabs(z) / gridFadeDistance));
+        fade = std::max(0.3f, fade);
+        r *= fade;
+        g *= fade;
+        b *= fade;
+        
+        vertices.push_back({{minX, z}, {r, g, b}});
+        vertices.push_back({{maxX, z}, {r, g, b}});
+    }
+    
+    if (vertices.empty()) return;
+    
+    VkDeviceSize bufferSize = vertices.size() * sizeof(GridVertex);
+    
+    if (gridVertexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, gridVertexBuffer, nullptr);
+        gridVertexBuffer = VK_NULL_HANDLE;
+    }
+    if (gridVertexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, gridVertexBufferMemory, nullptr);
+        gridVertexBufferMemory = VK_NULL_HANDLE;
+    }
+    
+    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &gridVertexBuffer) != VK_SUCCESS) {
+        std::cerr << "Failed to create grid vertex buffer" << std::endl;
+        return;
+    }
+    
+    VkMemoryRequirements memReq;
+    vkGetBufferMemoryRequirements(device, gridVertexBuffer, &memReq);
+    
+    VkMemoryAllocateInfo allocInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocInfo.allocationSize = memReq.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, 
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &gridVertexBufferMemory) != VK_SUCCESS) {
+        std::cerr << "Failed to allocate grid vertex buffer memory" << std::endl;
+        vkDestroyBuffer(device, gridVertexBuffer, nullptr);
+        gridVertexBuffer = VK_NULL_HANDLE;
+        return;
+    }
+    
+    vkBindBufferMemory(device, gridVertexBuffer, gridVertexBufferMemory, 0);
+    
+    void* data;
+    vkMapMemory(device, gridVertexBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, vertices.data(), bufferSize);
+    vkUnmapMemory(device, gridVertexBufferMemory);
+    
+    gridVertexCount = (uint32_t)vertices.size();
+    needGridUpdate = false;
+}
+void Vulkan::renderGrid(const glm::mat4& viewMatrix, const glm::mat4& projMatrix) {
+    if (!gridEnabled) return;
+    if (pipelineGrid == VK_NULL_HANDLE) return;
+    
+    needGridUpdate = true;
+    updateGridBuffer();
+    
+    if (gridVertexBuffer == VK_NULL_HANDLE || gridVertexCount == 0) return;
+    
+    VkCommandBuffer cmdBuffer = commandBuffers[currentFrame];
+    
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float)swapchainExtent.width;
+    viewport.height = (float)swapchainExtent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
+    
+    VkRect2D scissor{};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent = swapchainExtent;
+    vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
+    
+    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineGrid);
+    
+    glm::mat4 projView = projMatrix * viewMatrix;
+    vkCmdPushConstants(cmdBuffer, pipelineLayoutGrid, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &projView);
+    
+    VkDeviceSize offset = 0;  // <- объявлена как offset
+    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &gridVertexBuffer, &offset);  // <- используем &offset
+    
+    vkCmdDraw(cmdBuffer, gridVertexCount, 1, 0, 0);
+}
 void Vulkan::renderAllModels() {
     for (auto& pair : modelBuffers) {
         const std::string& name = pair.first;
@@ -1044,11 +1303,13 @@ void Vulkan::setModelTransform(const std::string& name, const glm::mat4& transfo
 
 void Vulkan::setViewMatrix(const glm::mat4& view) { 
     viewMat = view; 
+    needGridUpdate = true;
 }
 
 void Vulkan::setProjectionMatrix(const glm::mat4& proj) { 
     projMat = proj; 
-    projMat[1][1] *= -1; 
+    projMat[1][1] *= -1;
+    needGridUpdate = true;
 }
 
 void Vulkan::createModelBuffers(ModelBuffers& buffers, const std::vector<VertexGPU>& vertices, 
@@ -1639,11 +1900,11 @@ float Vulkan::getTextWidth(const std::string& text) {
     }
     return width;
 }
+
 void Vulkan::drawText(int x, int y, const std::string& text, float r, float g, float b) {
     if (!fontInitialized) return;
     
     float curX = (float)x;
-    // Исправлено: Y теперь правильно выравнивается (было +4, убрал)
     float curY = (float)y;
     glm::vec3 color(r, g, b);
     
@@ -1902,6 +2163,8 @@ void Vulkan::recreateSwapchain() {
     createFramebuffers();
     
     vkDeviceWaitIdle(device);
+    
+    needGridUpdate = true;
 }
 
 VulkanTexture* Vulkan::loadUIImageFromData(unsigned char* data, int width, int height, int channels) {
@@ -1964,6 +2227,9 @@ void Vulkan::renderBackground() {
 }
 
 void Vulkan::renderScene() {
+    // Сначала сетку (она в координатах Y=0)
+    renderGrid(viewMat, projMat);
+    // Потом модели
     renderAllModels();
 }
 
@@ -1972,7 +2238,6 @@ void Vulkan::renderOverlay() {
     renderUIText();
     renderUIImage();
 }
-// Vulkan.cpp - добавьте в конец файла:
 
 VkCommandBuffer Vulkan::beginSingleTimeCommands() {
     VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
@@ -2001,5 +2266,4 @@ void Vulkan::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
     vkQueueWaitIdle(graphicsQueue);
     
     vkFreeCommandBuffers(device, commandPools[0], 1, &commandBuffer);
-
 }

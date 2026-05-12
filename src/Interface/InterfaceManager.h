@@ -14,6 +14,7 @@ enum class RenderAPI;
 
 class InterfaceManager {
 public:
+    Vulkan* getVulkan() { return renderer.getVulkan(); }
     InterfaceManager(Core* corePtr, RenderAPI api);
     ~InterfaceManager();
 

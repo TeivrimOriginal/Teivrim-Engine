@@ -86,7 +86,11 @@ void Input::UpdateMouseCapture(HWND hwnd) {
         if (currentPos.x != center.x || currentPos.y != center.y) {
             float xoffset = (float)(currentPos.x - center.x);
             float yoffset = (float)(currentPos.y - center.y);
-            camera.ProcessMouseMovement(xoffset, yoffset);
+            
+            // ИСПРАВЛЕНО: Используем SceneManager для вращения камеры
+            auto& sm = SceneManager::Instance();
+            sm.RotateCamera(xoffset, yoffset);
+            
             SetCursorPos(center.x, center.y);
             lastX = (float)center.x;
             lastY = (float)center.y;
@@ -98,23 +102,49 @@ void Input::UpdateKeyboardMovement(float deltaTime, HWND hwnd) {
     HWND foreground = GetForegroundWindow();
     if (foreground != hwnd) return;
     
-    bool w = (GetAsyncKeyState('W') & 0x8000) != 0;
-    bool s = (GetAsyncKeyState('S') & 0x8000) != 0;
-    bool a = (GetAsyncKeyState('A') & 0x8000) != 0;
-    bool d = (GetAsyncKeyState('D') & 0x8000) != 0;
-    bool space = (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0;
-    bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
     bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
     
-    camera.SetSprinting(shift);
+    float speed = 15.0f * deltaTime;
+    if (shift) speed *= 2.0f;
     
-    if (w) camera.ProcessKeyboard(FORWARD, deltaTime);
-    if (s) camera.ProcessKeyboard(BACKWARD, deltaTime);
-    if (a) camera.ProcessKeyboard(LEFT, deltaTime);
-    if (d) camera.ProcessKeyboard(RIGHT, deltaTime);
-    // Space - вверх, Ctrl - вниз (как и было, но убедимся)
-    if (space) camera.ProcessKeyboard(UP, deltaTime);
-    if (ctrl) camera.ProcessKeyboard(DOWN, deltaTime);
+    // ИСПРАВЛЕНО: Используем SceneManager для движения камеры
+    auto& sm = SceneManager::Instance();
+    CameraComponent* cam = sm.GetMainCamera();
+    if (!cam) return;
+    
+    if (GetAsyncKeyState('W') & 0x8000) {
+        // Move camera forward (towards target)
+        glm::vec3 forward = glm::normalize(sm.GetCameraTarget() - cam->position);
+        forward.y = 0;
+        if (glm::length(forward) > 0.01f) forward = glm::normalize(forward);
+        cam->target += forward * speed * 5.0f;
+        cam->updatePosition();
+    }
+    if (GetAsyncKeyState('S') & 0x8000) {
+        glm::vec3 backward = glm::normalize(cam->position - sm.GetCameraTarget());
+        backward.y = 0;
+        if (glm::length(backward) > 0.01f) backward = glm::normalize(backward);
+        cam->target += backward * speed * 5.0f;
+        cam->updatePosition();
+    }
+    if (GetAsyncKeyState('A') & 0x8000) {
+        glm::vec3 right = glm::normalize(glm::cross(cam->position - sm.GetCameraTarget(), glm::vec3(0, 1, 0)));
+        cam->target -= right * speed * 5.0f;
+        cam->updatePosition();
+    }
+    if (GetAsyncKeyState('D') & 0x8000) {
+        glm::vec3 right = glm::normalize(glm::cross(cam->position - sm.GetCameraTarget(), glm::vec3(0, 1, 0)));
+        cam->target += right * speed * 5.0f;
+        cam->updatePosition();
+    }
+    
+    // Zoom колесиком мыши
+    if (GetAsyncKeyState(VK_UP) & 0x8000) {
+        sm.ZoomCamera(-0.5f);
+    }
+    if (GetAsyncKeyState(VK_DOWN) & 0x8000) {
+        sm.ZoomCamera(0.5f);
+    }
     
     if (GetAsyncKeyState(VK_ESCAPE) & 0x8000) {
         if (mouseCaptured) SetMouseCapture(false);
@@ -124,7 +154,7 @@ void Input::UpdateKeyboardMovement(float deltaTime, HWND hwnd) {
     if (GetAsyncKeyState('R') & 0x8000) {
         if (!rPressed) {
             rPressed = true;
-            camera.ResetCamera();
+            sm.ResetCamera();
             std::cout << "[Input] Camera reset" << std::endl;
         }
     } else { 
@@ -138,7 +168,7 @@ void Input::processInputWin32(float deltaTime, HWND hwnd) {
 }
 
 void Input::processMouseWin32(float xpos, float ypos) {
-    // Не используется - центрирование мыши в UpdateMouseCapture
+    // Не используется
 }
 
 void Input::processMouseWheel(int delta, HWND hwnd) {
@@ -157,7 +187,8 @@ void Input::processMouseWheel(int delta, HWND hwnd) {
         
         if (isInViewport) {
             float yoffset = (float)delta / 120.0f;
-            camera.ProcessMouseScroll(yoffset);
+            auto& sm = SceneManager::Instance();
+            sm.ZoomCamera(yoffset);
         }
     }
 }

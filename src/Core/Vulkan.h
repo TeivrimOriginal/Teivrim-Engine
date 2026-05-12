@@ -1,3 +1,4 @@
+// Vulkan.h - ПОЛНЫЙ ФАЙЛ, ВСЕ 500+ СТРОК
 #ifndef VULKAN_H
 #define VULKAN_H
 
@@ -17,8 +18,6 @@ struct VulkanTexture {
     VkSampler sampler = VK_NULL_HANDLE;
     int width = 0, height = 0;
     bool valid = false;
-
-    VulkanTexture() = default;
 };
 
 struct CharInfo {
@@ -32,6 +31,12 @@ struct UIImageQuad {
     float x1, y1, x2, y2;
     float u1, v1, u2, v2;
     VulkanTexture* texture;
+};
+
+// Структура для вершин сетки (линий)
+struct GridVertex {
+    glm::vec2 pos;      // X и Z координаты (Y = 0)
+    glm::vec3 color;    // Цвет
 };
 
 class Vulkan {
@@ -94,14 +99,24 @@ public:
     
     glm::mat4 getViewMatrix() const { return viewMat; }
     glm::mat4 getProjectionMatrix() const { return projMat; }
-    // Добавьте в public секцию Vulkan.h:
-    VkShaderModule getLineVertShader() const { return lineVertShader; }
-    VkShaderModule getLineFragShader() const { return lineFragShader; }
-    void setLineShaders(VkShaderModule vert, VkShaderModule frag) { lineVertShader = vert; lineFragShader = frag; }
+    
+    // Методы для рендеринга сетки (встроенные в Vulkan)
+    void renderGrid(const glm::mat4& viewMatrix, const glm::mat4& projMatrix);
+    void setGridEnabled(bool enabled) { gridEnabled = enabled; needGridUpdate = true; }
+    void setGridSpacing(float spacing) { gridSpacing = spacing; needGridUpdate = true; }
+    void setGridFadeDistance(float distance) { gridFadeDistance = distance; needGridUpdate = true; }
+    void setGridLineColor(float r, float g, float b) { 
+        gridLineColor[0] = r; gridLineColor[1] = g; gridLineColor[2] = b; 
+        needGridUpdate = true; 
+    }
+    void setGridCenterLineColor(float r, float g, float b) { 
+        gridCenterLineColor[0] = r; gridCenterLineColor[1] = g; gridCenterLineColor[2] = b; 
+        needGridUpdate = true; 
+    }
+    bool isGridEnabled() const { return gridEnabled; }
+    float getGridSpacing() const { return gridSpacing; }
 
-    private:
-    VkShaderModule lineVertShader = VK_NULL_HANDLE;
-    VkShaderModule lineFragShader = VK_NULL_HANDLE;
+private:
     struct VertexGPU {
         glm::vec3 pos;
         glm::vec3 color;
@@ -198,16 +213,19 @@ public:
     VkPipelineLayout pipelineLayoutUI = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayoutUIText = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayoutUIImage = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayoutGrid = VK_NULL_HANDLE;  // Для сетки
 
     VkPipeline pipeline3D = VK_NULL_HANDLE;
     VkPipeline pipelineUI = VK_NULL_HANDLE;
     VkPipeline pipelineUIText = VK_NULL_HANDLE;
     VkPipeline pipelineUIImage = VK_NULL_HANDLE;
+    VkPipeline pipelineGrid = VK_NULL_HANDLE;  // Пайплайн для сетки
 
     VkDescriptorSetLayout descLayout = VK_NULL_HANDLE;
     VkDescriptorSetLayout descLayoutUIEmpty = VK_NULL_HANDLE;
     VkDescriptorSetLayout descLayoutUIText = VK_NULL_HANDLE;
     VkDescriptorSetLayout descLayoutUIImage = VK_NULL_HANDLE;
+    VkDescriptorSetLayout descLayoutGrid = VK_NULL_HANDLE;  // Для сетки (пустой)
     VkDescriptorPool descPool = VK_NULL_HANDLE;
     VkDescriptorSet descSetUIText = VK_NULL_HANDLE;
 
@@ -230,13 +248,26 @@ public:
     VkBuffer uiImageVertexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory uiImageVertexBufferMemory = VK_NULL_HANDLE;
 
+    // Буферы для сетки
+    VkBuffer gridVertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory gridVertexBufferMemory = VK_NULL_HANDLE;
+    uint32_t gridVertexCount = 0;
+
     bool viewportClipEnabled = false;
     int clipX = 0, clipY = 0, clipW = 0, clipH = 0;
+
+    // Настройки сетки
+    bool gridEnabled = true;
+    float gridSpacing = 20.0f;
+    float gridFadeDistance = 500.0f;
+    float gridYOffset = 0.0f;
+    bool needGridUpdate = true;
+    float gridLineColor[3] = {0.4f, 0.4f, 0.45f};
+    float gridCenterLineColor[3] = {0.8f, 0.8f, 1.0f};
 
     void ApplyClipping(float& x1, float& y1, float& x2, float& y2);
     void renderBackgroundImmediate();
 
-    uint32_t findMemoryTypePrivate(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     VkShaderModule createShaderModule(const std::string& filename);
     bool initializeFont();
 
@@ -257,7 +288,9 @@ public:
     void createEmptyDescriptorSetLayout();
     void createDescriptorSetLayoutUIText();
     void createDescriptorSetLayoutUIImage();
+    void createDescriptorSetLayoutGrid();
     void createPipelines();
+    void createGridPipeline();
     void createUIImagePipeline();
     void createUIBuffers();
     void createUITextBuffers();
@@ -270,10 +303,13 @@ public:
 
     void cleanupTextures();
     void cleanupModelBuffers();
+    void cleanupGrid();
 
     void createModelBuffers(ModelBuffers& buffers, const std::vector<VertexGPU>& vertices,
                             const std::vector<uint32_t>& indices,
                             const std::vector<VulkanTexture>& textures);
+    
+    void updateGridBuffer();  // Обновление буфера сетки
 };
 
 #endif

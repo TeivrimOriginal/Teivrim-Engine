@@ -2,24 +2,18 @@
 #ifndef SECOND_RENDER_H
 #define SECOND_RENDER_H
 
-// SecondRender.cpp
-#include "SecondRender.h"
+#include <vector>
+#include <string>
+#include <glm/glm.hpp>
 #include "Vulkan.h"
 #include "Render/Win32/RenderUI.h"
-#include "../Interface/InterfaceManager.h"
-#include "../Interface/Panels.h"
 #include "SecondComplexity/Scene/SceneManager.h"
-#include <glm/gtc/matrix_transform.hpp>
-#include <algorithm>
-#include <cmath>
-#include <float.h>
 
 class Vulkan;
 class RenderUI;
 class InterfaceManager;
 struct VulkanTexture;
 
-// Добавьте определение ObjectID
 typedef unsigned int ObjectID;
 
 struct GridConfig {
@@ -27,13 +21,13 @@ struct GridConfig {
     int gridSize;
     float lineColor[3];
     float centerLineColor[3];
-    float axisXColor[3];    // Красный для оси X
-    float axisZColor[3];    // Зеленый для оси Z
+    float axisXColor[3];
+    float axisZColor[3];
     bool enabled;
     bool infiniteGrid;
     bool showAxes;
     float gridSpacing;
-    float fadeDistance;      // Расстояние от центра сцены, на котором линии исчезают
+    float fadeDistance;
     float yOffset;
     float lineThickness;
 };
@@ -45,11 +39,6 @@ struct Quad2D {
     bool useTexture;
     void* textureId;
     int layer;
-};
-
-struct LineVertex {
-    glm::vec2 pos;
-    glm::vec3 color;
 };
 
 class SecondRender {
@@ -69,7 +58,6 @@ public:
     void DrawBackgroundImage(float x1, float y1, float x2, float y2, void* texture);
     void DrawOverlayImage(float x1, float y1, float x2, float y2, void* texture);
     
-    void DrawGrid(int cellSize = 50, int gridSize = 20);
     void SetGridConfig(const GridConfig& config);
     void SetCamera(const glm::mat4& viewMatrix, const glm::mat4& projMatrix, const glm::vec3& cameraPos);
     
@@ -78,7 +66,7 @@ public:
     
     void RenderBackground();
     void RenderOverlay();
-    void RenderInfiniteGrid();
+    void RenderInfiniteGrid();  // Для OpenGL, для Vulkan сетка рендерится внутри Vulkan::renderScene()
     
     void ClearBackground();
     void ClearOverlay();
@@ -96,15 +84,12 @@ public:
     void SetZoomLevel(float zoom);
     float GetZoomLevel() const { return currentZoom; }
     
+    // Для совместимости со старым кодом (не используется в Vulkan)
+    void DrawGrid(int cellSize = 50, int gridSize = 20);
+    
 private:
     SecondRender();
     ~SecondRender();
-    
-    void DestroyLineResources();
-    bool CreateLinePipeline();
-    void UpdateGridBuffer();
-    void UpdateAxesBuffer();
-    float GetDynamicSpacing();
     
     Vulkan* vulkan;
     RenderUI* renderUI;
@@ -128,18 +113,6 @@ private:
     glm::mat4 currentProjMat;
     glm::vec3 currentCameraPos;
     bool cameraMatrixValid;
-    bool needBufferUpdate;
-    bool needAxesUpdate;
-    float lastCamX, lastCamZ;
-    
-    VkPipeline linePipeline;
-    VkPipelineLayout linePipelineLayout;
-    VkBuffer lineVertexBuffer;
-    VkBuffer axesVertexBuffer;
-    VkDeviceMemory lineVertexBufferMemory;
-    VkDeviceMemory axesVertexBufferMemory;
-    uint32_t lineVertexCount;
-    uint32_t axesVertexCount;
     
     float currentZoom = 1.0f;
     bool contourEnabled = true;
@@ -148,8 +121,11 @@ private:
     ObjectID currentContourObject = 0;
     
     void RebuildTestQuadsIfNeeded();
+    
+    // Для OpenGL сетка
     std::vector<std::pair<glm::vec3, glm::vec3>> CalculateGridLines();
     std::vector<std::pair<glm::vec3, glm::vec3>> CalculateAxesLines();
+    float GetDynamicSpacing();
 };
 
 #endif
