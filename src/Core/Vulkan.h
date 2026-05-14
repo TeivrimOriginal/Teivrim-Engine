@@ -1,4 +1,4 @@
-// Vulkan.h - ПОЛНЫЙ ФАЙЛ, ВСЕ 500+ СТРОК
+// Vulkan.h - ПОЛНЫЙ ФАЙЛ С КОНТУРОМ
 #ifndef VULKAN_H
 #define VULKAN_H
 
@@ -10,7 +10,7 @@
 #include <glm/glm.hpp>
 #include "Render/Parser/parser.h"
 #include "stb_truetype.h"
-
+typedef unsigned int ObjectID;
 struct VulkanTexture {
     VkImage image = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
@@ -35,8 +35,14 @@ struct UIImageQuad {
 
 // Структура для вершин сетки (линий)
 struct GridVertex {
-    glm::vec2 pos;      // X и Z координаты (Y = 0)
-    glm::vec3 color;    // Цвет
+    glm::vec2 pos;
+    glm::vec3 color;
+};
+
+// Структура для вершин контура
+struct ContourVertex {
+    glm::vec2 pos;
+    glm::vec3 color;
 };
 
 class Vulkan {
@@ -100,7 +106,7 @@ public:
     glm::mat4 getViewMatrix() const { return viewMat; }
     glm::mat4 getProjectionMatrix() const { return projMat; }
     
-    // Методы для рендеринга сетки (встроенные в Vulkan)
+    // Методы для рендеринга сетки
     void renderGrid(const glm::mat4& viewMatrix, const glm::mat4& projMatrix);
     void setGridEnabled(bool enabled) { gridEnabled = enabled; needGridUpdate = true; }
     void setGridSpacing(float spacing) { gridSpacing = spacing; needGridUpdate = true; }
@@ -115,8 +121,17 @@ public:
     }
     bool isGridEnabled() const { return gridEnabled; }
     float getGridSpacing() const { return gridSpacing; }
+    
+    // Метод для обводки контура
+    void renderContour(ObjectID objectId, float thickness, float r, float g, float b, 
+                       const glm::mat4& viewMatrix, const glm::mat4& projMatrix);
 
 private:
+        // В private секцию Vulkan добавь:
+VkBuffer contourBuffer = VK_NULL_HANDLE;
+VkDeviceMemory contourBufferMemory = VK_NULL_HANDLE;
+uint32_t contourVertexCount = 0;
+ObjectID currentContourObject = 0;
     struct VertexGPU {
         glm::vec3 pos;
         glm::vec3 color;
@@ -213,19 +228,22 @@ private:
     VkPipelineLayout pipelineLayoutUI = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayoutUIText = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayoutUIImage = VK_NULL_HANDLE;
-    VkPipelineLayout pipelineLayoutGrid = VK_NULL_HANDLE;  // Для сетки
+    VkPipelineLayout pipelineLayoutGrid = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayoutContour = VK_NULL_HANDLE;
 
     VkPipeline pipeline3D = VK_NULL_HANDLE;
     VkPipeline pipelineUI = VK_NULL_HANDLE;
     VkPipeline pipelineUIText = VK_NULL_HANDLE;
     VkPipeline pipelineUIImage = VK_NULL_HANDLE;
-    VkPipeline pipelineGrid = VK_NULL_HANDLE;  // Пайплайн для сетки
+    VkPipeline pipelineGrid = VK_NULL_HANDLE;
+    VkPipeline pipelineContour = VK_NULL_HANDLE;
 
     VkDescriptorSetLayout descLayout = VK_NULL_HANDLE;
     VkDescriptorSetLayout descLayoutUIEmpty = VK_NULL_HANDLE;
     VkDescriptorSetLayout descLayoutUIText = VK_NULL_HANDLE;
     VkDescriptorSetLayout descLayoutUIImage = VK_NULL_HANDLE;
-    VkDescriptorSetLayout descLayoutGrid = VK_NULL_HANDLE;  // Для сетки (пустой)
+    VkDescriptorSetLayout descLayoutGrid = VK_NULL_HANDLE;
+    VkDescriptorSetLayout descLayoutContour = VK_NULL_HANDLE;
     VkDescriptorPool descPool = VK_NULL_HANDLE;
     VkDescriptorSet descSetUIText = VK_NULL_HANDLE;
 
@@ -289,8 +307,10 @@ private:
     void createDescriptorSetLayoutUIText();
     void createDescriptorSetLayoutUIImage();
     void createDescriptorSetLayoutGrid();
+    void createDescriptorSetLayoutContour();
     void createPipelines();
     void createGridPipeline();
+    void createContourPipeline();
     void createUIImagePipeline();
     void createUIBuffers();
     void createUITextBuffers();
@@ -309,7 +329,9 @@ private:
                             const std::vector<uint32_t>& indices,
                             const std::vector<VulkanTexture>& textures);
     
-    void updateGridBuffer();  // Обновление буфера сетки
+    void updateGridBuffer();
+    void drawContourInternal(const std::vector<ContourVertex>& vertices, float thickness,
+                             const glm::mat4& viewMatrix, const glm::mat4& projMatrix);
 };
 
 #endif

@@ -7,7 +7,6 @@
 #include <glm/glm.hpp>
 #include "Vulkan.h"
 #include "Render/Win32/RenderUI.h"
-#include "SecondComplexity/Scene/SceneManager.h"
 
 class Vulkan;
 class RenderUI;
@@ -66,7 +65,7 @@ public:
     
     void RenderBackground();
     void RenderOverlay();
-    void RenderInfiniteGrid();  // Для OpenGL, для Vulkan сетка рендерится внутри Vulkan::renderScene()
+    void RenderInfiniteGrid();
     
     void ClearBackground();
     void ClearOverlay();
@@ -76,15 +75,14 @@ public:
     
     bool IsInitialized() const { return initialized; }
     
-    // Контур для выбранного объекта
+    void SetZoomLevel(float zoom);
+    float GetZoomLevel() const { return currentZoom; }
+    
+    // Устаревший метод - обводка теперь в Vulkan::renderContour()
     void RenderContour(ObjectID objectId, float thickness = 3.0f, 
                        float r = 1.0f, float g = 0.5f, float b = 0.0f);
     void SetContourEnabled(bool enabled) { contourEnabled = enabled; }
     
-    void SetZoomLevel(float zoom);
-    float GetZoomLevel() const { return currentZoom; }
-    
-    // Для совместимости со старым кодом (не используется в Vulkan)
     void DrawGrid(int cellSize = 50, int gridSize = 20);
     
 private:
@@ -118,11 +116,9 @@ private:
     bool contourEnabled = true;
     float contourThickness = 3.0f;
     float contourColor[3] = {1.0f, 0.5f, 0.0f};
-    ObjectID currentContourObject = 0;
     
     void RebuildTestQuadsIfNeeded();
     
-    // Для OpenGL сетка
     std::vector<std::pair<glm::vec3, glm::vec3>> CalculateGridLines();
     std::vector<std::pair<glm::vec3, glm::vec3>> CalculateAxesLines();
     float GetDynamicSpacing();

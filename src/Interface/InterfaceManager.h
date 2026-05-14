@@ -14,7 +14,6 @@ enum class RenderAPI;
 
 class InterfaceManager {
 public:
-    Vulkan* getVulkan() { return renderer.getVulkan(); }
     InterfaceManager(Core* corePtr, RenderAPI api);
     ~InterfaceManager();
 
@@ -32,6 +31,8 @@ public:
     void setVulkan(class Vulkan* vk);
     PanelManager* getPanelManager() { return panels; }
     RenderUI& getRenderer() { return renderer; }
+    ObjectUI& getObjectUI() { return objectUI; }
+    Core* getCore() { return core; }
     void SwapFlag(Core &A);
     HWND getHWND() const;
     void BlockMoveToMainWindow(int x, int y);
@@ -41,7 +42,6 @@ public:
     void printIcon(int x, int y, int w, int h, const std::string& iconType, int size = 64);
     RenderAPI getCurrentAPI() const { return currentAPI; }
     void setTestTexture(VulkanTexture* tex) { testTexture = tex; }
-    Core* getCore() { return core; }
     void setCore(Core* corePtr) { core = corePtr; }
     
     struct Dimensions {
@@ -51,7 +51,6 @@ public:
     void clearScreen(int width, int height);
     void setup3DViewport(const Dimensions& dims);
     
-    // Получить текущую область 3D Viewport
     void Get3DViewportRect(int& x, int& y, int& w, int& h) const;
 
 private:

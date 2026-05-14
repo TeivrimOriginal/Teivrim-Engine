@@ -1,4 +1,4 @@
-// core.cpp - FULL WORKING VERSION с исправленным рендерингом
+// core.cpp - FULL
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -118,14 +118,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         
         case WM_KEYDOWN: {
+            // Если поле ввода активно - передаём туда и не идём дальше
+            if (g_uiManager && g_uiManager->getObjectUI().isAnyInputActive()) {
+                g_uiManager->getObjectUI().handleKeyboardInput(wParam, 0);
+                return 0;
+            }
+            
             if (wParam == 'S' && (GetKeyState(VK_CONTROL) & 0x8000)) {
                 AssetManager::Instance().SaveProject();
                 return 0;
             }
             if (wParam == 'G') {
                 gridEnabled = !gridEnabled;
-                if (g_uiManager && g_uiManager->getVulkan()) {
-                    g_uiManager->getVulkan()->setGridEnabled(gridEnabled);
+                if (g_uiManager && g_uiManager->getCore() && g_uiManager->getCore()->getVulkan()) {
+                    g_uiManager->getCore()->getVulkan()->setGridEnabled(gridEnabled);
                 }
                 cout << "[GRID] " << (gridEnabled ? "Enabled" : "Disabled") << endl;
                 return 0;
@@ -135,6 +141,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         
         case WM_CHAR: {
+            // Если поле ввода активно - передаём символ
+            if (g_uiManager && g_uiManager->getObjectUI().isAnyInputActive()) {
+                g_uiManager->getObjectUI().handleKeyboardInput(0, (char)wParam);
+                return 0;
+            }
             BufferLayer::Instance().HandleCharInput((char)wParam);
             break;
         }
@@ -263,6 +274,7 @@ bool Core::loadModelFromPath(const std::string& path) {
     }
     
     SceneManager::Instance().AddModel(modelName, newParser);
+    modelLoaded = true;
     
     return true;
 }
@@ -362,12 +374,8 @@ void Core::GameLoop() {
         g_uiManager->setVulkan(vulkan);
         IconManager::Instance().SetRenderer(&g_uiManager->getRenderer());
         
-        // Настройка сетки
         vulkan->setGridSpacing(20.0f);
         vulkan->setGridEnabled(gridEnabled);
-        vulkan->setGridFadeDistance(500.0f);
-        vulkan->setGridLineColor(0.4f, 0.4f, 0.45f);
-        vulkan->setGridCenterLineColor(0.8f, 0.8f, 1.0f);
     }
     
     if (currentAPI == RenderAPI::VULKAN && vulkan) {
@@ -386,6 +394,12 @@ void Core::GameLoop() {
             vulkan->setup2D(width, height);
             if (g_uiManager) {
                 g_uiManager->updateWindowSize(width, height);
+                Panel* view3D = g_uiManager->getPanelManager()->get3D();
+                if (view3D && view3D->visible && !view3D->collapsed) {
+                    SetViewportClip(view3D->getX(), view3D->getY(), view3D->getW(), view3D->getH());
+                } else {
+                    DisableViewportClip();
+                }
             }
             SecondRender::Instance().UpdateScreenSize(width, height);
             SecondRender::Instance().MarkTestQuadsDirty();
@@ -396,6 +410,12 @@ void Core::GameLoop() {
             glViewport(0, 0, width, height);
             if (g_uiManager) {
                 g_uiManager->updateWindowSize(width, height);
+                Panel* view3D = g_uiManager->getPanelManager()->get3D();
+                if (view3D && view3D->visible && !view3D->collapsed) {
+                    SetViewportClip(view3D->getX(), view3D->getY(), view3D->getW(), view3D->getH());
+                } else {
+                    DisableViewportClip();
+                }
             }
             SecondRender::Instance().UpdateScreenSize(width, height);
             SecondRender::Instance().MarkTestQuadsDirty();
@@ -416,7 +436,6 @@ void Core::GameLoop() {
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&lastTime);
     
-    // Инициализация SceneManager и камеры
     auto& sm = SceneManager::Instance();
     if (sm.GetMainCameraID() == 0) {
         sm.CreateCamera("MainCamera");
@@ -425,13 +444,6 @@ void Core::GameLoop() {
     sm.SetCameraFov(60.0f);
     sm.SetCameraTarget(glm::vec3(0.0f, 0.0f, 0.0f));
     sm.UpdateCameraAspect((float)w / (float)h);
-    
-    // Инициализация PublicAPI
-    // if (!PublicAPI::Initialize()) {
-    //     std::cerr << "[ERROR] PublicAPI initialization failed!" << std::endl;
-    // } else {
-    //     std::cout << "[INFO] PublicAPI initialized successfully!" << std::endl;
-    // }
     
     while (!win32Window->shouldClose()) {
         QueryPerformanceCounter(&currentTime);
@@ -469,22 +481,20 @@ void Core::GameLoop() {
             if (cw <= 0) cw = 1280; 
             if (ch <= 0) ch = 720;
             
-            // Обновляем SceneManager
             sm.UpdateCameraAspect((float)cw / (float)ch);
             
             if (currentAPI == RenderAPI::VULKAN && vulkan) {
                 ProcessOtladCommands(vulkan, g_uiManager);
                 
-                // Получаем матрицы из SceneManager
                 glm::mat4 viewMat = sm.GetViewMatrix();
                 glm::mat4 projMat = sm.GetProjectionMatrix();
+                glm::vec3 camPos = sm.GetCameraPosition();
                 
                 vulkan->setViewMatrix(viewMat);
                 vulkan->setProjectionMatrix(projMat);
                 
                 vulkan->beginFrame();
                 
-                // Получаем 3D viewport для клиппинга
                 Panel* currentView3D = g_uiManager->getPanelManager()->get3D();
                 if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                     SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
@@ -496,17 +506,19 @@ void Core::GameLoop() {
                     vulkan->DisableViewportClip();
                 }
                 
-                // Рендерим сцену (сетка + модели)
                 vulkan->renderScene();
                 
-                // Отключаем clipping для UI
+                // Контур временно отключён
+                // ObjectID selectedID = sm.GetSelectedObjectID();
+                // if (selectedID != 0) {
+                //     vulkan->renderContour(selectedID, 1.0f, 1.0f, 0.5f, 0.0f, viewMat, projMat);
+                // }
+                
                 DisableViewportClip();
                 vulkan->DisableViewportClip();
                 
-                // Рендерим UI
                 g_uiManager->renderStatic();
                 
-                // Overlay
                 SecondRender::Instance().RenderOverlay();
                 vulkan->renderOverlay();
                 
@@ -526,7 +538,6 @@ void Core::GameLoop() {
                               currentView3D->getW(), currentView3D->getH());
                 }
                 
-                // OpenGL рендер модели
                 if (modelLoaded && shaderProgram) {
                     // OpenGL rendering code here
                 }

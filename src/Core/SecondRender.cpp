@@ -4,6 +4,7 @@
 #include "Render/Win32/RenderUI.h"
 #include "../Interface/InterfaceManager.h"
 #include "../Interface/Panels.h"
+#include "SecondComplexity/Scene/SceneManager.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cmath>
@@ -235,10 +236,9 @@ std::vector<std::pair<glm::vec3, glm::vec3>> SecondRender::CalculateAxesLines() 
 
 void SecondRender::RenderInfiniteGrid() {
     // Для Vulkan сетка рендерится внутри Vulkan::renderScene()
-    // Этот метод оставлен для OpenGL и совместимости
+    // Этот метод оставлен для OpenGL
     if (!gridConfig.enabled || !gridConfig.infiniteGrid) return;
     if (!cameraMatrixValid) return;
-    
     // OpenGL rendering would go here
 }
 
@@ -259,15 +259,11 @@ void SecondRender::SetZoomLevel(float zoom) {
 }
 
 void SecondRender::RenderContour(ObjectID objectId, float thickness, float r, float g, float b) {
-    // Контуры для Vulkan рендерятся через SecondRender::RenderOverlay()
-    if (!vulkan) return;
-    if (objectId == 0) return;
-    
-    contourThickness = thickness;
-    contourColor[0] = r;
-    contourColor[1] = g;
-    contourColor[2] = b;
-    currentContourObject = objectId;
+    // ОБВОДКА ТЕПЕРЬ В VULKAN::RENDERCONTOUR()
+    // Этот метод оставлен для совместимости, но не используется
+    if (vulkan && objectId != 0) {
+        vulkan->renderContour(objectId, thickness, r, g, b, currentViewMat, currentProjMat);
+    }
 }
 
 void SecondRender::RenderBackground() {

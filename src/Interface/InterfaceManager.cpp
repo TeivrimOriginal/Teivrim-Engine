@@ -62,8 +62,6 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
     
     auto hierarchy = panels->getPanel("Hierarchy");
     if (hierarchy) {
-        // Убираем кнопки создания куба и т.д.
-        // Добавляем только метки
         hierarchy->addLabel("Scene Objects:", 10, 130, 12, true, 0.8f, 0.8f, 0.9f);
         hierarchy->addLabel("Click object to select", 10, 150, 10, false, 0.5f, 0.5f, 0.5f);
         hierarchy->addLabel("Selected: None", 10, 170, 11, false, 0.7f, 0.5f, 0.3f);
@@ -77,10 +75,6 @@ InterfaceManager::InterfaceManager(Core* corePtr, RenderAPI api)
         inspector->addButton("Reset", 100, 35, 80, 24, 0.5f, 0.4f, 0.4f, []() { 
             std::cout << "Reset" << std::endl; 
         });
-        inspector->addLabel("Position: 0,0,0", 10, 70, 12, false, 0.8f, 0.8f, 0.8f);
-        inspector->addLabel("Rotation: 0,0,0", 10, 90, 12, false, 0.8f, 0.8f, 0.8f);
-        inspector->addLabel("Scale: 1,1,1", 10, 110, 12, false, 0.8f, 0.8f, 0.8f);
-        inspector->addLabel("Type: None", 10, 130, 12, false, 0.7f, 0.7f, 0.9f);
     }
     
     auto view3D = panels->getPanel("3D Viewport");
@@ -131,6 +125,7 @@ InterfaceManager::~InterfaceManager() {
 
 void InterfaceManager::setVulkan(Vulkan* vk) {
     renderer.setVulkan(vk);
+    objectUI.setVulkan(vk);  // ДОБАВЬ ЭТУ СТРОКУ
     IconManager::Instance().SetRenderer(&renderer);
 }
 
@@ -243,7 +238,7 @@ void InterfaceManager::renderStatic() {
             }
         }
         
-        // Hierarchy panel - отображение иерархии сцены с возможностью выбора
+        // Hierarchy panel
         Panel* hierarchy = panels->getPanel("Hierarchy");
         if (hierarchy && hierarchy->visible && !hierarchy->collapsed) {
             auto& sm = SceneManager::Instance();
@@ -253,7 +248,6 @@ void InterfaceManager::renderStatic() {
             int xOffset = hierarchy->getX() + 10;
             int lineHeight = 18;
             
-            // Обновляем метку выбранного объекта
             SceneObject* selected = sm.GetSelectedObject();
             if (selected) {
                 for (auto& lbl : hierarchy->labels) {
@@ -288,11 +282,9 @@ void InterfaceManager::renderStatic() {
                     displayName = displayName.substr(0, 22) + "...";
                 }
                 
-                // Выделение выбранного объекта оранжевым
                 float colorR, colorG, colorB;
                 if (obj->selected) {
-                    colorR = 1.0f; colorG = 0.5f; colorB = 0.0f; // Оранжевый для выбранного
-                    // Рисуем фон для выбранного
+                    colorR = 1.0f; colorG = 0.5f; colorB = 0.0f;
                     renderer.drawQuad(xOffset, yPos - 2, 
                                      hierarchy->getX() + hierarchy->getW() - 10, 
                                      yPos + 14, 
@@ -358,7 +350,6 @@ void InterfaceManager::renderStatic() {
             }
         }
         
-        // Hierarchy panel - отображение иерархии сцены с возможностью выбора
         Panel* hierarchy = panels->getPanel("Hierarchy");
         if (hierarchy && hierarchy->visible && !hierarchy->collapsed) {
             auto& sm = SceneManager::Instance();
@@ -368,7 +359,6 @@ void InterfaceManager::renderStatic() {
             int xOffset = hierarchy->getX() + 10;
             int lineHeight = 18;
             
-            // Обновляем метку выбранного объекта
             SceneObject* selected = sm.GetSelectedObject();
             if (selected) {
                 for (auto& lbl : hierarchy->labels) {
@@ -403,11 +393,9 @@ void InterfaceManager::renderStatic() {
                     displayName = displayName.substr(0, 22) + "...";
                 }
                 
-                // Выделение выбранного объекта оранжевым
                 float colorR, colorG, colorB;
                 if (obj->selected) {
-                    colorR = 1.0f; colorG = 0.5f; colorB = 0.0f; // Оранжевый для выбранного
-                    // Рисуем фон для выбранного
+                    colorR = 1.0f; colorG = 0.5f; colorB = 0.0f;
                     renderer.drawQuad(xOffset, yPos - 2, 
                                      hierarchy->getX() + hierarchy->getW() - 10, 
                                      yPos + 14, 
@@ -488,6 +476,12 @@ void InterfaceManager::handleRightClick(int x, int y) {
 void InterfaceManager::handleClick(int x, int y) {
     isClick = true;
     
+    // Сначала передаём клик в ObjectUI для полей ввода
+    objectUI.handleClick(x, y, 0, 0, *panels);
+    
+    // Если поле ввода активно - не обрабатываем другие клики
+    if (objectUI.isAnyInputActive()) return;
+    
     // Проверяем клик в панели Hierarchy для выбора объекта
     Panel* hierarchy = panels->getPanel("Hierarchy");
     if (hierarchy && hierarchy->visible && !hierarchy->collapsed) {
@@ -498,22 +492,23 @@ void InterfaceManager::handleClick(int x, int y) {
         auto& sm = SceneManager::Instance();
         auto objects = sm.GetAllObjects();
         
-        int maxItems = objects.size();
-        
-        for (size_t i = 0; i < objects.size() && i < (size_t)maxItems; i++) {
+        for (size_t i = 0; i < objects.size(); i++) {
             int yPos = startY + i * lineHeight;
             
-            // Проверяем попадание по строке объекта
             if (x >= xOffset && x <= hierarchy->getX() + hierarchy->getW() - 10 &&
                 y >= yPos - 2 && y <= yPos + 14) {
                 
                 SceneObject* clicked = objects[i];
                 if (clicked) {
-                    // Выбираем объект
+                    if (sm.GetSelectedObject()) {
+                        sm.GetSelectedObject()->selected = false;
+                    }
                     sm.SelectObject(clicked->id);
-                    std::cout << "[UI] Selected object: " << clicked->name << std::endl;
+                    clicked->selected = true;
+                    std::cout << "[UI] Selected object: " << clicked->name << " (ID: " << clicked->id << ")" << std::endl;
                 } else {
                     sm.DeselectObject();
+                    std::cout << "[UI] Deselected object" << std::endl;
                 }
                 return;
             }

@@ -336,7 +336,8 @@ void SceneManager::UpdateChildrenTransforms(ObjectID parentID) {
 }
 
 void SceneManager::UpdateWorldTransforms() {
-    for (auto obj : m_objectsOrdered) {
+    for (auto& pair : m_objects) {
+        SceneObject* obj = pair.second.get();
         if (obj->parentID == 0 && obj->isDirty()) {
             UpdateGlobalTransform(obj->id);
             UpdateChildrenTransforms(obj->id);
@@ -344,7 +345,6 @@ void SceneManager::UpdateWorldTransforms() {
     }
     m_transformsDirty = false;
 }
-
 void SceneManager::SetMainCamera(ObjectID cameraID) {
     SceneObject* obj = GetSceneObject(cameraID);
     if (obj && obj->type == ObjectType::CAMERA) {
