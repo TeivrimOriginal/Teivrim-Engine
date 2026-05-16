@@ -44,6 +44,9 @@ public:
     void setTestTexture(VulkanTexture* tex) { testTexture = tex; }
     void setCore(Core* corePtr) { core = corePtr; }
     
+    // Метод для отладки - выводит иерархию в консоль
+    void PrintHierarchy() const;
+    
     struct Dimensions {
         int width, height;
     };

@@ -1,39 +1,30 @@
+// Input.h
 #ifndef INPUT_H
 #define INPUT_H
 
 #include "../Application/application.h"
-#include "../Interface/InterfaceManager.h"
 #include <windows.h>
+
+class InterfaceManager;
 
 class Input {
 public:
-    Input(Application& app, InterfaceManager* interf);
-    ~Input() = default;
+    Input(Application& app, InterfaceManager* uiManager);
+    ~Input();
     
+    void processMouseWin32(float x, float y);
     void processInputWin32(float deltaTime, HWND hwnd);
-    void processMouseWin32(float xpos, float ypos);
-    void processMouseWheel(int delta, HWND hwnd);
     void Update(float deltaTime);
-    void processInput(float deltaTime);
-    void EnableDebug(bool enable);
-    bool IsMouseCaptured() const;
-    void SetMouseCapture(bool capture);
+    void processMouseWheel(int delta, HWND hwnd);
     
 private:
-    void UpdateMouseCapture(HWND hwnd);
     void UpdateKeyboardMovement(float deltaTime, HWND hwnd);
+    void UpdateMouseCapture(HWND hwnd);
     
-    Application& app;
-    Camera& camera;
-    InterfaceManager* interf;
-    
-    bool mouseCaptured;
-    bool rightMouseDown;
-    float lastX, lastY;
-    bool firstMouse;
-    float mouseSensitivityScale;
-    bool debugEnabled;
-    bool keys[6];
+    Application& m_app;
+    InterfaceManager* m_uiManager;
+    bool m_captured;
+    float m_lastX, m_lastY;
 };
 
 #endif

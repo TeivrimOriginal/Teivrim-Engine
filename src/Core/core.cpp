@@ -1,4 +1,4 @@
-// core.cpp - FULL
+// core.cpp - ПОЛНЫЙ ФАЙЛ
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -118,7 +118,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         
         case WM_KEYDOWN: {
-            // Если поле ввода активно - передаём туда и не идём дальше
             if (g_uiManager && g_uiManager->getObjectUI().isAnyInputActive()) {
                 g_uiManager->getObjectUI().handleKeyboardInput(wParam, 0);
                 return 0;
@@ -141,7 +140,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         
         case WM_CHAR: {
-            // Если поле ввода активно - передаём символ
             if (g_uiManager && g_uiManager->getObjectUI().isAnyInputActive()) {
                 g_uiManager->getObjectUI().handleKeyboardInput(0, (char)wParam);
                 return 0;
@@ -259,6 +257,20 @@ void Core::cleanupRender() {
 bool Core::loadModelFromPath(const std::string& path) {
     if (path.empty()) return false;
     
+    static int modelCounter = 0;
+    modelCounter++;
+    
+    // Извлекаем имя файла без расширения
+    std::string filename = path.substr(path.find_last_of("/\\") + 1);
+    size_t dotPos = filename.find_last_of(".");
+    if (dotPos != std::string::npos) {
+        filename = filename.substr(0, dotPos);
+    }
+    
+    std::string uniqueName = std::to_string(modelCounter) + "_" + filename;
+    
+    std::cout << "[Core] Loading model with unique name: " << uniqueName << std::endl;
+    
     ModelParser* newParser = new ModelParser();
     if (!newParser->loadModel(path)) {
         delete newParser;
@@ -266,15 +278,19 @@ bool Core::loadModelFromPath(const std::string& path) {
     }
     
     modelPath = path;
-    std::string modelName = path.substr(path.find_last_of("/\\") + 1);
     
     if (currentAPI == RenderAPI::VULKAN && vulkan) {
-        vulkan->addModel(modelName, newParser->getMeshes());
-        vulkan->setModelTransform(modelName, glm::scale(glm::mat4(1.0f), glm::vec3(0.01f)));
+        vulkan->addModel(uniqueName, newParser->getMeshes());
+        vulkan->setModelTransform(uniqueName, glm::mat4(1.0f));
     }
     
-    SceneManager::Instance().AddModel(modelName, newParser);
-    modelLoaded = true;
+    auto& sm = SceneManager::Instance();
+    int objId = sm.CreateObjectScene(uniqueName);
+    sm.SetModelParser(objId, newParser);
+    sm.LoadModelToScene(objId, path);
+    sm.SetPositionScene(objId, 0.0f, 0.0f, 0.0f);
+    
+    std::cout << "[Core] Loaded model: " << uniqueName << " (ObjID: " << objId << ")" << std::endl;
     
     return true;
 }
@@ -322,6 +338,10 @@ void Core::GetViewportClip(int& x, int& y, int& w, int& h) const {
     h = clipH;
 }
 
+void Core::settingUpRender() {}
+
+void Core::ParserToRender() {}
+
 void Core::GameLoop() {
     std::thread inputThread([]() {
         while (true) {
@@ -342,6 +362,18 @@ void Core::GameLoop() {
             }
             else if (input == "0") {
                 OtladClear();
+            }
+            else if (input == "scene") {
+                auto& sm = SceneManager::Instance();
+                std::cout << "\n=== Scene Objects ===" << std::endl;
+                for (const auto& obj : sm.GetAllObjectsScene()) {
+                    std::cout << "ID: " << obj.id << " | " << obj.name 
+                              << " | Pos: " << obj.posX << ", " << obj.posY << ", " << obj.posZ
+                              << " | Scale: " << obj.scaleX << ", " << obj.scaleY << ", " << obj.scaleZ
+                              << " | Visible: " << (obj.isVisible ? "Y" : "N") 
+                              << " | Loaded: " << (obj.isLoaded ? "Y" : "N") << std::endl;
+                }
+                std::cout << "=====================" << std::endl;
             }
         }
     });
@@ -445,6 +477,8 @@ void Core::GameLoop() {
     sm.SetCameraTarget(glm::vec3(0.0f, 0.0f, 0.0f));
     sm.UpdateCameraAspect((float)w / (float)h);
     
+    std::cout << "[Core] Waiting for model loading..." << std::endl;
+    
     while (!win32Window->shouldClose()) {
         QueryPerformanceCounter(&currentTime);
         float deltaTime = (float)(currentTime.QuadPart - lastTime.QuadPart) / freq.QuadPart;
@@ -455,10 +489,11 @@ void Core::GameLoop() {
         frameCount++;
         if (fpsTimer >= 1.0f) {
             char title[256];
-            sprintf_s(title, "%s 3D Viewer | FPS: %d | Grid: %s", 
+            sprintf_s(title, "%s 3D Viewer | FPS: %d | Grid: %s | Objects: %zu", 
                       currentAPI == RenderAPI::VULKAN ? "Vulkan" : "OpenGL", 
                       frameCount,
-                      gridEnabled ? "ON" : "OFF");
+                      gridEnabled ? "ON" : "OFF",
+                      sm.GetAllObjectsScene().size());
             SetWindowTextA(win32Window->getHWND(), title);
             frameCount = 0; 
             fpsTimer = 0.0f;
@@ -483,48 +518,72 @@ void Core::GameLoop() {
             
             sm.UpdateCameraAspect((float)cw / (float)ch);
             
-            if (currentAPI == RenderAPI::VULKAN && vulkan) {
-                ProcessOtladCommands(vulkan, g_uiManager);
-                
-                glm::mat4 viewMat = sm.GetViewMatrix();
-                glm::mat4 projMat = sm.GetProjectionMatrix();
-                glm::vec3 camPos = sm.GetCameraPosition();
-                
-                vulkan->setViewMatrix(viewMat);
-                vulkan->setProjectionMatrix(projMat);
-                
-                vulkan->beginFrame();
-                
-                Panel* currentView3D = g_uiManager->getPanelManager()->get3D();
-                if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
-                    SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
-                                    currentView3D->getW(), currentView3D->getH());
-                    vulkan->SetViewportClip(currentView3D->getX(), currentView3D->getY(),
-                                            currentView3D->getW(), currentView3D->getH());
-                } else {
-                    DisableViewportClip();
-                    vulkan->DisableViewportClip();
-                }
-                
-                vulkan->renderScene();
-                
-                // Контур временно отключён
-                // ObjectID selectedID = sm.GetSelectedObjectID();
-                // if (selectedID != 0) {
-                //     vulkan->renderContour(selectedID, 1.0f, 1.0f, 0.5f, 0.0f, viewMat, projMat);
-                // }
-                
-                DisableViewportClip();
-                vulkan->DisableViewportClip();
-                
-                g_uiManager->renderStatic();
-                
-                SecondRender::Instance().RenderOverlay();
-                vulkan->renderOverlay();
-                
-                vulkan->endFrame();
-                vulkan->present();
-            } 
+if (currentAPI == RenderAPI::VULKAN && vulkan && vulkan->isInitialized()) {
+    ProcessOtladCommands(vulkan, g_uiManager);
+    
+    glm::mat4 viewMat = sm.GetViewMatrix();
+    glm::mat4 projMat = sm.GetProjectionMatrix();
+    glm::vec3 camPos = sm.GetCameraPosition();
+    
+    vulkan->setViewMatrix(viewMat);
+    vulkan->setProjectionMatrix(projMat);
+    
+    vulkan->beginFrame();
+    
+    Panel* currentView3D = g_uiManager->getPanelManager()->get3D();
+    if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
+        SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
+                        currentView3D->getW(), currentView3D->getH());
+        vulkan->SetViewportClip(currentView3D->getX(), currentView3D->getY(),
+                                currentView3D->getW(), currentView3D->getH());
+    } else {
+        DisableViewportClip();
+        vulkan->DisableViewportClip();
+    }
+    
+    sm.UpdateAllMatrices();
+    
+    std::cout << "\n=== GAMELOOP - Updating transforms ===" << std::endl;
+    
+    // Обновляем трансформации для ВСЕХ моделей КАЖДЫЙ КАДР
+    for (auto& obj : sm.GetAllObjectsScene()) {
+        if (obj.isVisible && obj.isLoaded && sm.GetModelParser(obj.id)) {
+            glm::mat4 worldMat = obj.getWorldMatrix();
+            
+            std::cout << "[GameLoop] ID: " << obj.id 
+                      << " Name: " << obj.name 
+                      << " Pos: " << obj.getPosition().x << "," << obj.getPosition().y << "," << obj.getPosition().z
+                      << " Scale: " << obj.scaleX << "," << obj.scaleY << "," << obj.scaleZ << std::endl;
+            
+            vulkan->setModelTransform(obj.name, worldMat);
+        }
+    }
+    
+    std::cout << "=== GAMELOOP - Rendering ===" << std::endl;
+    
+    // Рендерим все модели
+    vulkan->renderAllModels();
+    
+    // Обводка выбранного объекта
+    int selectedId = sm.GetSelectedObjectScene();
+    if (selectedId != 0) {
+        ObjectScene* selected = sm.GetObjectScene(selectedId);
+        if (selected && selected->isVisible && sm.GetModelParser(selectedId)) {
+            vulkan->renderContour(selectedId, 3.0f, 1.0f, 0.5f, 0.0f, viewMat, projMat);
+        }
+    }
+    
+    DisableViewportClip();
+    vulkan->DisableViewportClip();
+    
+    g_uiManager->renderStatic();
+    
+    SecondRender::Instance().RenderOverlay();
+    vulkan->renderOverlay();
+    
+    vulkan->endFrame();
+    vulkan->present();
+}
             else if (currentAPI == RenderAPI::OPENGL) {
                 glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -536,10 +595,6 @@ void Core::GameLoop() {
                     glEnable(GL_SCISSOR_TEST);
                     glScissor(currentView3D->getX(), ch - (currentView3D->getY() + currentView3D->getH()),
                               currentView3D->getW(), currentView3D->getH());
-                }
-                
-                if (modelLoaded && shaderProgram) {
-                    // OpenGL rendering code here
                 }
                 
                 if (gridEnabled) {
@@ -576,11 +631,9 @@ void Core::GameLoop() {
         if (deltaTime < 0.016f) Sleep(1);
     }
     
+    sm.SaveScene("Config/last_scene.json");
+    
     delete g_uiManager; 
     g_uiManager = nullptr;
     cleanupRender();
 }
-
-void Core::settingUpRender() {}
-
-void Core::ParserToRender() {}

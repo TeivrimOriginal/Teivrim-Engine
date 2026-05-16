@@ -1,4 +1,4 @@
-// Vulkan.h - ПОЛНЫЙ ФАЙЛ С КОНТУРОМ
+// Vulkan.h - ПОЛНЫЙ ИСПРАВЛЕННЫЙ ФАЙЛ
 #ifndef VULKAN_H
 #define VULKAN_H
 
@@ -10,7 +10,12 @@
 #include <glm/glm.hpp>
 #include "Render/Parser/parser.h"
 #include "stb_truetype.h"
+
 typedef unsigned int ObjectID;
+
+// Константа должна быть доступна везде
+constexpr uint32_t MAX_FRAMES_IN_FLIGHT_VK = 2;
+
 struct VulkanTexture {
     VkImage image = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
@@ -33,13 +38,11 @@ struct UIImageQuad {
     VulkanTexture* texture;
 };
 
-// Структура для вершин сетки (линий)
 struct GridVertex {
     glm::vec2 pos;
     glm::vec3 color;
 };
 
-// Структура для вершин контура
 struct ContourVertex {
     glm::vec2 pos;
     glm::vec3 color;
@@ -71,12 +74,13 @@ public:
     VulkanTexture* loadUIImageFromData(unsigned char* data, int width, int height, int channels);
     void freeUIImage(VulkanTexture* texture);
 
-    void addModel(const std::string& name, const std::vector<StandardMesh>& meshes);
+    int addModel(const std::string& name, const std::vector<StandardMesh>& meshes);
     void removeModel(const std::string& name);
     void clearModels();
     void renderAllModels();
     void renderModel(const std::string& name);
     void setModelTransform(const std::string& name, const glm::mat4& transform);
+    
     void setViewMatrix(const glm::mat4& view);
     void setProjectionMatrix(const glm::mat4& proj);
 
@@ -106,7 +110,6 @@ public:
     glm::mat4 getViewMatrix() const { return viewMat; }
     glm::mat4 getProjectionMatrix() const { return projMat; }
     
-    // Методы для рендеринга сетки
     void renderGrid(const glm::mat4& viewMatrix, const glm::mat4& projMatrix);
     void setGridEnabled(bool enabled) { gridEnabled = enabled; needGridUpdate = true; }
     void setGridSpacing(float spacing) { gridSpacing = spacing; needGridUpdate = true; }
@@ -122,16 +125,10 @@ public:
     bool isGridEnabled() const { return gridEnabled; }
     float getGridSpacing() const { return gridSpacing; }
     
-    // Метод для обводки контура
     void renderContour(ObjectID objectId, float thickness, float r, float g, float b, 
                        const glm::mat4& viewMatrix, const glm::mat4& projMatrix);
 
 private:
-        // В private секцию Vulkan добавь:
-VkBuffer contourBuffer = VK_NULL_HANDLE;
-VkDeviceMemory contourBufferMemory = VK_NULL_HANDLE;
-uint32_t contourVertexCount = 0;
-ObjectID currentContourObject = 0;
     struct VertexGPU {
         glm::vec3 pos;
         glm::vec3 color;
@@ -179,6 +176,9 @@ ObjectID currentContourObject = 0;
         uint32_t indexCount = 0;
         std::vector<VkDescriptorSet> descSets;
         std::vector<VulkanTexture> textures;
+        
+        VkBuffer uniformBuffers[MAX_FRAMES_IN_FLIGHT_VK] = {};
+        VkDeviceMemory uniformBufferMemories[MAX_FRAMES_IN_FLIGHT_VK] = {};
     };
 
     static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -250,9 +250,6 @@ ObjectID currentContourObject = 0;
     VkCommandPool commandPools[MAX_FRAMES_IN_FLIGHT] = {};
     VkCommandBuffer commandBuffers[MAX_FRAMES_IN_FLIGHT] = {};
     
-    VkBuffer uniformBuffers[MAX_FRAMES_IN_FLIGHT] = {};
-    VkDeviceMemory uniformBufferMemories[MAX_FRAMES_IN_FLIGHT] = {};
-    
     VkSemaphore imageAvailableSemaphores[MAX_FRAMES_IN_FLIGHT] = {};
     VkSemaphore renderFinishedSemaphores[MAX_FRAMES_IN_FLIGHT] = {};
     VkFence inFlightFences[MAX_FRAMES_IN_FLIGHT] = {};
@@ -266,7 +263,6 @@ ObjectID currentContourObject = 0;
     VkBuffer uiImageVertexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory uiImageVertexBufferMemory = VK_NULL_HANDLE;
 
-    // Буферы для сетки
     VkBuffer gridVertexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory gridVertexBufferMemory = VK_NULL_HANDLE;
     uint32_t gridVertexCount = 0;
@@ -274,7 +270,6 @@ ObjectID currentContourObject = 0;
     bool viewportClipEnabled = false;
     int clipX = 0, clipY = 0, clipW = 0, clipH = 0;
 
-    // Настройки сетки
     bool gridEnabled = true;
     float gridSpacing = 20.0f;
     float gridFadeDistance = 500.0f;
@@ -301,7 +296,6 @@ ObjectID currentContourObject = 0;
     void createFramebuffers();
     void createCommandPools();
     void createSyncObjects();
-    void createUniformBuffers();
     void createDescriptorSetLayout();
     void createEmptyDescriptorSetLayout();
     void createDescriptorSetLayoutUIText();
@@ -315,7 +309,7 @@ ObjectID currentContourObject = 0;
     void createUIBuffers();
     void createUITextBuffers();
     void createUIImageBuffers();
-    void updateUniformBuffer(uint32_t frameIndex, const glm::mat4& modelMatrix);
+    void updateUniformBuffer(ModelBuffers& buffers, uint32_t frameIndex, const glm::mat4& modelMatrix);
 
     void renderUI();
     void renderUIText();
@@ -328,6 +322,9 @@ ObjectID currentContourObject = 0;
     void createModelBuffers(ModelBuffers& buffers, const std::vector<VertexGPU>& vertices,
                             const std::vector<uint32_t>& indices,
                             const std::vector<VulkanTexture>& textures);
+    
+    void createPerModelUniformBuffers(ModelBuffers& buffers);
+    void destroyPerModelUniformBuffers(ModelBuffers& buffers);
     
     void updateGridBuffer();
     void drawContourInternal(const std::vector<ContourVertex>& vertices, float thickness,

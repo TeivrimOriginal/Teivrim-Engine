@@ -9,7 +9,6 @@ ObjectUI::ObjectUI()
     , m_isEditing(false)
     , m_vulkan(nullptr)
 {
-    // Инициализируем поля ввода (9 полей: Pos X,Y,Z | Rot X,Y,Z | Scale X,Y,Z)
     for (int i = 0; i < 9; i++) {
         m_fieldValues.push_back("0");
         m_fieldOriginalValues.push_back("0");
@@ -20,13 +19,14 @@ ObjectUI::~ObjectUI() {}
 
 void ObjectUI::updateFieldValuesFromObject() {
     auto& sm = SceneManager::Instance();
-    SceneObject* selected = sm.GetSelectedObject();
-    if (!selected) return;
+    int selectedId = sm.GetSelectedObjectScene();
+    ObjectScene* selectedScene = (selectedId != 0) ? sm.GetObjectScene(selectedId) : nullptr;
     
-    // Получаем МИРОВУЮ позицию
-    glm::vec3 worldPos = sm.GetWorldPosition(selected->id);
-    glm::vec3 worldRot = selected->localTransform.getEulerAngles();
-    glm::vec3 worldScale = selected->localTransform.scale;
+    if (!selectedScene) return;
+    
+    glm::vec3 worldPos = selectedScene->getPosition();
+    glm::vec3 worldRot = selectedScene->getRotation();
+    glm::vec3 worldScale = selectedScene->getScale();
     
     char buf[32];
     sprintf_s(buf, "%.3f", worldPos.x); m_fieldValues[0] = buf;
@@ -47,15 +47,20 @@ void ObjectUI::render(RenderUI& r, int w, int h, PanelManager& panels) {
     if (!inspector || !inspector->visible || inspector->collapsed) return;
     
     auto& sm = SceneManager::Instance();
-    SceneObject* selected = sm.GetSelectedObject();
+    int selectedId = sm.GetSelectedObjectScene();
+    ObjectScene* selectedScene = (selectedId != 0) ? sm.GetObjectScene(selectedId) : nullptr;
     
-    if (!selected) {
+    if (!selectedScene) {
         m_activeFieldIndex = -1;
         m_isEditing = false;
+        
+        int startY = inspector->getY() + 180;
+        r.drawText(inspector->getX() + 10, startY, "No object selected", 0.6f, 0.6f, 0.6f);
+        r.drawText(inspector->getX() + 10, startY + 25, "Click on an object", 0.5f, 0.5f, 0.5f);
+        r.drawText(inspector->getX() + 10, startY + 50, "in the Hierarchy panel", 0.5f, 0.5f, 0.5f);
         return;
     }
     
-    // Если не редактируем - обновляем значения из объекта
     if (!m_isEditing) {
         updateFieldValuesFromObject();
     }
@@ -65,16 +70,17 @@ void ObjectUI::render(RenderUI& r, int w, int h, PanelManager& panels) {
     int fieldStartX = inspector->getX() + 55;
     int fieldWidth = 65;
     
-    // Имя и тип объекта
-    r.drawText(inspector->getX() + 10, startY - 30, "Object: " + selected->name, 0.9f, 0.9f, 0.5f);
+    // ID объекта
+    char idBuf[64];
+    sprintf_s(idBuf, "ID: %d", selectedScene->id);
+    r.drawText(inspector->getX() + 10, startY - 45, idBuf, 0.6f, 0.6f, 0.8f);
     
+    // Имя объекта
+    r.drawText(inspector->getX() + 10, startY - 30, "Object: " + selectedScene->name, 0.9f, 0.9f, 0.5f);
+    
+    // Тип объекта
     std::string typeStr = "Type: ";
-    switch (selected->type) {
-        case ObjectType::CAMERA: typeStr += "Camera"; break;
-        case ObjectType::MODEL: typeStr += "Model"; break;
-        case ObjectType::LIGHT: typeStr += "Light"; break;
-        default: typeStr += "Empty";
-    }
+    typeStr += selectedScene->pathOfModel.empty() ? "Empty" : "Model";
     r.drawText(inspector->getX() + 10, startY - 15, typeStr, 0.7f, 0.7f, 0.9f);
     
     // Позиция
@@ -97,7 +103,6 @@ void ObjectUI::render(RenderUI& r, int w, int h, PanelManager& panels) {
 }
 
 void ObjectUI::drawInputField(RenderUI& r, const std::string& value, int x, int y, int w, int h, bool isActive) {
-    // Фон
     if (isActive) {
         r.drawQuad(x, y, x + w, y + h, 0.25f, 0.3f, 0.4f);
         r.drawQuad(x, y, x + w, y + 1, 0.6f, 0.7f, 1.0f);
@@ -106,13 +111,11 @@ void ObjectUI::drawInputField(RenderUI& r, const std::string& value, int x, int 
         r.drawQuad(x, y, x + w, y + 1, 0.3f, 0.3f, 0.35f);
     }
     
-    // Рамка
     r.drawQuad(x, y, x + w, y + 1, 0.4f, 0.4f, 0.45f);
     r.drawQuad(x, y + h - 1, x + w, y + h, 0.4f, 0.4f, 0.45f);
     r.drawQuad(x, y, x + 1, y + h, 0.4f, 0.4f, 0.45f);
     r.drawQuad(x + w - 1, y, x + w, y + h, 0.4f, 0.4f, 0.45f);
     
-    // Текст
     std::string displayText = value;
     if (displayText.length() > 10) displayText = displayText.substr(0, 8) + "..";
     if (isActive) displayText += "_";
@@ -128,12 +131,21 @@ void ObjectUI::handleClick(int x, int y, int w, int h, PanelManager& panels) {
         return;
     }
     
+    auto& sm = SceneManager::Instance();
+    int selectedId = sm.GetSelectedObjectScene();
+    ObjectScene* selectedScene = (selectedId != 0) ? sm.GetObjectScene(selectedId) : nullptr;
+    
+    if (!selectedScene) {
+        m_isEditing = false;
+        m_activeFieldIndex = -1;
+        return;
+    }
+    
     int startY = inspector->getY() + 180;
     int lineHeight = 28;
     int fieldStartX = inspector->getX() + 55;
     int fieldWidth = 65;
     
-    // Если было активное поле - применяем значение
     if (m_isEditing && m_activeFieldIndex != -1) {
         applyFieldValue();
     }
@@ -141,7 +153,6 @@ void ObjectUI::handleClick(int x, int y, int w, int h, PanelManager& panels) {
     m_isEditing = false;
     m_activeFieldIndex = -1;
     
-    // Проверяем клик по полям
     for (int i = 0; i < 9; i++) {
         int fieldX = fieldStartX + (i % 3) * (fieldWidth + 5);
         int fieldY = startY + (i / 3) * lineHeight;
@@ -150,7 +161,7 @@ void ObjectUI::handleClick(int x, int y, int w, int h, PanelManager& panels) {
             m_activeFieldIndex = i;
             m_isEditing = true;
             m_fieldOriginalValues[i] = m_fieldValues[i];
-            std::cout << "[ObjectUI] Editing field " << i << std::endl;
+            std::cout << "[ObjectUI] Editing field " << i << " for object: " << selectedScene->name << " (ID: " << selectedScene->id << ")" << std::endl;
             return;
         }
     }
@@ -185,8 +196,10 @@ void ObjectUI::applyFieldValue() {
     if (m_activeFieldIndex < 0) return;
     
     auto& sm = SceneManager::Instance();
-    SceneObject* selected = sm.GetSelectedObject();
-    if (!selected) return;
+    int selectedId = sm.GetSelectedObjectScene();
+    ObjectScene* selectedScene = (selectedId != 0) ? sm.GetObjectScene(selectedId) : nullptr;
+    
+    if (!selectedScene) return;
     
     float val = 0.0f;
     try {
@@ -197,79 +210,54 @@ void ObjectUI::applyFieldValue() {
         return;
     }
     
-    std::cout << "[ObjectUI] Applying field " << m_activeFieldIndex << " = " << val << std::endl;
+    std::cout << "[ObjectUI] Applying field " << m_activeFieldIndex << " = " << val 
+              << " to object: " << selectedScene->name << " (ID: " << selectedScene->id << ")" << std::endl;
     
-    // Получаем текущую мировую позицию для позиционных полей
-    glm::vec3 currentWorldPos = sm.GetWorldPosition(selected->id);
+    glm::vec3 currentPos = selectedScene->getPosition();
+    glm::vec3 currentRot = selectedScene->getRotation();
+    glm::vec3 currentScale = selectedScene->getScale();
     
     switch (m_activeFieldIndex) {
         case 0: // Pos X
-            {
-                glm::vec3 newPos = currentWorldPos;
-                newPos.x = val;
-                // Перемещаем объект так, чтобы его мировая позиция стала val
-                selected->localTransform.position.x += (newPos.x - currentWorldPos.x);
-            }
+            selectedScene->setPosition(glm::vec3(val, currentPos.y, currentPos.z));
             break;
         case 1: // Pos Y
-            {
-                glm::vec3 newPos = currentWorldPos;
-                newPos.y = val;
-                selected->localTransform.position.y += (newPos.y - currentWorldPos.y);
-            }
+            selectedScene->setPosition(glm::vec3(currentPos.x, val, currentPos.z));
             break;
         case 2: // Pos Z
-            {
-                glm::vec3 newPos = currentWorldPos;
-                newPos.z = val;
-                selected->localTransform.position.z += (newPos.z - currentWorldPos.z);
-            }
+            selectedScene->setPosition(glm::vec3(currentPos.x, currentPos.y, val));
             break;
         case 3: // Rot X
-            {
-                glm::vec3 euler = selected->localTransform.getEulerAngles();
-                euler.x = val;
-                selected->localTransform.setEulerAngles(euler.x, euler.y, euler.z);
-            }
+            selectedScene->setRotation(glm::vec3(val, currentRot.y, currentRot.z));
             break;
         case 4: // Rot Y
-            {
-                glm::vec3 euler = selected->localTransform.getEulerAngles();
-                euler.y = val;
-                selected->localTransform.setEulerAngles(euler.x, euler.y, euler.z);
-            }
+            selectedScene->setRotation(glm::vec3(currentRot.x, val, currentRot.z));
             break;
         case 5: // Rot Z
-            {
-                glm::vec3 euler = selected->localTransform.getEulerAngles();
-                euler.z = val;
-                selected->localTransform.setEulerAngles(euler.x, euler.y, euler.z);
-            }
+            selectedScene->setRotation(glm::vec3(currentRot.x, currentRot.y, val));
             break;
         case 6: // Scale X
-            selected->localTransform.scale.x = val;
+            selectedScene->setScale(glm::vec3(val, currentScale.y, currentScale.z));
+            std::cout << "[ObjectUI] Scale X changed to: " << val << std::endl;
             break;
         case 7: // Scale Y
-            selected->localTransform.scale.y = val;
+            selectedScene->setScale(glm::vec3(currentScale.x, val, currentScale.z));
             break;
         case 8: // Scale Z
-            selected->localTransform.scale.z = val;
+            selectedScene->setScale(glm::vec3(currentScale.x, currentScale.y, val));
             break;
     }
     
-    selected->markDirty();
-    sm.UpdateWorldTransforms();
+    selectedScene->updateWorldMatrix();
     
-    // Обновляем Vulkan трансформацию
-    if (m_vulkan) {
-        m_vulkan->setModelTransform(selected->name, sm.GetWorldMatrix(selected->id));
-    }
+    std::cout << "[ObjectUI] After change - New position: " 
+              << selectedScene->getPosition().x << ", "
+              << selectedScene->getPosition().y << ", "
+              << selectedScene->getPosition().z << std::endl;
+    std::cout << "[ObjectUI] After change - New scale: " 
+              << selectedScene->scaleX << ", "
+              << selectedScene->scaleY << ", "
+              << selectedScene->scaleZ << std::endl;
     
-    // Обновляем отображение значений
     updateFieldValuesFromObject();
-    
-    std::cout << "[ObjectUI] New world position: " 
-              << sm.GetWorldPosition(selected->id).x << ", "
-              << sm.GetWorldPosition(selected->id).y << ", "
-              << sm.GetWorldPosition(selected->id).z << std::endl;
 }
