@@ -29,17 +29,42 @@ static std::vector<char> readFile(const std::string& filename) {
 static void compileShaders() {
     system("mkdir autoshadertest 2>nul");
     
-    const char* vertCode = "#version 450\nlayout(binding = 0) uniform UniformBufferObject { mat4 model; mat4 view; mat4 proj; } ubo; layout(location = 0) in vec3 inPosition; layout(location = 1) in vec3 inColor; layout(location = 2) in vec2 inTexCoord; layout(location = 0) out vec2 fragTexCoord; void main() { gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0); fragTexCoord = inTexCoord; }";
-    const char* fragCode = "#version 450\nlayout(binding = 1) uniform sampler2D texSampler; layout(location = 0) in vec2 fragTexCoord; layout(location = 0) out vec4 outColor; void main() { outColor = texture(texSampler, fragTexCoord); }";
-    const char* uiVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec3 inColor; layout(location = 0) out vec3 fragColor; void main() { gl_Position = vec4(inPos, 0.0, 1.0); fragColor = inColor; }";
-    const char* uiFragCode = "#version 450\nlayout(location = 0) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { outColor = vec4(fragColor, 1.0); }";
-    const char* uiTextVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec2 inTexCoord; layout(location = 2) in vec3 inColor; layout(location = 0) out vec2 fragTexCoord; layout(location = 1) out vec3 fragColor; void main() { gl_Position = vec4(inPos, 0.0, 1.0); fragTexCoord = inTexCoord; fragColor = inColor; }";
-    const char* uiTextFragCode = "#version 450\nlayout(binding = 0) uniform sampler2D fontSampler; layout(location = 0) in vec2 fragTexCoord; layout(location = 1) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { vec4 texColor = texture(fontSampler, fragTexCoord); outColor = vec4(fragColor, texColor.a); }";
-    const char* uiImageVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec2 inTexCoord; layout(location = 0) out vec2 fragTexCoord; void main() { gl_Position = vec4(inPos, 0.0, 1.0); fragTexCoord = inTexCoord; }";
-    const char* uiImageFragCode = "#version 450\nlayout(binding = 0) uniform sampler2D imageSampler; layout(location = 0) in vec2 fragTexCoord; layout(location = 0) out vec4 outColor; void main() { outColor = texture(imageSampler, fragTexCoord); }";
-    const char* gridVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec3 inColor; layout(push_constant) uniform PushConstants { mat4 projView; } pc; layout(location = 0) out vec3 fragColor; void main() { gl_Position = pc.projView * vec4(inPos.x, 0.0, inPos.y, 1.0); fragColor = inColor; }";
-    const char* gridFragCode = "#version 450\nlayout(location = 0) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { outColor = vec4(fragColor, 1.0); }";
+    const char* vertCode = "#version 450\nlayout(binding = 0) uniform UniformBufferObject { mat4 model; mat4 view; mat4 proj; } ubo; layout(location = 0) in vec3 inPosition; layout(location = 1) in vec3 inNormal; layout(location = 2) in vec3 inColor; layout(location = 3) in vec2 inTexCoord; layout(location = 0) out vec2 fragTexCoord; void main() { gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0); fragTexCoord = inTexCoord; }";
     
+    const char* fragCode = "#version 450\nlayout(binding = 1) uniform sampler2D texSampler; layout(location = 0) in vec2 fragTexCoord; layout(location = 0) out vec4 outColor; void main() { outColor = texture(texSampler, fragTexCoord); }";
+    
+    const char* uiVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec3 inColor; layout(location = 0) out vec3 fragColor; void main() { gl_Position = vec4(inPos, 0.0, 1.0); fragColor = inColor; }";
+    
+    const char* uiFragCode = "#version 450\nlayout(location = 0) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { outColor = vec4(fragColor, 1.0); }";
+    
+    const char* uiTextVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec2 inTexCoord; layout(location = 2) in vec3 inColor; layout(location = 0) out vec2 fragTexCoord; layout(location = 1) out vec3 fragColor; void main() { gl_Position = vec4(inPos, 0.0, 1.0); fragTexCoord = inTexCoord; fragColor = inColor; }";
+    
+    const char* uiTextFragCode = "#version 450\nlayout(binding = 0) uniform sampler2D fontSampler; layout(location = 0) in vec2 fragTexCoord; layout(location = 1) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { vec4 texColor = texture(fontSampler, fragTexCoord); outColor = vec4(fragColor, texColor.a); }";
+    
+    const char* uiImageVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec2 inTexCoord; layout(location = 0) out vec2 fragTexCoord; void main() { gl_Position = vec4(inPos, 0.0, 1.0); fragTexCoord = inTexCoord; }";
+    
+    const char* uiImageFragCode = "#version 450\nlayout(binding = 0) uniform sampler2D imageSampler; layout(location = 0) in vec2 fragTexCoord; layout(location = 0) out vec4 outColor; void main() { outColor = texture(imageSampler, fragTexCoord); }";
+    
+    const char* gridVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec3 inColor; layout(push_constant) uniform PushConstants { mat4 projView; } pc; layout(location = 0) out vec3 fragColor; void main() { gl_Position = pc.projView * vec4(inPos.x, 0.0, inPos.y, 1.0); fragColor = inColor; }";
+    
+    const char* gridFragCode = "#version 450\nlayout(location = 0) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { outColor = vec4(fragColor, 1.0); }";
+const char* contourVertCode = "#version 450\n"
+    "layout(push_constant) uniform PushConstants { mat4 mvp; } pc;\n"
+    "layout(location = 0) in vec3 inPosition;\n"
+    "layout(location = 0) out vec4 fragColor;\n"
+    "void main() {\n"
+    "    vec4 pos = pc.mvp * vec4(inPosition, 1.0);\n"
+    "    pos.y = -pos.y;\n"
+    "    gl_Position = pos;\n"
+    "    fragColor = vec4(1.0, 0.5, 0.0, 1.0);\n"
+    "}\n";
+
+const char* contourFragCode = "#version 450\n"
+    "layout(location = 0) in vec4 fragColor;\n"
+    "layout(location = 0) out vec4 outColor;\n"
+    "void main() {\n"
+    "    outColor = fragColor;\n"
+    "}\n";
     std::ofstream vertFile("autoshadertest/vert.vert"); vertFile << vertCode; vertFile.close();
     std::ofstream fragFile("autoshadertest/frag.frag"); fragFile << fragCode; fragFile.close();
     std::ofstream uiVertFile("autoshadertest/ui_vert.vert"); uiVertFile << uiVertCode; uiVertFile.close();
@@ -50,6 +75,8 @@ static void compileShaders() {
     std::ofstream uiImageFragFile("autoshadertest/ui_image_frag.frag"); uiImageFragFile << uiImageFragCode; uiImageFragFile.close();
     std::ofstream gridVertFile("autoshadertest/grid_vert.vert"); gridVertFile << gridVertCode; gridVertFile.close();
     std::ofstream gridFragFile("autoshadertest/grid_frag.frag"); gridFragFile << gridFragCode; gridFragFile.close();
+    std::ofstream contourVertFile("autoshadertest/contour_vert.vert"); contourVertFile << contourVertCode; contourVertFile.close();
+    std::ofstream contourFragFile("autoshadertest/contour_frag.frag"); contourFragFile << contourFragCode; contourFragFile.close();
     
     system("glslc autoshadertest/vert.vert -o autoshadertest/vert.spv");
     system("glslc autoshadertest/frag.frag -o autoshadertest/frag.spv");
@@ -61,6 +88,8 @@ static void compileShaders() {
     system("glslc autoshadertest/ui_image_frag.frag -o autoshadertest/ui_image_frag.spv");
     system("glslc autoshadertest/grid_vert.vert -o autoshadertest/grid_vert.spv");
     system("glslc autoshadertest/grid_frag.frag -o autoshadertest/grid_frag.spv");
+    system("glslc autoshadertest/contour_vert.vert -o autoshadertest/contour_vert.spv");
+    system("glslc autoshadertest/contour_frag.frag -o autoshadertest/contour_frag.spv");
 }
 
 bool Vulkan::initializeFont() {
@@ -323,6 +352,10 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     projMat = glm::perspective(glm::radians(45.0f), (float)width/height, 0.1f, 1000.0f);
     projMat[1][1] *= -1;
     
+    // Создаём буфер сетки один раз
+    needGridUpdate = true;
+    updateGridBuffer();
+    
     initialized = true;
     std::cout << "Vulkan initialized successfully" << std::endl;
 }
@@ -393,6 +426,12 @@ Vulkan::~Vulkan() {
     }
     if (surface) vkDestroySurfaceKHR(instance, surface, nullptr);
     if (instance) vkDestroyInstance(instance, nullptr);
+    // Добавьте в деструктор Vulkan:
+// В деструкторе Vulkan, перед vkDestroyDevice:
+for (auto& pair : contourBuffers) {
+    destroyContourBuffers(pair.second);
+}
+contourBuffers.clear();
 }
 
 void Vulkan::createMainDescriptorPool() {
@@ -411,11 +450,28 @@ void Vulkan::createMainDescriptorPool() {
 }
 
 void Vulkan::cleanupSwapchain() {
-    for (auto fb : framebuffers) vkDestroyFramebuffer(device, fb, nullptr);
-    for (auto iv : swapchainImageViews) vkDestroyImageView(device, iv, nullptr);
-    vkDestroySwapchainKHR(device, swapchain, nullptr);
+    // Уничтожаем фреймбуферы
+    for (auto fb : framebuffers) {
+        if (fb != VK_NULL_HANDLE) {
+            vkDestroyFramebuffer(device, fb, nullptr);
+        }
+    }
     framebuffers.clear();
+    
+    // Уничтожаем image views
+    for (auto iv : swapchainImageViews) {
+        if (iv != VK_NULL_HANDLE) {
+            vkDestroyImageView(device, iv, nullptr);
+        }
+    }
     swapchainImageViews.clear();
+    
+    // Уничтожаем swapchain
+    if (swapchain != VK_NULL_HANDLE) {
+        vkDestroySwapchainKHR(device, swapchain, nullptr);
+        swapchain = VK_NULL_HANDLE;
+    }
+    
     swapchainImages.clear();
 }
 
@@ -622,7 +678,6 @@ VulkanTexture* Vulkan::loadUIImage(const std::string& filepath) {
     delete texture;
     return nullptr;
 }
-
 void Vulkan::freeUIImage(VulkanTexture* texture) {
     if (!texture) return;
     
@@ -910,10 +965,10 @@ void Vulkan::createGridPipeline() {
     
     std::cout << "Grid pipeline created" << std::endl;
 }
-
+// Vulkan.cpp - createContourPipeline метод
 void Vulkan::createContourPipeline() {
-    VkShaderModule vertModule = createShaderModule("autoshadertest/grid_vert.spv");
-    VkShaderModule fragModule = createShaderModule("autoshadertest/grid_frag.spv");
+    VkShaderModule vertModule = createShaderModule("autoshadertest/contour_vert.spv");
+    VkShaderModule fragModule = createShaderModule("autoshadertest/contour_frag.spv");
     
     if (vertModule == VK_NULL_HANDLE || fragModule == VK_NULL_HANDLE) {
         std::cerr << "Failed to load contour shaders" << std::endl;
@@ -922,10 +977,10 @@ void Vulkan::createContourPipeline() {
         return;
     }
     
-    auto bindingDesc = VkVertexInputBindingDescription{0, sizeof(ContourVertex), VK_VERTEX_INPUT_RATE_VERTEX};
+    auto bindingDesc = VkVertexInputBindingDescription{0, sizeof(ContourVertex3D), VK_VERTEX_INPUT_RATE_VERTEX};
     auto attrDesc = std::array<VkVertexInputAttributeDescription, 2>{
-        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(ContourVertex, pos)},
-        VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ContourVertex, color)}
+        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ContourVertex3D, pos)},
+        VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ContourVertex3D, normal)}
     };
     
     VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
@@ -935,7 +990,7 @@ void Vulkan::createContourPipeline() {
     vi.pVertexAttributeDescriptions = attrDesc.data();
     
     VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-    ia.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     
     VkPipelineViewportStateCreateInfo vpState{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
     vpState.viewportCount = 1;
@@ -950,10 +1005,11 @@ void Vulkan::createContourPipeline() {
     VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
     ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
     
+    // ИСПРАВЛЕННЫЙ DepthStencil - РИСУЕМ ВСЕГДА ПОВЕРХ
     VkPipelineDepthStencilStateCreateInfo depthStencil{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
     depthStencil.depthTestEnable = VK_TRUE;
     depthStencil.depthWriteEnable = VK_FALSE;
-    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_ALWAYS;  // ВСЕГДА рисуем поверх
     
     VkPipelineColorBlendAttachmentState blendAtt{};
     blendAtt.blendEnable = VK_TRUE;
@@ -969,9 +1025,9 @@ void Vulkan::createContourPipeline() {
     cb.attachmentCount = 1;
     cb.pAttachments = &blendAtt;
     
-    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_LINE_WIDTH};
+    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-    dynamic.dynamicStateCount = 3;
+    dynamic.dynamicStateCount = 2;
     dynamic.pDynamicStates = dynamicStates;
     
     VkPushConstantRange pushRange{};
@@ -1024,9 +1080,8 @@ void Vulkan::createContourPipeline() {
     vkDestroyShaderModule(device, vertModule, nullptr);
     vkDestroyShaderModule(device, fragModule, nullptr);
     
-    std::cout << "Contour pipeline created" << std::endl;
+    std::cout << "Contour pipeline created (ALWAYS on top)" << std::endl;
 }
-
 void Vulkan::createUIImageBuffers() {
     VkDeviceSize bufferSize = sizeof(UIImageVertex) * 65536;
     
@@ -1186,7 +1241,6 @@ void Vulkan::updateUniformBuffer(ModelBuffers& buffers, uint32_t frameIndex, con
 }
 
 // ========== МЕТОДЫ РАБОТЫ С МОДЕЛЯМИ ==========
-
 int Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& meshes) {
     vkDeviceWaitIdle(device);
     
@@ -1203,6 +1257,7 @@ int Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& m
     std::vector<uint32_t> indices;
     std::vector<VulkanTexture> textures;
     
+    // Вычисляем границы модели для масштабирования
     glm::vec3 minBounds(FLT_MAX);
     glm::vec3 maxBounds(-FLT_MAX);
     bool hasBounds = false;
@@ -1244,6 +1299,7 @@ int Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& m
             glm::vec3 pos(vert.position[0], vert.position[1], vert.position[2]);
             pos = (pos - center) * scale;
             v.pos = pos;
+            v.normal = glm::vec3(vert.normal[0], vert.normal[1], vert.normal[2]);
             v.color = glm::vec3(1.0f, 1.0f, 1.0f);
             v.texCoord = glm::vec2(vert.texCoords[0], vert.texCoords[1]);
             vertices.push_back(v);
@@ -1261,6 +1317,7 @@ int Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& m
         return -1;
     }
     
+    // Загрузка текстур
     for (const auto& mesh : meshes) {
         bool textureLoaded = false;
         
@@ -1350,19 +1407,17 @@ void Vulkan::clearModels() {
     modelTransforms.clear();
     std::cout << "[Vulkan] Cleared all models" << std::endl;
 }
-
 void Vulkan::renderAllModels() {
     for (auto& pair : modelBuffers) {
         const std::string& name = pair.first;
         ModelBuffers& buffers = pair.second;
         
         auto transIt = modelTransforms.find(name);
-        if (transIt == modelTransforms.end()) {
-            continue;
-        }
+        if (transIt == modelTransforms.end()) continue;
         
         glm::mat4 transform = transIt->second;
         
+        // Обновляем uniform buffer для текущего кадра
         updateUniformBuffer(buffers, currentFrame, transform);
         
         vkCmdBindPipeline(commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline3D);
@@ -1372,9 +1427,8 @@ void Vulkan::renderAllModels() {
         vkCmdBindIndexBuffer(commandBuffers[currentFrame], buffers.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
         
         for (size_t i = 0; i < buffers.descSets.size() && i < buffers.textures.size(); i++) {
-            uint32_t indexCount = buffers.indexCount;
-            
-            if (indexCount > 0) {
+            if (buffers.indexCount > 0) {
+                // Обновляем descriptor set с правильными буферами для текущего кадра
                 VkDescriptorImageInfo imageInfo{buffers.textures[i].sampler, buffers.textures[i].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
                 VkDescriptorBufferInfo bufInfo{buffers.uniformBuffers[currentFrame], 0, sizeof(UniformBufferObject)};
                 
@@ -1396,7 +1450,7 @@ void Vulkan::renderAllModels() {
                 vkUpdateDescriptorSets(device, (uint32_t)descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
                 
                 vkCmdBindDescriptorSets(commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout3D, 0, 1, &buffers.descSets[i], 0, nullptr);
-                vkCmdDrawIndexed(commandBuffers[currentFrame], indexCount, 1, 0, 0, 0);
+                vkCmdDrawIndexed(commandBuffers[currentFrame], buffers.indexCount, 1, 0, 0, 0);
             }
         }
     }
@@ -1465,14 +1519,25 @@ void Vulkan::createModelBuffers(ModelBuffers& buffers, const std::vector<VertexG
     VkBufferCreateInfo bufInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     bufInfo.size = vertSize;
     bufInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    vkCreateBuffer(device, &bufInfo, nullptr, &buffers.vertexBuffer);
+    
+    if (vkCreateBuffer(device, &bufInfo, nullptr, &buffers.vertexBuffer) != VK_SUCCESS) {
+        std::cerr << "[Vulkan] Failed to create vertex buffer" << std::endl;
+        return;
+    }
     
     VkMemoryRequirements memReq;
     vkGetBufferMemoryRequirements(device, buffers.vertexBuffer, &memReq);
     VkMemoryAllocateInfo memAlloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     memAlloc.allocationSize = memReq.size;
-    memAlloc.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    vkAllocateMemory(device, &memAlloc, nullptr, &buffers.vertexBufferMemory);
+    memAlloc.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, 
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    
+    if (vkAllocateMemory(device, &memAlloc, nullptr, &buffers.vertexBufferMemory) != VK_SUCCESS) {
+        std::cerr << "[Vulkan] Failed to allocate vertex buffer memory" << std::endl;
+        vkDestroyBuffer(device, buffers.vertexBuffer, nullptr);
+        buffers.vertexBuffer = VK_NULL_HANDLE;
+        return;
+    }
     vkBindBufferMemory(device, buffers.vertexBuffer, buffers.vertexBufferMemory, 0);
     
     void* data;
@@ -1483,12 +1548,25 @@ void Vulkan::createModelBuffers(ModelBuffers& buffers, const std::vector<VertexG
     VkDeviceSize idxSize = sizeof(uint32_t) * indices.size();
     bufInfo.size = idxSize;
     bufInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    vkCreateBuffer(device, &bufInfo, nullptr, &buffers.indexBuffer);
+    
+    if (vkCreateBuffer(device, &bufInfo, nullptr, &buffers.indexBuffer) != VK_SUCCESS) {
+        std::cerr << "[Vulkan] Failed to create index buffer" << std::endl;
+        return;
+    }
+    
     vkGetBufferMemoryRequirements(device, buffers.indexBuffer, &memReq);
     memAlloc.allocationSize = memReq.size;
-    memAlloc.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    vkAllocateMemory(device, &memAlloc, nullptr, &buffers.indexBufferMemory);
+    memAlloc.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, 
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    
+    if (vkAllocateMemory(device, &memAlloc, nullptr, &buffers.indexBufferMemory) != VK_SUCCESS) {
+        std::cerr << "[Vulkan] Failed to allocate index buffer memory" << std::endl;
+        vkDestroyBuffer(device, buffers.indexBuffer, nullptr);
+        buffers.indexBuffer = VK_NULL_HANDLE;
+        return;
+    }
     vkBindBufferMemory(device, buffers.indexBuffer, buffers.indexBufferMemory, 0);
+    
     vkMapMemory(device, buffers.indexBufferMemory, 0, idxSize, 0, &data);
     memcpy(data, indices.data(), idxSize);
     vkUnmapMemory(device, buffers.indexBufferMemory);
@@ -1496,6 +1574,7 @@ void Vulkan::createModelBuffers(ModelBuffers& buffers, const std::vector<VertexG
     buffers.indexCount = (uint32_t)indices.size();
     buffers.textures = textures;
     
+    // Create descriptor sets for each texture
     buffers.descSets.resize(textures.size());
     
     for (size_t i = 0; i < textures.size(); i++) {
@@ -1506,9 +1585,37 @@ void Vulkan::createModelBuffers(ModelBuffers& buffers, const std::vector<VertexG
         
         VkResult result = vkAllocateDescriptorSets(device, &descAlloc, &buffers.descSets[i]);
         if (result != VK_SUCCESS) {
-            std::cerr << "Failed to allocate descriptor set for texture " << i << std::endl;
+            std::cerr << "[Vulkan] Failed to allocate descriptor set for texture " << i << std::endl;
             continue;
         }
+        
+        // Initialize descriptor set with white texture temporarily
+        VulkanTexture whiteTex = createWhiteTexture();
+        VkDescriptorImageInfo imageInfo{whiteTex.sampler, whiteTex.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        VkDescriptorBufferInfo bufInfo{buffers.uniformBuffers[0], 0, sizeof(UniformBufferObject)};
+        
+        std::array<VkWriteDescriptorSet, 2> descriptorWrites = {};
+        descriptorWrites[0] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        descriptorWrites[0].dstSet = buffers.descSets[i];
+        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].descriptorCount = 1;
+        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[0].pBufferInfo = &bufInfo;
+        
+        descriptorWrites[1] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        descriptorWrites[1].dstSet = buffers.descSets[i];
+        descriptorWrites[1].dstBinding = 1;
+        descriptorWrites[1].descriptorCount = 1;
+        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrites[1].pImageInfo = &imageInfo;
+        
+        vkUpdateDescriptorSets(device, (uint32_t)descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
+        
+        // Clean up temporary white texture
+        vkDestroyImageView(device, whiteTex.view, nullptr);
+        vkDestroyImage(device, whiteTex.image, nullptr);
+        vkFreeMemory(device, whiteTex.memory, nullptr);
+        vkDestroySampler(device, whiteTex.sampler, nullptr);
     }
     
     std::cout << "[Vulkan] Created buffers for model with " << textures.size() << " textures" << std::endl;
@@ -1742,11 +1849,12 @@ void Vulkan::createPipelines() {
     VkShaderModule uiTextFragModule = createShaderModule("autoshadertest/ui_text_frag.spv");
     
     auto bindingDesc = VkVertexInputBindingDescription{0, sizeof(VertexGPU), VK_VERTEX_INPUT_RATE_VERTEX};
-    auto attrDesc = std::array<VkVertexInputAttributeDescription, 3>{
-        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, pos)},
-        VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, color)},
-        VkVertexInputAttributeDescription{2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(VertexGPU, texCoord)}
-    };
+auto attrDesc = std::array<VkVertexInputAttributeDescription, 4>{  // Было 3, стало 4
+    VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, pos)},
+    VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, normal)},  // Добавить
+    VkVertexInputAttributeDescription{2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, color)},
+    VkVertexInputAttributeDescription{3, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(VertexGPU, texCoord)}
+};
     
     VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     vi.vertexBindingDescriptionCount = 1;
@@ -1951,7 +2059,6 @@ void Vulkan::createUITextBuffers() {
     vkAllocateMemory(device, &memAlloc, nullptr, &uiTextVertexBufferMemory);
     vkBindBufferMemory(device, uiTextVertexBuffer, uiTextVertexBufferMemory, 0);
 }
-
 void Vulkan::updateGridBuffer() {
     if (!needGridUpdate) return;
     
@@ -1979,22 +2086,7 @@ void Vulkan::updateGridBuffer() {
     
     std::vector<GridVertex> vertices;
     
-    for (float x = minX; x <= maxX + 0.1f; x += spacing) {
-        bool isCenter = fabs(x) < 0.01f;
-        float r = isCenter ? gridCenterLineColor[0] : gridLineColor[0];
-        float g = isCenter ? gridCenterLineColor[1] : gridLineColor[1];
-        float b = isCenter ? gridCenterLineColor[2] : gridLineColor[2];
-        
-        float fade = 1.0f - std::min(1.0f, (float)(fabs(x) / gridFadeDistance));
-        fade = std::max(0.3f, fade);
-        r *= fade;
-        g *= fade;
-        b *= fade;
-        
-        vertices.push_back({{x, minZ}, {r, g, b}});
-        vertices.push_back({{x, maxZ}, {r, g, b}});
-    }
-    
+    // Линии вдоль X
     for (float z = minZ; z <= maxZ + 0.1f; z += spacing) {
         bool isCenter = fabs(z) < 0.01f;
         float r = isCenter ? gridCenterLineColor[0] : gridLineColor[0];
@@ -2011,16 +2103,45 @@ void Vulkan::updateGridBuffer() {
         vertices.push_back({{maxX, z}, {r, g, b}});
     }
     
+    // Линии вдоль Z
+    for (float x = minX; x <= maxX + 0.1f; x += spacing) {
+        bool isCenter = fabs(x) < 0.01f;
+        float r = isCenter ? gridCenterLineColor[0] : gridLineColor[0];
+        float g = isCenter ? gridCenterLineColor[1] : gridLineColor[1];
+        float b = isCenter ? gridCenterLineColor[2] : gridLineColor[2];
+        
+        float fade = 1.0f - std::min(1.0f, (float)(fabs(x) / gridFadeDistance));
+        fade = std::max(0.3f, fade);
+        r *= fade;
+        g *= fade;
+        b *= fade;
+        
+        vertices.push_back({{x, minZ}, {r, g, b}});
+        vertices.push_back({{x, maxZ}, {r, g, b}});
+    }
+    
     if (vertices.empty()) return;
     
     VkDeviceSize bufferSize = vertices.size() * sizeof(GridVertex);
     
+    // Если буфер уже существует, пересоздаём только если размер изменился
     if (gridVertexBuffer != VK_NULL_HANDLE) {
+        VkMemoryRequirements oldReq;
+        vkGetBufferMemoryRequirements(device, gridVertexBuffer, &oldReq);
+        
+        if (oldReq.size >= bufferSize) {
+            void* data;
+            vkMapMemory(device, gridVertexBufferMemory, 0, bufferSize, 0, &data);
+            memcpy(data, vertices.data(), bufferSize);
+            vkUnmapMemory(device, gridVertexBufferMemory);
+            gridVertexCount = (uint32_t)vertices.size();
+            needGridUpdate = false;
+            return;
+        }
+        
         vkDestroyBuffer(device, gridVertexBuffer, nullptr);
-        gridVertexBuffer = VK_NULL_HANDLE;
-    }
-    if (gridVertexBufferMemory != VK_NULL_HANDLE) {
         vkFreeMemory(device, gridVertexBufferMemory, nullptr);
+        gridVertexBuffer = VK_NULL_HANDLE;
         gridVertexBufferMemory = VK_NULL_HANDLE;
     }
     
@@ -2029,7 +2150,7 @@ void Vulkan::updateGridBuffer() {
     bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     
     if (vkCreateBuffer(device, &bufferInfo, nullptr, &gridVertexBuffer) != VK_SUCCESS) {
-        std::cerr << "Failed to create grid vertex buffer" << std::endl;
+        std::cerr << "[Vulkan] Failed to create grid vertex buffer" << std::endl;
         return;
     }
     
@@ -2042,7 +2163,7 @@ void Vulkan::updateGridBuffer() {
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     
     if (vkAllocateMemory(device, &allocInfo, nullptr, &gridVertexBufferMemory) != VK_SUCCESS) {
-        std::cerr << "Failed to allocate grid vertex buffer memory" << std::endl;
+        std::cerr << "[Vulkan] Failed to allocate grid vertex buffer memory" << std::endl;
         vkDestroyBuffer(device, gridVertexBuffer, nullptr);
         gridVertexBuffer = VK_NULL_HANDLE;
         return;
@@ -2058,13 +2179,13 @@ void Vulkan::updateGridBuffer() {
     gridVertexCount = (uint32_t)vertices.size();
     needGridUpdate = false;
 }
-
 void Vulkan::renderGrid(const glm::mat4& viewMatrix, const glm::mat4& projMatrix) {
     if (!gridEnabled) return;
     if (pipelineGrid == VK_NULL_HANDLE) return;
     
-    needGridUpdate = true;
-    updateGridBuffer();
+    if (needGridUpdate) {
+        updateGridBuffer();
+    }
     
     if (gridVertexBuffer == VK_NULL_HANDLE || gridVertexCount == 0) return;
     
@@ -2092,110 +2213,120 @@ void Vulkan::renderGrid(const glm::mat4& viewMatrix, const glm::mat4& projMatrix
     
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &gridVertexBuffer, &offset);
-    
     vkCmdDraw(cmdBuffer, gridVertexCount, 1, 0, 0);
 }
 
+// ==================== Vulkan.cpp - renderContour ====================
 void Vulkan::renderContour(ObjectID objectId, float thickness, float r, float g, float b,
                            const glm::mat4& viewMatrix, const glm::mat4& projMatrix) {
     if (objectId == 0) return;
     if (pipelineContour == VK_NULL_HANDLE) return;
     
     auto& sm = SceneManager::Instance();
-    SceneObject* obj = sm.GetSceneObject(objectId);
-    if (!obj || !obj->parser) return;
     
-    glm::mat4 worldMat = sm.GetWorldMatrix(objectId);
+    ObjectScene* objScene = sm.GetObjectScene(objectId);
+    ModelParser* parser = nullptr;
+    std::string modelName;
     
-    glm::vec3 worldMin(FLT_MAX);
-    glm::vec3 worldMax(-FLT_MAX);
+    if (objScene && objScene->isLoaded) {
+        parser = sm.GetModelParser(objectId);
+        modelName = objScene->name;
+        if (!parser) return;
+    } else {
+        SceneObject* obj = sm.GetSceneObject(objectId);
+        if (!obj || !obj->parser) return;
+        parser = obj->parser;
+        modelName = obj->name;
+    }
     
-    for (const auto& mesh : obj->parser->getMeshes()) {
-        for (const auto& vertex : mesh.vertices) {
-            glm::vec4 localPos(vertex.position[0], vertex.position[1], vertex.position[2], 1.0f);
-            glm::vec4 worldPos = worldMat * localPos;
-            
-            worldMin.x = std::min(worldMin.x, worldPos.x);
-            worldMin.y = std::min(worldMin.y, worldPos.y);
-            worldMin.z = std::min(worldMin.z, worldPos.z);
-            worldMax.x = std::max(worldMax.x, worldPos.x);
-            worldMax.y = std::max(worldMax.y, worldPos.y);
-            worldMax.z = std::max(worldMax.z, worldPos.z);
+    auto it = contourBuffers.find(objectId);
+    if (it == contourBuffers.end()) {
+        std::vector<glm::vec3> rawVertices;
+        
+        for (const auto& mesh : parser->getMeshes()) {
+            for (const auto& vert : mesh.vertices) {
+                glm::vec3 pos(vert.position[0], vert.position[1], vert.position[2]);
+                rawVertices.push_back(pos);
+            }
         }
+        
+        if (rawVertices.empty()) return;
+        
+        glm::vec3 minBounds(FLT_MAX), maxBounds(-FLT_MAX);
+        for (const auto& v : rawVertices) {
+            minBounds = glm::min(minBounds, v);
+            maxBounds = glm::max(maxBounds, v);
+        }
+        
+        glm::vec3 center = (minBounds + maxBounds) * 0.5f;
+        float dx = maxBounds.x - minBounds.x;
+        float dy = maxBounds.y - minBounds.y;
+        float dz = maxBounds.z - minBounds.z;
+        float maxDim = glm::max(glm::max(dx, dy), dz);
+        float scale = (maxDim > 0.001f) ? (5.0f / maxDim) : 1.0f;
+        
+        std::vector<glm::vec3> originalVertices;
+        std::vector<uint32_t> indices;
+        
+        size_t currVertexOffset = 0;
+        for (const auto& mesh : parser->getMeshes()) {
+            for (const auto& vert : mesh.vertices) {
+                glm::vec3 pos(vert.position[0], vert.position[1], vert.position[2]);
+                glm::vec3 transformedPos = (pos - center) * scale;
+                originalVertices.push_back(transformedPos);
+            }
+            for (unsigned int idx : mesh.indices) {
+                indices.push_back((uint32_t)(currVertexOffset + idx));
+            }
+            currVertexOffset += mesh.vertices.size();
+        }
+        
+        if (originalVertices.empty()) return;
+        
+        std::vector<ContourVertex3D> contourVertices;
+        contourVertices.reserve(originalVertices.size());
+        for (size_t i = 0; i < originalVertices.size(); i++) {
+            ContourVertex3D cv;
+            cv.pos = originalVertices[i];
+            cv.normal = glm::vec3(0.0f);
+            contourVertices.push_back(cv);
+        }
+        
+        std::cout << "[Vulkan] Created outline for: " << modelName << std::endl;
+        
+        ContourBuffers cb;
+        createContourBuffers(cb, contourVertices, indices);
+        contourBuffers[objectId] = cb;
+        it = contourBuffers.find(objectId);
     }
     
-    glm::vec3 size = worldMax - worldMin;
-    float padding = std::max(size.x, std::max(size.y, size.z)) * 0.02f;
-    worldMin -= padding;
-    worldMax += padding;
+    if (it == contourBuffers.end()) return;
     
-    glm::vec3 corners[8] = {
-        {worldMin.x, worldMin.y, worldMin.z},
-        {worldMax.x, worldMin.y, worldMin.z},
-        {worldMax.x, worldMin.y, worldMax.z},
-        {worldMin.x, worldMin.y, worldMax.z},
-        {worldMin.x, worldMax.y, worldMin.z},
-        {worldMax.x, worldMax.y, worldMin.z},
-        {worldMax.x, worldMax.y, worldMax.z},
-        {worldMin.x, worldMax.y, worldMax.z}
-    };
+    ContourBuffers& cb = it->second;
     
-    int edges[12][2] = {
-        {0,1},{1,2},{2,3},{3,0},
-        {4,5},{5,6},{6,7},{7,4},
-        {0,4},{1,5},{2,6},{3,7}
-    };
-    
-    std::vector<ContourVertex> vertices;
-    for (int i = 0; i < 12; i++) {
-        vertices.push_back({{corners[edges[i][0]].x, corners[edges[i][0]].z}, {r, g, b}});
-        vertices.push_back({{corners[edges[i][1]].x, corners[edges[i][1]].z}, {r, g, b}});
+    // ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ МАТРИЦУ ПРЯМО ПЕРЕД РЕНДЕРОМ
+    glm::mat4 transform;
+    auto transIt = modelTransforms.find(modelName);
+    if (transIt != modelTransforms.end()) {
+        transform = transIt->second;
+    } else {
+        transform = glm::mat4(1.0f);
     }
     
-    drawContourInternal(vertices, thickness, viewMatrix, projMatrix);
-}
-
-void Vulkan::drawContourInternal(const std::vector<ContourVertex>& vertices, float thickness,
-                                  const glm::mat4& viewMatrix, const glm::mat4& projMatrix) {
-    if (vertices.empty()) return;
-    if (pipelineContour == VK_NULL_HANDLE) return;
+    // ОТЛАДКА - ВЫВОДИМ МАТРИЦУ В КОНСОЛЬ КАЖДЫЙ КАДР
+    static int debugCounter = 0;
+    if (debugCounter++ % 60 == 0) {
+        std::cout << "[Contour] Matrix for " << modelName << ": "
+                  << transform[0][0] << " " << transform[1][1] << " " << transform[2][2] << std::endl;
+    }
+    
+    // Увеличиваем масштаб для обводки
+    float scaleFactor = 1.03f;
+    transform[0] = transform[0] * scaleFactor;
+    transform[1] = transform[1] * scaleFactor;
+    transform[2] = transform[2] * scaleFactor;
     
     VkCommandBuffer cmdBuffer = commandBuffers[currentFrame];
-    
-    VkDeviceSize bufferSize = vertices.size() * sizeof(ContourVertex);
-    
-    VkBuffer tempBuffer;
-    VkDeviceMemory tempMemory;
-    
-    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    bufferInfo.size = bufferSize;
-    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    
-    if (vkCreateBuffer(device, &bufferInfo, nullptr, &tempBuffer) != VK_SUCCESS) {
-        std::cerr << "[Vulkan] Failed to create contour buffer" << std::endl;
-        return;
-    }
-    
-    VkMemoryRequirements memReq;
-    vkGetBufferMemoryRequirements(device, tempBuffer, &memReq);
-    
-    VkMemoryAllocateInfo allocInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-    allocInfo.allocationSize = memReq.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, 
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &tempMemory) != VK_SUCCESS) {
-        std::cerr << "[Vulkan] Failed to allocate contour buffer memory" << std::endl;
-        vkDestroyBuffer(device, tempBuffer, nullptr);
-        return;
-    }
-    
-    vkBindBufferMemory(device, tempBuffer, tempMemory, 0);
-    
-    void* data;
-    vkMapMemory(device, tempMemory, 0, bufferSize, 0, &data);
-    memcpy(data, vertices.data(), bufferSize);
-    vkUnmapMemory(device, tempMemory);
     
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -2213,19 +2344,15 @@ void Vulkan::drawContourInternal(const std::vector<ContourVertex>& vertices, flo
     vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
     
     vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineContour);
-    vkCmdSetLineWidth(cmdBuffer, thickness);
     
-    glm::mat4 projView = projMatrix * viewMatrix;
-    vkCmdPushConstants(cmdBuffer, pipelineLayoutContour, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &projView);
+    glm::mat4 mvp = projMatrix * viewMatrix * transform;
+    vkCmdPushConstants(cmdBuffer, pipelineLayoutContour, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &mvp);
     
     VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &tempBuffer, &offset);
-    vkCmdDraw(cmdBuffer, (uint32_t)vertices.size(), 1, 0, 0);
-    
-    vkDestroyBuffer(device, tempBuffer, nullptr);
-    vkFreeMemory(device, tempMemory, nullptr);
+    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &cb.vertexBuffer, &offset);
+    vkCmdBindIndexBuffer(cmdBuffer, cb.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(cmdBuffer, cb.indexCount, 1, 0, 0, 0);
 }
-
 void Vulkan::setViewMatrix(const glm::mat4& view) {
     viewMat = view;
     needGridUpdate = true;
@@ -2515,7 +2642,6 @@ void Vulkan::present() {
     
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
-
 void Vulkan::recreateSwapchain() {
     if (!hwnd || !IsWindow(hwnd)) return;
     
@@ -2534,15 +2660,20 @@ void Vulkan::recreateSwapchain() {
     vkDestroyImage(device, depthImage, nullptr);
     vkFreeMemory(device, depthImageMemory, nullptr);
     
+    depthImage = VK_NULL_HANDLE;
+    depthImageMemory = VK_NULL_HANDLE;
+    depthImageView = VK_NULL_HANDLE;
+    
     width = newWidth;
     height = newHeight;
     
     createSwapchain();
     createFramebuffers();
     
-    vkDeviceWaitIdle(device);
-    
+    // НЕ пересоздаём буфер сетки, просто отмечаем что нужно обновить данные
     needGridUpdate = true;
+    
+    std::cout << "[Vulkan] Swapchain recreated: " << width << "x" << height << std::endl;
 }
 
 VulkanTexture* Vulkan::loadUIImageFromData(unsigned char* data, int width, int height, int channels) {
@@ -2642,4 +2773,186 @@ void Vulkan::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
     vkQueueWaitIdle(graphicsQueue);
     
     vkFreeCommandBuffers(device, commandPools[0], 1, &commandBuffer);
+}
+void Vulkan::drawContourInternal3D(const std::vector<ContourVertex3D>& vertices, 
+                                    const std::vector<uint32_t>& indices,
+                                    float thickness,
+                                    const glm::mat4& viewMatrix, 
+                                    const glm::mat4& projMatrix,
+                                    const glm::mat4& worldMatrix) {
+    if (vertices.empty() || indices.empty()) return;
+    if (pipelineContour == VK_NULL_HANDLE) return;
+    
+    VkCommandBuffer cmdBuffer = commandBuffers[currentFrame];
+    
+    // Создаём временный вершинный буфер
+    VkDeviceSize vertexBufferSize = vertices.size() * sizeof(ContourVertex3D);
+    VkBuffer vertexBuffer;
+    VkDeviceMemory vertexBufferMemory;
+    
+    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size = vertexBufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) {
+        std::cerr << "[Vulkan] Failed to create contour vertex buffer" << std::endl;
+        return;
+    }
+    
+    VkMemoryRequirements memReq;
+    vkGetBufferMemoryRequirements(device, vertexBuffer, &memReq);
+    
+    VkMemoryAllocateInfo allocInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocInfo.allocationSize = memReq.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, 
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS) {
+        std::cerr << "[Vulkan] Failed to allocate contour vertex buffer memory" << std::endl;
+        vkDestroyBuffer(device, vertexBuffer, nullptr);
+        return;
+    }
+    
+    vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+    
+    void* data;
+    vkMapMemory(device, vertexBufferMemory, 0, vertexBufferSize, 0, &data);
+    memcpy(data, vertices.data(), vertexBufferSize);
+    vkUnmapMemory(device, vertexBufferMemory);
+    
+    // Создаём индексный буфер
+    VkDeviceSize indexBufferSize = indices.size() * sizeof(uint32_t);
+    VkBuffer indexBuffer;
+    VkDeviceMemory indexBufferMemory;
+    
+    bufferInfo.size = indexBufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &indexBuffer) != VK_SUCCESS) {
+        std::cerr << "[Vulkan] Failed to create contour index buffer" << std::endl;
+        vkDestroyBuffer(device, vertexBuffer, nullptr);
+        vkFreeMemory(device, vertexBufferMemory, nullptr);
+        return;
+    }
+    
+    vkGetBufferMemoryRequirements(device, indexBuffer, &memReq);
+    allocInfo.allocationSize = memReq.size;
+    
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &indexBufferMemory) != VK_SUCCESS) {
+        std::cerr << "[Vulkan] Failed to allocate contour index buffer memory" << std::endl;
+        vkDestroyBuffer(device, vertexBuffer, nullptr);
+        vkFreeMemory(device, vertexBufferMemory, nullptr);
+        vkDestroyBuffer(device, indexBuffer, nullptr);
+        return;
+    }
+    
+    vkBindBufferMemory(device, indexBuffer, indexBufferMemory, 0);
+    
+    vkMapMemory(device, indexBufferMemory, 0, indexBufferSize, 0, &data);
+    memcpy(data, indices.data(), indexBufferSize);
+    vkUnmapMemory(device, indexBufferMemory);
+    
+    // Настройка viewport и scissor
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float)swapchainExtent.width;
+    viewport.height = (float)swapchainExtent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
+    
+    VkRect2D scissor{};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent = swapchainExtent;
+    vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
+    
+    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineContour);
+    
+    glm::mat4 mvp = projMatrix * viewMatrix * worldMatrix;
+    vkCmdPushConstants(cmdBuffer, pipelineLayoutContour, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &mvp);
+    
+    // НАСТРОЙКА ВЕРШИННЫХ АТТРИБУТОВ (должна быть до bind!)
+    auto bindingDesc = VkVertexInputBindingDescription{0, sizeof(ContourVertex3D), VK_VERTEX_INPUT_RATE_VERTEX};
+    auto attrDesc = std::array<VkVertexInputAttributeDescription, 2>{
+        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ContourVertex3D, pos)},
+        VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ContourVertex3D, normal)}
+    };
+    
+    // Эти настройки должны быть установлены в pipeline, поэтому их нужно устанавливать ДО создания pipeline
+    // Но для временного рендера - просто bind буферы
+    
+    VkDeviceSize offsets = 0;  // <- ИСПРАВЛЕНО: объявлена переменная offsets
+    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexBuffer, &offsets);
+    vkCmdBindIndexBuffer(cmdBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(cmdBuffer, (uint32_t)indices.size(), 1, 0, 0, 0);
+    
+    // Очистка
+    vkDestroyBuffer(device, vertexBuffer, nullptr);
+    vkFreeMemory(device, vertexBufferMemory, nullptr);
+    vkDestroyBuffer(device, indexBuffer, nullptr);
+    vkFreeMemory(device, indexBufferMemory, nullptr);
+}
+void Vulkan::createContourBuffers(ContourBuffers& buffers, 
+                                   const std::vector<ContourVertex3D>& vertices,
+                                   const std::vector<uint32_t>& indices) {
+    if (vertices.empty() || indices.empty()) return;
+    
+    VkDeviceSize vertexBufferSize = vertices.size() * sizeof(ContourVertex3D);
+    
+    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size = vertexBufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    vkCreateBuffer(device, &bufferInfo, nullptr, &buffers.vertexBuffer);
+    
+    VkMemoryRequirements memReq;
+    vkGetBufferMemoryRequirements(device, buffers.vertexBuffer, &memReq);
+    
+    VkMemoryAllocateInfo allocInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocInfo.allocationSize = memReq.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, 
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    vkAllocateMemory(device, &allocInfo, nullptr, &buffers.vertexBufferMemory);
+    vkBindBufferMemory(device, buffers.vertexBuffer, buffers.vertexBufferMemory, 0);
+    
+    void* data;
+    vkMapMemory(device, buffers.vertexBufferMemory, 0, vertexBufferSize, 0, &data);
+    memcpy(data, vertices.data(), vertexBufferSize);
+    vkUnmapMemory(device, buffers.vertexBufferMemory);
+    
+    VkDeviceSize indexBufferSize = indices.size() * sizeof(uint32_t);
+    bufferInfo.size = indexBufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    vkCreateBuffer(device, &bufferInfo, nullptr, &buffers.indexBuffer);
+    
+    vkGetBufferMemoryRequirements(device, buffers.indexBuffer, &memReq);
+    allocInfo.allocationSize = memReq.size;
+    vkAllocateMemory(device, &allocInfo, nullptr, &buffers.indexBufferMemory);
+    vkBindBufferMemory(device, buffers.indexBuffer, buffers.indexBufferMemory, 0);
+    
+    vkMapMemory(device, buffers.indexBufferMemory, 0, indexBufferSize, 0, &data);
+    memcpy(data, indices.data(), indexBufferSize);
+    vkUnmapMemory(device, buffers.indexBufferMemory);
+    
+    buffers.indexCount = (uint32_t)indices.size();
+}
+void Vulkan::destroyContourBuffers(ContourBuffers& buffers) {
+    if (buffers.vertexBuffer) {
+        vkDestroyBuffer(device, buffers.vertexBuffer, nullptr);
+        buffers.vertexBuffer = VK_NULL_HANDLE;
+    }
+    if (buffers.vertexBufferMemory) {
+        vkFreeMemory(device, buffers.vertexBufferMemory, nullptr);
+        buffers.vertexBufferMemory = VK_NULL_HANDLE;
+    }
+    if (buffers.indexBuffer) {
+        vkDestroyBuffer(device, buffers.indexBuffer, nullptr);
+        buffers.indexBuffer = VK_NULL_HANDLE;
+    }
+    if (buffers.indexBufferMemory) {
+        vkFreeMemory(device, buffers.indexBufferMemory, nullptr);
+        buffers.indexBufferMemory = VK_NULL_HANDLE;
+    }
+    buffers.indexCount = 0;
 }

@@ -128,11 +128,12 @@ StandardMesh ModelParser::processMesh(void* mesh_ptr, void* scene_ptr) {
             vertex.position[0] = vertex.position[1] = vertex.position[2] = 0.0f;
         }
         
-        if (mesh->HasNormals() && mesh->mNormals) {
-            vertex.normal[0] = mesh->mNormals[i].x;
-            vertex.normal[1] = mesh->mNormals[i].y;
-            vertex.normal[2] = mesh->mNormals[i].z;
-        } else {
+// В processMesh:
+if (mesh->HasNormals() && mesh->mNormals) {
+    vertex.normal[0] = mesh->mNormals[i].x;
+    vertex.normal[1] = mesh->mNormals[i].y;
+    vertex.normal[2] = mesh->mNormals[i].z;
+} else {
             vertex.normal[0] = 0.0f;
             vertex.normal[1] = 1.0f;
             vertex.normal[2] = 0.0f;

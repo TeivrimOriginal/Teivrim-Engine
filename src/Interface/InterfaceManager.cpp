@@ -655,6 +655,13 @@ void InterfaceManager::initializeRender(HWND hwnd, int width, int height) {
 
 void InterfaceManager::updateWindowSize(int width, int height) {
     renderer.setup2D(width, height);
+    
+    // Обновляем размеры панелей
+    if (panels) {
+        panels->update(width, height);
+    }
+    
+    std::cout << "[InterfaceManager] Window resized to: " << width << "x" << height << std::endl;
 }
 
 void InterfaceManager::PrintHierarchy() const {

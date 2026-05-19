@@ -127,13 +127,54 @@ public:
     
     void renderContour(ObjectID objectId, float thickness, float r, float g, float b, 
                        const glm::mat4& viewMatrix, const glm::mat4& projMatrix);
+// В private секцию, рядом с ContourVertex:
+// Vulkan.h - добавьте в private секцию (рядом с VertexGPU)
+// В private секцию Vulkan.h:
+struct ContourVertex3D {
+    glm::vec3 pos;
+    glm::vec3 normal;
+};
+// И объявление метода:
+void drawContourInternal3D(const std::vector<ContourVertex3D>& vertices, 
+                           const std::vector<uint32_t>& indices,
+                           float thickness,
+                           const glm::mat4& viewMatrix, 
+                           const glm::mat4& projMatrix,
+                           const glm::mat4& worldMatrix);
+                           // В private секцию Vulkan.h:
+struct ContourBuffers {
+    VkBuffer vertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    VkBuffer indexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+    uint32_t indexCount = 0;
+};
 
+// И map для хранения:
+std::map<ObjectID, ContourBuffers> contourBuffers;
+// В private секцию Vulkan.h, рядом с другими методами:
+void createContourBuffers(ContourBuffers& buffers, 
+                          const std::vector<ContourVertex3D>& vertices,
+                          const std::vector<uint32_t>& indices);
+void destroyContourBuffers(ContourBuffers& buffers);
+// В private секцию Vulkan.h, после struct ModelBuffers:
+
+// Добавьте этот метод в Vulkan.h
+bool hasContourBuffers(ObjectID objectId) const {
+    return contourBuffers.find(objectId) != contourBuffers.end();
+}
 private:
-    struct VertexGPU {
-        glm::vec3 pos;
-        glm::vec3 color;
-        glm::vec2 texCoord;
-    };
+glm::mat4 getModelTransform(const std::string& name) {
+    auto it = modelTransforms.find(name);
+    return (it != modelTransforms.end()) ? it->second : glm::mat4(1.0f);
+}
+// В Vulkan.h, в private секции:
+struct VertexGPU {
+    glm::vec3 pos;
+    glm::vec3 normal;
+    glm::vec3 color;
+    glm::vec2 texCoord;
+};
 
     struct UIVertex {
         glm::vec2 pos;

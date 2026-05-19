@@ -341,7 +341,6 @@ void Core::GetViewportClip(int& x, int& y, int& w, int& h) const {
 void Core::settingUpRender() {}
 
 void Core::ParserToRender() {}
-
 void Core::GameLoop() {
     std::thread inputThread([]() {
         while (true) {
@@ -429,8 +428,10 @@ void Core::GameLoop() {
                 Panel* view3D = g_uiManager->getPanelManager()->get3D();
                 if (view3D && view3D->visible && !view3D->collapsed) {
                     SetViewportClip(view3D->getX(), view3D->getY(), view3D->getW(), view3D->getH());
+                    vulkan->SetViewportClip(view3D->getX(), view3D->getY(), view3D->getW(), view3D->getH());
                 } else {
                     DisableViewportClip();
+                    vulkan->DisableViewportClip();
                 }
             }
             SecondRender::Instance().UpdateScreenSize(width, height);
@@ -477,7 +478,7 @@ void Core::GameLoop() {
     sm.SetCameraTarget(glm::vec3(0.0f, 0.0f, 0.0f));
     sm.UpdateCameraAspect((float)w / (float)h);
     
-    std::cout << "[Core] Waiting for model loading..." << std::endl;
+    std::cout << "[Core] GameLoop started" << std::endl;
     
     while (!win32Window->shouldClose()) {
         QueryPerformanceCounter(&currentTime);
@@ -518,72 +519,62 @@ void Core::GameLoop() {
             
             sm.UpdateCameraAspect((float)cw / (float)ch);
             
-if (currentAPI == RenderAPI::VULKAN && vulkan && vulkan->isInitialized()) {
-    ProcessOtladCommands(vulkan, g_uiManager);
-    
-    glm::mat4 viewMat = sm.GetViewMatrix();
-    glm::mat4 projMat = sm.GetProjectionMatrix();
-    glm::vec3 camPos = sm.GetCameraPosition();
-    
-    vulkan->setViewMatrix(viewMat);
-    vulkan->setProjectionMatrix(projMat);
-    
-    vulkan->beginFrame();
-    
-    Panel* currentView3D = g_uiManager->getPanelManager()->get3D();
-    if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
-        SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
-                        currentView3D->getW(), currentView3D->getH());
-        vulkan->SetViewportClip(currentView3D->getX(), currentView3D->getY(),
-                                currentView3D->getW(), currentView3D->getH());
-    } else {
-        DisableViewportClip();
-        vulkan->DisableViewportClip();
-    }
-    
-    sm.UpdateAllMatrices();
-    
-    std::cout << "\n=== GAMELOOP - Updating transforms ===" << std::endl;
-    
-    // Обновляем трансформации для ВСЕХ моделей КАЖДЫЙ КАДР
-    for (auto& obj : sm.GetAllObjectsScene()) {
-        if (obj.isVisible && obj.isLoaded && sm.GetModelParser(obj.id)) {
-            glm::mat4 worldMat = obj.getWorldMatrix();
-            
-            std::cout << "[GameLoop] ID: " << obj.id 
-                      << " Name: " << obj.name 
-                      << " Pos: " << obj.getPosition().x << "," << obj.getPosition().y << "," << obj.getPosition().z
-                      << " Scale: " << obj.scaleX << "," << obj.scaleY << "," << obj.scaleZ << std::endl;
-            
-            vulkan->setModelTransform(obj.name, worldMat);
-        }
-    }
-    
-    std::cout << "=== GAMELOOP - Rendering ===" << std::endl;
-    
-    // Рендерим все модели
-    vulkan->renderAllModels();
-    
-    // Обводка выбранного объекта
-    int selectedId = sm.GetSelectedObjectScene();
-    if (selectedId != 0) {
-        ObjectScene* selected = sm.GetObjectScene(selectedId);
-        if (selected && selected->isVisible && sm.GetModelParser(selectedId)) {
-            vulkan->renderContour(selectedId, 3.0f, 1.0f, 0.5f, 0.0f, viewMat, projMat);
-        }
-    }
-    
-    DisableViewportClip();
-    vulkan->DisableViewportClip();
-    
-    g_uiManager->renderStatic();
-    
-    SecondRender::Instance().RenderOverlay();
-    vulkan->renderOverlay();
-    
-    vulkan->endFrame();
-    vulkan->present();
+            if (currentAPI == RenderAPI::VULKAN && vulkan && vulkan->isInitialized()) {
+                ProcessOtladCommands(vulkan, g_uiManager);
+                
+                glm::mat4 viewMat = sm.GetViewMatrix();
+                glm::mat4 projMat = sm.GetProjectionMatrix();
+                glm::vec3 camPos = sm.GetCameraPosition();
+                
+                vulkan->setViewMatrix(viewMat);
+                vulkan->setProjectionMatrix(projMat);
+                
+                vulkan->beginFrame();
+                
+                Panel* currentView3D = g_uiManager->getPanelManager()->get3D();
+                if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
+                    SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
+                                    currentView3D->getW(), currentView3D->getH());
+                    vulkan->SetViewportClip(currentView3D->getX(), currentView3D->getY(),
+                                            currentView3D->getW(), currentView3D->getH());
+                } else {
+                    DisableViewportClip();
+                    vulkan->DisableViewportClip();
+                }
+                
+                sm.UpdateAllMatrices();
+                
+                // ========== РЕНДЕР КОНТУРА (ПОД МОДЕЛЬЮ) ==========
+                int selectedId = sm.GetSelectedObjectScene();
+                if (selectedId != 0) {
+                    ObjectScene* selected = sm.GetObjectScene(selectedId);
+                    if (selected && selected->isVisible && sm.GetModelParser(selectedId)) {
+                        vulkan->renderContour(selectedId, 3.0f, 1.0f, 0.5f, 0.0f, viewMat, projMat);
+                    }
+                }
+                
+                // ========== ОБНОВЛЕНИЕ ТРАНСФОРМАЦИЙ МОДЕЛЕЙ ==========
+// В renderContour, после получения modelName:
+auto transIt = modelTransforms.find(modelName);
+if (transIt != modelTransforms.end()) {
+    transform = transIt->second;
+} else {
+    transform = worldMat;
 }
+                
+                // ========== РЕНДЕР ВСЕХ МОДЕЛЕЙ (ПОВЕРХ КОНТУРА) ==========
+                vulkan->renderAllModels();
+                
+                DisableViewportClip();
+                vulkan->DisableViewportClip();
+                
+                g_uiManager->renderStatic();
+                SecondRender::Instance().RenderOverlay();
+                vulkan->renderOverlay();
+                
+                vulkan->endFrame();
+                vulkan->present();
+            } 
             else if (currentAPI == RenderAPI::OPENGL) {
                 glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -620,7 +611,6 @@ if (currentAPI == RenderAPI::VULKAN && vulkan && vulkan->isInitialized()) {
                 }
                 
                 g_uiManager->renderStatic();
-                
                 SecondRender::Instance().RenderOverlay();
                 
                 win32Window->swapBuffers();
