@@ -189,7 +189,6 @@ bool Vulkan::initializeFont() {
     std::cout << "Font initialized successfully" << std::endl;
     return true;
 }
-
 Vulkan::Vulkan(HWND hwnd, int width, int height) 
     : hwnd(hwnd), width(width), height(height), initialized(false), currentFrame(0), 
       swapchainImageCount(0), viewMat(1.0f), projMat(1.0f),
@@ -211,7 +210,9 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
       m_idBufferWidth(0), m_idBufferHeight(0),
       m_idImage(VK_NULL_HANDLE), m_idImageView(VK_NULL_HANDLE), m_idImageMemory(VK_NULL_HANDLE),
       m_idDescLayout(VK_NULL_HANDLE), m_idDescriptorSet(VK_NULL_HANDLE),
-      m_idSampler(VK_NULL_HANDLE),
+      m_idPipelineLayout(VK_NULL_HANDLE), m_idPipeline(VK_NULL_HANDLE),
+      m_idSampler(VK_NULL_HANDLE), m_idRenderPass(VK_NULL_HANDLE), m_idFramebuffer(VK_NULL_HANDLE),
+      m_fullscreenVertexBuffer(VK_NULL_HANDLE), m_fullscreenVertexBufferMemory(VK_NULL_HANDLE),
       m_selectedObjectID(0), m_outlineEnabled(true)
 {
     memset(&fontTexture, 0, sizeof(fontTexture));
@@ -341,10 +342,9 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     needGridUpdate = true;
     updateGridBuffer();
     
-    // Инициализация ID буфера
+    // Инициализация ID буфера и пост-рендера
     InitializeIDBuffer(width, height);
     
-    // Инициализация пост-рендера
     m_postRender = std::make_unique<PostRender>();
     m_postRender->Initialize(this, width, height);
     
@@ -1117,8 +1117,8 @@ int Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& m
     
     std::vector<VertexGPU> vertices;
     std::vector<uint32_t> indices;
-    std::vector<VulkanTexture> textures;
     
+    // Вычисляем границы модели для масштабирования
     glm::vec3 minBounds(FLT_MAX);
     glm::vec3 maxBounds(-FLT_MAX);
     bool hasBounds = false;
@@ -1178,6 +1178,8 @@ int Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& m
         return -1;
     }
     
+    // Для обычного рендера - загружаем текстуры
+    std::vector<VulkanTexture> textures;
     for (const auto& mesh : meshes) {
         bool textureLoaded = false;
         
@@ -1218,7 +1220,6 @@ int Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& m
     
     return 0;
 }
-
 void Vulkan::removeModel(const std::string& name) {
     auto it = modelBuffers.find(name);
     if (it != modelBuffers.end()) {
@@ -2313,8 +2314,7 @@ void Vulkan::beginFrame() {
         return;
     }
     
-    // ========== ID PASS - ОЧИСТКА И РЕНДЕР ID ==========
-    // Переводим ID изображение в TRANSFER_DST_OPTIMAL для очистки
+    // ========== ПЕРЕВОДИМ ID ИЗОБРАЖЕНИЕ В TRANSFER_DST_OPTIMAL ДЛЯ ОЧИСТКИ ==========
     VkImageMemoryBarrier idBarrier{};
     idBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     idBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -2333,12 +2333,12 @@ void Vulkan::beginFrame() {
         VK_PIPELINE_STAGE_TRANSFER_BIT,
         0, 0, nullptr, 0, nullptr, 1, &idBarrier);
     
-    // Очистка ID буфера значением 99 для теста
-    VkClearColorValue clearValue;
-    clearValue.uint32[0] = 99;
-    clearValue.uint32[1] = 0;
-    clearValue.uint32[2] = 0;
-    clearValue.uint32[3] = 0;
+    // ========== ОЧИСТКА ID БУФЕРА ==========
+    VkClearColorValue clearColor;
+    clearColor.float32[0] = 0.0f;
+    clearColor.float32[1] = 0.0f;
+    clearColor.float32[2] = 0.0f;
+    clearColor.float32[3] = 0.0f;
     
     VkImageSubresourceRange range;
     range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -2349,9 +2349,9 @@ void Vulkan::beginFrame() {
     
     vkCmdClearColorImage(commandBuffers[currentFrame], m_idImage,
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                         &clearValue, 1, &range);
+                         &clearColor, 1, &range);
     
-    // Переводим ID изображение в COLOR_ATTACHMENT_OPTIMAL для рендера
+    // ========== ПЕРЕВОДИМ ID ИЗОБРАЖЕНИЕ В COLOR_ATTACHMENT_OPTIMAL ДЛЯ РЕНДЕРА ==========
     idBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     idBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     idBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -2362,22 +2362,21 @@ void Vulkan::beginFrame() {
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
         0, 0, nullptr, 0, nullptr, 1, &idBarrier);
     
-    // Начинаем ID PASS
-    VkClearValue clearValues[2];
-    clearValues[0].color.uint32[0] = 0;
-    clearValues[0].color.uint32[1] = 0;
-    clearValues[0].color.uint32[2] = 0;
-    clearValues[0].color.uint32[3] = 0;
-    clearValues[1].depthStencil = {1.0f, 0};
+    // ========== ID PASS - ОТДЕЛЬНЫЙ RENDER PASS ==========
+    VkClearValue clearValueID;
+    clearValueID.color.float32[0] = 0.0f;
+    clearValueID.color.float32[1] = 0.0f;
+    clearValueID.color.float32[2] = 0.0f;
+    clearValueID.color.float32[3] = 0.0f;
     
     VkRenderPassBeginInfo rpID{};
     rpID.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    rpID.renderPass = renderPass;
-    rpID.framebuffer = framebuffers[currentImageIndex];
+    rpID.renderPass = m_idRenderPass;
+    rpID.framebuffer = m_idFramebuffer;
     rpID.renderArea.offset = {0, 0};
     rpID.renderArea.extent = swapchainExtent;
-    rpID.clearValueCount = 2;
-    rpID.pClearValues = clearValues;
+    rpID.clearValueCount = 1;
+    rpID.pClearValues = &clearValueID;
     
     vkCmdBeginRenderPass(commandBuffers[currentFrame], &rpID, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, m_idPipeline);
@@ -2388,12 +2387,11 @@ void Vulkan::beginFrame() {
     VkRect2D scissor{{0, 0}, swapchainExtent};
     vkCmdSetScissor(commandBuffers[currentFrame], 0, 1, &scissor);
     
-    // Рендер объектов в ID буфер (пока закомментирован)
-    // RenderObjectsToIDBuffer();
+    RenderObjectsToIDBuffer();
     
     vkCmdEndRenderPass(commandBuffers[currentFrame]);
     
-    // Переводим ID изображение в шейдерный layout
+    // ========== ПЕРЕВОДИМ ID ИЗОБРАЖЕНИЕ В ШЕЙДЕРНЫЙ LAYOUT ==========
     idBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     idBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     idBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -2419,7 +2417,6 @@ void Vulkan::beginFrame() {
     
     vkCmdBeginRenderPass(commandBuffers[currentFrame], &rp, VK_SUBPASS_CONTENTS_INLINE);
 }
-
 void Vulkan::endFrame() {
     // Рендерим контур через PostRender
     if (m_postRender && m_selectedObjectID != 0) {
@@ -2609,6 +2606,8 @@ void Vulkan::InitializeIDBuffer(int width, int height) {
 }
 
 void Vulkan::DestroyIDBuffer() {
+    if (m_idFramebuffer) vkDestroyFramebuffer(device, m_idFramebuffer, nullptr);
+    if (m_idRenderPass) vkDestroyRenderPass(device, m_idRenderPass, nullptr);
     if (m_idImage) vkDestroyImage(device, m_idImage, nullptr);
     if (m_idImageView) vkDestroyImageView(device, m_idImageView, nullptr);
     if (m_idImageMemory) vkFreeMemory(device, m_idImageMemory, nullptr);
@@ -2620,12 +2619,11 @@ void Vulkan::DestroyIDBuffer() {
     if (m_fullscreenVertexBuffer) vkDestroyBuffer(device, m_fullscreenVertexBuffer, nullptr);
     if (m_fullscreenVertexBufferMemory) vkFreeMemory(device, m_fullscreenVertexBufferMemory, nullptr);
 }
-
 void Vulkan::CreateIDBufferResources() {
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.format = VK_FORMAT_R32_UINT;
+    imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
     imageInfo.extent.width = (uint32_t)m_idBufferWidth;
     imageInfo.extent.height = (uint32_t)m_idBufferHeight;
     imageInfo.extent.depth = 1;
@@ -2653,12 +2651,50 @@ void Vulkan::CreateIDBufferResources() {
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = m_idImage;
     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.format = VK_FORMAT_R32_UINT;
+    viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
     viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     viewInfo.subresourceRange.levelCount = 1;
     viewInfo.subresourceRange.layerCount = 1;
     
     vkCreateImageView(device, &viewInfo, nullptr, &m_idImageView);
+    
+    // Создаём render pass для ID буфера
+    VkAttachmentDescription attachment{};
+    attachment.format = VK_FORMAT_R8G8B8A8_UNORM;
+    attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    
+    VkAttachmentReference colorRef{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorRef;
+    
+    VkRenderPassCreateInfo rpInfo{};
+    rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    rpInfo.attachmentCount = 1;
+    rpInfo.pAttachments = &attachment;
+    rpInfo.subpassCount = 1;
+    rpInfo.pSubpasses = &subpass;
+    
+    vkCreateRenderPass(device, &rpInfo, nullptr, &m_idRenderPass);
+    
+    // Создаём фреймбуфер для ID изображения
+    VkFramebufferCreateInfo fbInfo{};
+    fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    fbInfo.renderPass = m_idRenderPass;
+    fbInfo.attachmentCount = 1;
+    fbInfo.pAttachments = &m_idImageView;
+    fbInfo.width = m_idBufferWidth;
+    fbInfo.height = m_idBufferHeight;
+    fbInfo.layers = 1;
+    vkCreateFramebuffer(device, &fbInfo, nullptr, &m_idFramebuffer);
     
     VkDescriptorSetLayoutBinding binding{};
     binding.binding = 0;
@@ -2729,11 +2765,12 @@ void main() {
 }
 )";
     
-    const char* idFragCode = R"(#version 450
+const char* idFragCode = R"(#version 450
 layout(location = 0) in flat uint inObjectID;
-layout(location = 0) out uint outColor;
+layout(location = 0) out vec4 outColor;  // Меняем на vec4
 void main() {
-    outColor = inObjectID;
+    // Конвертируем uint в float (0-255 -> 0-1)
+    outColor = vec4(float(inObjectID) / 255.0, 0.0, 0.0, 1.0);
 }
 )";
     
@@ -2917,7 +2954,6 @@ void Vulkan::CreateFullscreenQuad() {
 }
 
 void Vulkan::RenderObjectsToIDBuffer() {
-    // Рендер объектов в ID буфер (будет реализован позже)
     for (auto& pair : modelBuffers) {
         const std::string& name = pair.first;
         ModelBuffers& buffers = pair.second;
@@ -2959,8 +2995,6 @@ void Vulkan::RenderObjectsToIDBuffer() {
         vkCmdDrawIndexed(commandBuffers[currentFrame], buffers.indexCount, 1, 0, 0, 0);
     }
 }
-
-
 void Vulkan::SetSelectedObjectID(uint32_t id) { 
     m_selectedObjectID = id; 
     if (m_postRender) {

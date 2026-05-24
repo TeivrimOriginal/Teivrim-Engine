@@ -68,9 +68,7 @@ void PostRender::Process(Vulkan* vulkan, ObjectID selectedObjectId) {
     
     m_selectedID = selectedObjectId;
 }
-
 bool PostRender::CreateShaders(Vulkan* vulkan) {
-    // ПРОСТОЙ вершинный шейдер
     const char* vertCode = R"(#version 450
 layout(location = 0) in vec2 inPos;
 layout(location = 1) in vec2 inTexCoord;
@@ -81,16 +79,29 @@ void main() {
 }
 )";
     
-    // ТЕСТОВЫЙ фрагментный шейдер - всегда красный
-    const char* fragCode = R"(#version 450
+const char* fragCode = R"(#version 450
+layout(binding = 0) uniform sampler2D idTexture;  // sampler2D вместо usampler2D
 layout(location = 0) in vec2 fragTexCoord;
 layout(location = 0) out vec4 outColor;
 
+layout(push_constant) uniform PushConstants {
+    uint selectedID;
+    vec3 outlineColor;
+    vec2 texelSize;
+    int thickness;
+} pc;
+
 void main() {
-    outColor = vec4(1.0, 0.0, 0.0, 1.0);
+    float centerVal = texture(idTexture, fragTexCoord).r;
+    uint centerID = uint(centerVal * 255.0);
+    
+    if (centerID == pc.selectedID) {
+        outColor = vec4(pc.outlineColor, 1.0);
+    } else {
+        outColor = vec4(0.0, 0.0, 0.0, 0.0);
+    }
 }
 )";
-    
     std::ofstream vertFile("autoshadertest/post_vert.vert");
     vertFile << vertCode;
     vertFile.close();
@@ -324,13 +335,29 @@ void PostRender::CreateVertexBuffer(Vulkan* vulkan) {
 }
 
 void PostRender::Render(Vulkan* vulkan, VkCommandBuffer cmdBuffer, uint32_t screenWidth, uint32_t screenHeight) {
-    if (!m_initialized || !m_enabled) return;
+    if (!m_initialized || !m_enabled || m_selectedID == 0) return;
     if (m_pipeline == VK_NULL_HANDLE) return;
     
     vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                           m_pipelineLayout, 0, 1, &m_descSet, 0, nullptr);
     
-    // Для тестового шейдера не нужны дескрипторы и push constants
-    // Они закомментированы, так как тестовый шейдер ничего не использует
+    struct PushConstants {
+        uint32_t selectedID;
+        float outlineColor[3];
+        float texelSize[2];
+        int thickness;
+    } pc;
+    
+    pc.selectedID = m_selectedID;
+    pc.outlineColor[0] = 1.0f;
+    pc.outlineColor[1] = 0.0f;
+    pc.outlineColor[2] = 0.0f;
+    pc.texelSize[0] = 1.0f / screenWidth;
+    pc.texelSize[1] = 1.0f / screenHeight;
+    pc.thickness = 3;
+    
+    vkCmdPushConstants(cmdBuffer, m_pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
     
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &m_vertexBuffer, &offset);

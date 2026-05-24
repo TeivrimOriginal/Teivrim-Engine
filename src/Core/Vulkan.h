@@ -1,4 +1,4 @@
-// Vulkan.h - ПОЛНЫЙ ФАЙЛ БЕЗ ДУБЛИКАТОВ
+// Vulkan.h - ПОЛНЫЙ ФАЙЛ
 #ifndef VULKAN_H
 #define VULKAN_H
 
@@ -123,7 +123,7 @@ public:
     bool isGridEnabled() const { return gridEnabled; }
     float getGridSpacing() const { return gridSpacing; }
     
-    // Геттеры для ID буфера (для Otlad и PostRender) - ТОЛЬКО ОДИН РАЗ!
+    // Геттеры для ID буфера
     int GetIDBufferWidth() const { return m_idBufferWidth; }
     int GetIDBufferHeight() const { return m_idBufferHeight; }
     VkImage GetIDImage() const { return m_idImage; }
@@ -307,6 +307,8 @@ private:
     VkPipelineLayout m_idPipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_idPipeline = VK_NULL_HANDLE;
     VkSampler m_idSampler = VK_NULL_HANDLE;
+    VkRenderPass m_idRenderPass = VK_NULL_HANDLE;
+    VkFramebuffer m_idFramebuffer = VK_NULL_HANDLE;
     
     // Полноэкранный quad
     VkBuffer m_fullscreenVertexBuffer = VK_NULL_HANDLE;

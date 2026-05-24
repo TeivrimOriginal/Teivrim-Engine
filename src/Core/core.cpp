@@ -557,9 +557,10 @@ void Core::GameLoop() {
                 sm.UpdateAllMatrices();
                 
                 // ========== УСТАНОВКА ID ВЫБРАННОГО ОБЪЕКТА ДЛЯ ПОСТ-РЕНДЕРА ==========
-if (vulkan) {
-    vulkan->SetSelectedObjectID(99);  // Тестовый ID
-}
+                int selectedId = sm.GetSelectedObjectScene();
+                if (vulkan) {
+                    vulkan->SetSelectedObjectID(selectedId);
+                }
                 
                 // ========== ОБНОВЛЕНИЕ ТРАНСФОРМАЦИЙ МОДЕЛЕЙ ==========
                 for (const auto& obj : sm.GetAllObjectsScene()) {
