@@ -1,4 +1,4 @@
-// core.cpp - ПОЛНЫЙ ФАЙЛ
+// core.cpp - ПОЛНЫЙ ФАЙЛ С ПОСТ-РЕНДЕРОМ
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -21,6 +21,7 @@
 #include <commdlg.h>
 #include "../Application/WindowAPIsupport/Win32/InitialWin32.h"
 #include "Vulkan.h"
+#include "PostRender.h"
 
 using namespace std;
 
@@ -341,6 +342,7 @@ void Core::GetViewportClip(int& x, int& y, int& w, int& h) const {
 void Core::settingUpRender() {}
 
 void Core::ParserToRender() {}
+
 void Core::GameLoop() {
     std::thread inputThread([]() {
         while (true) {
@@ -373,6 +375,9 @@ void Core::GameLoop() {
                               << " | Loaded: " << (obj.isLoaded ? "Y" : "N") << std::endl;
                 }
                 std::cout << "=====================" << std::endl;
+            }
+            else if (input == "analyze") {
+                OtladAnalyze();
             }
         }
     });
@@ -478,6 +483,13 @@ void Core::GameLoop() {
     sm.SetCameraTarget(glm::vec3(0.0f, 0.0f, 0.0f));
     sm.UpdateCameraAspect((float)w / (float)h);
     
+    // ========== НАСТРОЙКА ПОСТ-РЕНДЕРА (ОДИН РАЗ) ==========
+    if (vulkan && vulkan->GetPostRender()) {
+        vulkan->GetPostRender()->SetOutlineThickness(3);  // 3 пикселя толщина контура
+        vulkan->GetPostRender()->SetOutlineColor(1.0f, 0.5f, 0.0f);  // Оранжевый
+        vulkan->GetPostRender()->SetEnabled(true);
+    }
+    
     std::cout << "[Core] GameLoop started" << std::endl;
     
     while (!win32Window->shouldClose()) {
@@ -544,33 +556,39 @@ void Core::GameLoop() {
                 
                 sm.UpdateAllMatrices();
                 
-                // ========== РЕНДЕР КОНТУРА (ПОД МОДЕЛЬЮ) ==========
-                int selectedId = sm.GetSelectedObjectScene();
-                if (selectedId != 0) {
-                    ObjectScene* selected = sm.GetObjectScene(selectedId);
-                    if (selected && selected->isVisible && sm.GetModelParser(selectedId)) {
-                        vulkan->renderContour(selectedId, 3.0f, 1.0f, 0.5f, 0.0f, viewMat, projMat);
+                // ========== УСТАНОВКА ID ВЫБРАННОГО ОБЪЕКТА ДЛЯ ПОСТ-РЕНДЕРА ==========
+if (vulkan) {
+    vulkan->SetSelectedObjectID(99);  // Тестовый ID
+}
+                
+                // ========== ОБНОВЛЕНИЕ ТРАНСФОРМАЦИЙ МОДЕЛЕЙ ==========
+                for (const auto& obj : sm.GetAllObjectsScene()) {
+                    if (obj.isLoaded && !obj.name.empty()) {
+                        glm::mat4 transform = glm::mat4(1.0f);
+                        transform = glm::translate(transform, glm::vec3(obj.posX, obj.posY, obj.posZ));
+                        transform = glm::scale(transform, glm::vec3(obj.scaleX, obj.scaleY, obj.scaleZ));
+                        
+                        if (vulkan) {
+                            vulkan->setModelTransform(obj.name, transform);
+                        }
                     }
                 }
                 
-                // ========== ОБНОВЛЕНИЕ ТРАНСФОРМАЦИЙ МОДЕЛЕЙ ==========
-// В renderContour, после получения modelName:
-auto transIt = modelTransforms.find(modelName);
-if (transIt != modelTransforms.end()) {
-    transform = transIt->second;
-} else {
-    transform = worldMat;
-}
-                
-                // ========== РЕНДЕР ВСЕХ МОДЕЛЕЙ (ПОВЕРХ КОНТУРА) ==========
-                vulkan->renderAllModels();
+                // ========== РЕНДЕР ВСЕХ МОДЕЛЕЙ ==========
+                if (vulkan) {
+                    vulkan->renderAllModels();
+                }
                 
                 DisableViewportClip();
-                vulkan->DisableViewportClip();
+                if (vulkan) {
+                    vulkan->DisableViewportClip();
+                }
                 
                 g_uiManager->renderStatic();
                 SecondRender::Instance().RenderOverlay();
-                vulkan->renderOverlay();
+                if (vulkan) {
+                    vulkan->renderOverlay();
+                }
                 
                 vulkan->endFrame();
                 vulkan->present();

@@ -78,10 +78,10 @@ public:
     void SetZoomLevel(float zoom);
     float GetZoomLevel() const { return currentZoom; }
     
-    // Устаревший метод - обводка теперь в Vulkan::renderContour()
+    // Устаревшие методы - контуры теперь через PostRender
     void RenderContour(ObjectID objectId, float thickness = 3.0f, 
                        float r = 1.0f, float g = 0.5f, float b = 0.0f);
-    void SetContourEnabled(bool enabled) { contourEnabled = enabled; }
+    void SetContourEnabled(bool enabled);
     
     void DrawGrid(int cellSize = 50, int gridSize = 20);
     

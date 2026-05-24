@@ -1,13 +1,15 @@
-// Vulkan.cpp - ПОЛНЫЙ ФАЙЛ
+// Vulkan.cpp - ПОЛНЫЙ ФАЙЛ С ID БУФЕРОМ И POSTRENDER
 #define GLM_ENABLE_EXPERIMENTAL
 
 #include "Vulkan.h"
+#include "PostRender.h"
 #include <iostream>
 #include <fstream>
 #include <cmath>
 #include <algorithm>
 #include <vector>
 #include <cstring>
+#include <memory>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <assimp/scene.h>
@@ -48,23 +50,7 @@ static void compileShaders() {
     const char* gridVertCode = "#version 450\nlayout(location = 0) in vec2 inPos; layout(location = 1) in vec3 inColor; layout(push_constant) uniform PushConstants { mat4 projView; } pc; layout(location = 0) out vec3 fragColor; void main() { gl_Position = pc.projView * vec4(inPos.x, 0.0, inPos.y, 1.0); fragColor = inColor; }";
     
     const char* gridFragCode = "#version 450\nlayout(location = 0) in vec3 fragColor; layout(location = 0) out vec4 outColor; void main() { outColor = vec4(fragColor, 1.0); }";
-const char* contourVertCode = "#version 450\n"
-    "layout(push_constant) uniform PushConstants { mat4 mvp; } pc;\n"
-    "layout(location = 0) in vec3 inPosition;\n"
-    "layout(location = 0) out vec4 fragColor;\n"
-    "void main() {\n"
-    "    vec4 pos = pc.mvp * vec4(inPosition, 1.0);\n"
-    "    pos.y = -pos.y;\n"
-    "    gl_Position = pos;\n"
-    "    fragColor = vec4(1.0, 0.5, 0.0, 1.0);\n"
-    "}\n";
-
-const char* contourFragCode = "#version 450\n"
-    "layout(location = 0) in vec4 fragColor;\n"
-    "layout(location = 0) out vec4 outColor;\n"
-    "void main() {\n"
-    "    outColor = fragColor;\n"
-    "}\n";
+    
     std::ofstream vertFile("autoshadertest/vert.vert"); vertFile << vertCode; vertFile.close();
     std::ofstream fragFile("autoshadertest/frag.frag"); fragFile << fragCode; fragFile.close();
     std::ofstream uiVertFile("autoshadertest/ui_vert.vert"); uiVertFile << uiVertCode; uiVertFile.close();
@@ -75,8 +61,6 @@ const char* contourFragCode = "#version 450\n"
     std::ofstream uiImageFragFile("autoshadertest/ui_image_frag.frag"); uiImageFragFile << uiImageFragCode; uiImageFragFile.close();
     std::ofstream gridVertFile("autoshadertest/grid_vert.vert"); gridVertFile << gridVertCode; gridVertFile.close();
     std::ofstream gridFragFile("autoshadertest/grid_frag.frag"); gridFragFile << gridFragCode; gridFragFile.close();
-    std::ofstream contourVertFile("autoshadertest/contour_vert.vert"); contourVertFile << contourVertCode; contourVertFile.close();
-    std::ofstream contourFragFile("autoshadertest/contour_frag.frag"); contourFragFile << contourFragCode; contourFragFile.close();
     
     system("glslc autoshadertest/vert.vert -o autoshadertest/vert.spv");
     system("glslc autoshadertest/frag.frag -o autoshadertest/frag.spv");
@@ -88,8 +72,6 @@ const char* contourFragCode = "#version 450\n"
     system("glslc autoshadertest/ui_image_frag.frag -o autoshadertest/ui_image_frag.spv");
     system("glslc autoshadertest/grid_vert.vert -o autoshadertest/grid_vert.spv");
     system("glslc autoshadertest/grid_frag.frag -o autoshadertest/grid_frag.spv");
-    system("glslc autoshadertest/contour_vert.vert -o autoshadertest/contour_vert.spv");
-    system("glslc autoshadertest/contour_frag.frag -o autoshadertest/contour_frag.spv");
 }
 
 bool Vulkan::initializeFont() {
@@ -225,10 +207,16 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
       uiImageVertexBuffer(VK_NULL_HANDLE), uiImageVertexBufferMemory(VK_NULL_HANDLE),
       gridVertexBuffer(VK_NULL_HANDLE), gridVertexBufferMemory(VK_NULL_HANDLE), gridVertexCount(0),
       fontInitialized(false), needGridUpdate(true), gridEnabled(true), gridSpacing(20.0f), gridFadeDistance(500.0f), gridYOffset(0.0f),
-      viewportClipEnabled(false), clipX(0), clipY(0), clipW(0), clipH(0)
+      viewportClipEnabled(false), clipX(0), clipY(0), clipW(0), clipH(0),
+      m_idBufferWidth(0), m_idBufferHeight(0),
+      m_idImage(VK_NULL_HANDLE), m_idImageView(VK_NULL_HANDLE), m_idImageMemory(VK_NULL_HANDLE),
+      m_idDescLayout(VK_NULL_HANDLE), m_idDescriptorSet(VK_NULL_HANDLE),
+      m_idSampler(VK_NULL_HANDLE),
+      m_selectedObjectID(0), m_outlineEnabled(true)
 {
     memset(&fontTexture, 0, sizeof(fontTexture));
     memset(glyphs, 0, sizeof(glyphs));
+    m_outlineColor[0] = 1.0f; m_outlineColor[1] = 0.5f; m_outlineColor[2] = 0.0f;
     
     gridLineColor[0] = 0.4f; gridLineColor[1] = 0.4f; gridLineColor[2] = 0.45f;
     gridCenterLineColor[0] = 0.8f; gridCenterLineColor[1] = 0.8f; gridCenterLineColor[2] = 1.0f;
@@ -327,10 +315,8 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     createDescriptorSetLayoutUIText();
     createDescriptorSetLayoutUIImage();
     createDescriptorSetLayoutGrid();
-    createDescriptorSetLayoutContour();
     createPipelines();
     createGridPipeline();
-    createContourPipeline();
     createUIImagePipeline();
     createUIBuffers();
     createUITextBuffers();
@@ -352,9 +338,15 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
     projMat = glm::perspective(glm::radians(45.0f), (float)width/height, 0.1f, 1000.0f);
     projMat[1][1] *= -1;
     
-    // Создаём буфер сетки один раз
     needGridUpdate = true;
     updateGridBuffer();
+    
+    // Инициализация ID буфера
+    InitializeIDBuffer(width, height);
+    
+    // Инициализация пост-рендера
+    m_postRender = std::make_unique<PostRender>();
+    m_postRender->Initialize(this, width, height);
     
     initialized = true;
     std::cout << "Vulkan initialized successfully" << std::endl;
@@ -363,6 +355,13 @@ Vulkan::Vulkan(HWND hwnd, int width, int height)
 Vulkan::~Vulkan() {
     if (device) {
         vkDeviceWaitIdle(device);
+        
+        DestroyIDBuffer();
+        
+        if (m_postRender) {
+            m_postRender->Shutdown();
+            m_postRender.reset();
+        }
         
         cleanupModelBuffers();
         
@@ -384,19 +383,16 @@ Vulkan::~Vulkan() {
         vkDestroyPipeline(device, pipelineUI, nullptr);
         vkDestroyPipeline(device, pipelineUIText, nullptr);
         vkDestroyPipeline(device, pipelineUIImage, nullptr);
-        vkDestroyPipeline(device, pipelineContour, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout3D, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayoutUI, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayoutUIText, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayoutUIImage, nullptr);
-        vkDestroyPipelineLayout(device, pipelineLayoutContour, nullptr);
         vkDestroyRenderPass(device, renderPass, nullptr);
         vkDestroyDescriptorPool(device, descPool, nullptr);
         vkDestroyDescriptorSetLayout(device, descLayout, nullptr);
         vkDestroyDescriptorSetLayout(device, descLayoutUIEmpty, nullptr);
         vkDestroyDescriptorSetLayout(device, descLayoutUIText, nullptr);
         vkDestroyDescriptorSetLayout(device, descLayoutUIImage, nullptr);
-        vkDestroyDescriptorSetLayout(device, descLayoutContour, nullptr);
         vkDestroyBuffer(device, uiVertexBuffer, nullptr);
         vkFreeMemory(device, uiVertexBufferMemory, nullptr);
         vkDestroyBuffer(device, uiTextVertexBuffer, nullptr);
@@ -426,12 +422,6 @@ Vulkan::~Vulkan() {
     }
     if (surface) vkDestroySurfaceKHR(instance, surface, nullptr);
     if (instance) vkDestroyInstance(instance, nullptr);
-    // Добавьте в деструктор Vulkan:
-// В деструкторе Vulkan, перед vkDestroyDevice:
-for (auto& pair : contourBuffers) {
-    destroyContourBuffers(pair.second);
-}
-contourBuffers.clear();
 }
 
 void Vulkan::createMainDescriptorPool() {
@@ -450,7 +440,6 @@ void Vulkan::createMainDescriptorPool() {
 }
 
 void Vulkan::cleanupSwapchain() {
-    // Уничтожаем фреймбуферы
     for (auto fb : framebuffers) {
         if (fb != VK_NULL_HANDLE) {
             vkDestroyFramebuffer(device, fb, nullptr);
@@ -458,7 +447,6 @@ void Vulkan::cleanupSwapchain() {
     }
     framebuffers.clear();
     
-    // Уничтожаем image views
     for (auto iv : swapchainImageViews) {
         if (iv != VK_NULL_HANDLE) {
             vkDestroyImageView(device, iv, nullptr);
@@ -466,7 +454,6 @@ void Vulkan::cleanupSwapchain() {
     }
     swapchainImageViews.clear();
     
-    // Уничтожаем swapchain
     if (swapchain != VK_NULL_HANDLE) {
         vkDestroySwapchainKHR(device, swapchain, nullptr);
         swapchain = VK_NULL_HANDLE;
@@ -678,6 +665,7 @@ VulkanTexture* Vulkan::loadUIImage(const std::string& filepath) {
     delete texture;
     return nullptr;
 }
+
 void Vulkan::freeUIImage(VulkanTexture* texture) {
     if (!texture) return;
     
@@ -749,13 +737,6 @@ void Vulkan::createDescriptorSetLayoutGrid() {
     layoutInfo.bindingCount = 0;
     layoutInfo.pBindings = nullptr;
     vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descLayoutGrid);
-}
-
-void Vulkan::createDescriptorSetLayoutContour() {
-    VkDescriptorSetLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    layoutInfo.bindingCount = 0;
-    layoutInfo.pBindings = nullptr;
-    vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descLayoutContour);
 }
 
 void Vulkan::createUIImagePipeline() {
@@ -965,123 +946,7 @@ void Vulkan::createGridPipeline() {
     
     std::cout << "Grid pipeline created" << std::endl;
 }
-// Vulkan.cpp - createContourPipeline метод
-void Vulkan::createContourPipeline() {
-    VkShaderModule vertModule = createShaderModule("autoshadertest/contour_vert.spv");
-    VkShaderModule fragModule = createShaderModule("autoshadertest/contour_frag.spv");
-    
-    if (vertModule == VK_NULL_HANDLE || fragModule == VK_NULL_HANDLE) {
-        std::cerr << "Failed to load contour shaders" << std::endl;
-        if (vertModule) vkDestroyShaderModule(device, vertModule, nullptr);
-        if (fragModule) vkDestroyShaderModule(device, fragModule, nullptr);
-        return;
-    }
-    
-    auto bindingDesc = VkVertexInputBindingDescription{0, sizeof(ContourVertex3D), VK_VERTEX_INPUT_RATE_VERTEX};
-    auto attrDesc = std::array<VkVertexInputAttributeDescription, 2>{
-        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ContourVertex3D, pos)},
-        VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ContourVertex3D, normal)}
-    };
-    
-    VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-    vi.vertexBindingDescriptionCount = 1;
-    vi.pVertexBindingDescriptions = &bindingDesc;
-    vi.vertexAttributeDescriptionCount = (uint32_t)attrDesc.size();
-    vi.pVertexAttributeDescriptions = attrDesc.data();
-    
-    VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    
-    VkPipelineViewportStateCreateInfo vpState{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
-    vpState.viewportCount = 1;
-    vpState.scissorCount = 1;
-    
-    VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-    raster.polygonMode = VK_POLYGON_MODE_FILL;
-    raster.cullMode = VK_CULL_MODE_NONE;
-    raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    raster.lineWidth = 1.0f;
-    
-    VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
-    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-    
-    // ИСПРАВЛЕННЫЙ DepthStencil - РИСУЕМ ВСЕГДА ПОВЕРХ
-    VkPipelineDepthStencilStateCreateInfo depthStencil{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
-    depthStencil.depthTestEnable = VK_TRUE;
-    depthStencil.depthWriteEnable = VK_FALSE;
-    depthStencil.depthCompareOp = VK_COMPARE_OP_ALWAYS;  // ВСЕГДА рисуем поверх
-    
-    VkPipelineColorBlendAttachmentState blendAtt{};
-    blendAtt.blendEnable = VK_TRUE;
-    blendAtt.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    blendAtt.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    blendAtt.colorBlendOp = VK_BLEND_OP_ADD;
-    blendAtt.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    blendAtt.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    blendAtt.alphaBlendOp = VK_BLEND_OP_ADD;
-    blendAtt.colorWriteMask = 0xF;
-    
-    VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
-    cb.attachmentCount = 1;
-    cb.pAttachments = &blendAtt;
-    
-    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-    dynamic.dynamicStateCount = 2;
-    dynamic.pDynamicStates = dynamicStates;
-    
-    VkPushConstantRange pushRange{};
-    pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    pushRange.offset = 0;
-    pushRange.size = sizeof(glm::mat4);
-    
-    VkPipelineLayoutCreateInfo plInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    plInfo.setLayoutCount = 1;
-    plInfo.pSetLayouts = &descLayoutContour;
-    plInfo.pushConstantRangeCount = 1;
-    plInfo.pPushConstantRanges = &pushRange;
-    
-    if (vkCreatePipelineLayout(device, &plInfo, nullptr, &pipelineLayoutContour) != VK_SUCCESS) {
-        std::cerr << "Failed to create contour pipeline layout" << std::endl;
-        return;
-    }
-    
-    VkPipelineShaderStageCreateInfo stages[2] = {
-        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
-        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}
-    };
-    stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    stages[0].module = vertModule;
-    stages[0].pName = "main";
-    stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    stages[1].module = fragModule;
-    stages[1].pName = "main";
-    
-    VkGraphicsPipelineCreateInfo pipelineInfo{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = stages;
-    pipelineInfo.pVertexInputState = &vi;
-    pipelineInfo.pInputAssemblyState = &ia;
-    pipelineInfo.pViewportState = &vpState;
-    pipelineInfo.pRasterizationState = &raster;
-    pipelineInfo.pMultisampleState = &ms;
-    pipelineInfo.pDepthStencilState = &depthStencil;
-    pipelineInfo.pColorBlendState = &cb;
-    pipelineInfo.pDynamicState = &dynamic;
-    pipelineInfo.layout = pipelineLayoutContour;
-    pipelineInfo.renderPass = renderPass;
-    pipelineInfo.subpass = 0;
-    
-    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipelineContour) != VK_SUCCESS) {
-        std::cerr << "Failed to create contour pipeline" << std::endl;
-        return;
-    }
-    
-    vkDestroyShaderModule(device, vertModule, nullptr);
-    vkDestroyShaderModule(device, fragModule, nullptr);
-    
-    std::cout << "Contour pipeline created (ALWAYS on top)" << std::endl;
-}
+
 void Vulkan::createUIImageBuffers() {
     VkDeviceSize bufferSize = sizeof(UIImageVertex) * 65536;
     
@@ -1179,8 +1044,6 @@ void Vulkan::renderUIImage() {
     uiImageQuads.clear();
 }
 
-// ========== МЕТОДЫ ДЛЯ PER-MODEL UNIFORM BUFFERS ==========
-
 void Vulkan::createPerModelUniformBuffers(ModelBuffers& buffers) {
     VkDeviceSize bufferSize = sizeof(UniformBufferObject);
     
@@ -1240,7 +1103,6 @@ void Vulkan::updateUniformBuffer(ModelBuffers& buffers, uint32_t frameIndex, con
     vkUnmapMemory(device, buffers.uniformBufferMemories[frameIndex]);
 }
 
-// ========== МЕТОДЫ РАБОТЫ С МОДЕЛЯМИ ==========
 int Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& meshes) {
     vkDeviceWaitIdle(device);
     
@@ -1257,7 +1119,6 @@ int Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& m
     std::vector<uint32_t> indices;
     std::vector<VulkanTexture> textures;
     
-    // Вычисляем границы модели для масштабирования
     glm::vec3 minBounds(FLT_MAX);
     glm::vec3 maxBounds(-FLT_MAX);
     bool hasBounds = false;
@@ -1317,7 +1178,6 @@ int Vulkan::addModel(const std::string& name, const std::vector<StandardMesh>& m
         return -1;
     }
     
-    // Загрузка текстур
     for (const auto& mesh : meshes) {
         bool textureLoaded = false;
         
@@ -1407,6 +1267,7 @@ void Vulkan::clearModels() {
     modelTransforms.clear();
     std::cout << "[Vulkan] Cleared all models" << std::endl;
 }
+
 void Vulkan::renderAllModels() {
     for (auto& pair : modelBuffers) {
         const std::string& name = pair.first;
@@ -1417,7 +1278,6 @@ void Vulkan::renderAllModels() {
         
         glm::mat4 transform = transIt->second;
         
-        // Обновляем uniform buffer для текущего кадра
         updateUniformBuffer(buffers, currentFrame, transform);
         
         vkCmdBindPipeline(commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline3D);
@@ -1428,7 +1288,6 @@ void Vulkan::renderAllModels() {
         
         for (size_t i = 0; i < buffers.descSets.size() && i < buffers.textures.size(); i++) {
             if (buffers.indexCount > 0) {
-                // Обновляем descriptor set с правильными буферами для текущего кадра
                 VkDescriptorImageInfo imageInfo{buffers.textures[i].sampler, buffers.textures[i].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
                 VkDescriptorBufferInfo bufInfo{buffers.uniformBuffers[currentFrame], 0, sizeof(UniformBufferObject)};
                 
@@ -1574,7 +1433,6 @@ void Vulkan::createModelBuffers(ModelBuffers& buffers, const std::vector<VertexG
     buffers.indexCount = (uint32_t)indices.size();
     buffers.textures = textures;
     
-    // Create descriptor sets for each texture
     buffers.descSets.resize(textures.size());
     
     for (size_t i = 0; i < textures.size(); i++) {
@@ -1589,7 +1447,6 @@ void Vulkan::createModelBuffers(ModelBuffers& buffers, const std::vector<VertexG
             continue;
         }
         
-        // Initialize descriptor set with white texture temporarily
         VulkanTexture whiteTex = createWhiteTexture();
         VkDescriptorImageInfo imageInfo{whiteTex.sampler, whiteTex.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         VkDescriptorBufferInfo bufInfo{buffers.uniformBuffers[0], 0, sizeof(UniformBufferObject)};
@@ -1611,7 +1468,6 @@ void Vulkan::createModelBuffers(ModelBuffers& buffers, const std::vector<VertexG
         
         vkUpdateDescriptorSets(device, (uint32_t)descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
         
-        // Clean up temporary white texture
         vkDestroyImageView(device, whiteTex.view, nullptr);
         vkDestroyImage(device, whiteTex.image, nullptr);
         vkFreeMemory(device, whiteTex.memory, nullptr);
@@ -1849,12 +1705,12 @@ void Vulkan::createPipelines() {
     VkShaderModule uiTextFragModule = createShaderModule("autoshadertest/ui_text_frag.spv");
     
     auto bindingDesc = VkVertexInputBindingDescription{0, sizeof(VertexGPU), VK_VERTEX_INPUT_RATE_VERTEX};
-auto attrDesc = std::array<VkVertexInputAttributeDescription, 4>{  // Было 3, стало 4
-    VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, pos)},
-    VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, normal)},  // Добавить
-    VkVertexInputAttributeDescription{2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, color)},
-    VkVertexInputAttributeDescription{3, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(VertexGPU, texCoord)}
-};
+    auto attrDesc = std::array<VkVertexInputAttributeDescription, 4>{
+        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, pos)},
+        VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, normal)},
+        VkVertexInputAttributeDescription{2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, color)},
+        VkVertexInputAttributeDescription{3, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(VertexGPU, texCoord)}
+    };
     
     VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     vi.vertexBindingDescriptionCount = 1;
@@ -2059,6 +1915,7 @@ void Vulkan::createUITextBuffers() {
     vkAllocateMemory(device, &memAlloc, nullptr, &uiTextVertexBufferMemory);
     vkBindBufferMemory(device, uiTextVertexBuffer, uiTextVertexBufferMemory, 0);
 }
+
 void Vulkan::updateGridBuffer() {
     if (!needGridUpdate) return;
     
@@ -2086,7 +1943,6 @@ void Vulkan::updateGridBuffer() {
     
     std::vector<GridVertex> vertices;
     
-    // Линии вдоль X
     for (float z = minZ; z <= maxZ + 0.1f; z += spacing) {
         bool isCenter = fabs(z) < 0.01f;
         float r = isCenter ? gridCenterLineColor[0] : gridLineColor[0];
@@ -2103,7 +1959,6 @@ void Vulkan::updateGridBuffer() {
         vertices.push_back({{maxX, z}, {r, g, b}});
     }
     
-    // Линии вдоль Z
     for (float x = minX; x <= maxX + 0.1f; x += spacing) {
         bool isCenter = fabs(x) < 0.01f;
         float r = isCenter ? gridCenterLineColor[0] : gridLineColor[0];
@@ -2124,7 +1979,6 @@ void Vulkan::updateGridBuffer() {
     
     VkDeviceSize bufferSize = vertices.size() * sizeof(GridVertex);
     
-    // Если буфер уже существует, пересоздаём только если размер изменился
     if (gridVertexBuffer != VK_NULL_HANDLE) {
         VkMemoryRequirements oldReq;
         vkGetBufferMemoryRequirements(device, gridVertexBuffer, &oldReq);
@@ -2179,6 +2033,7 @@ void Vulkan::updateGridBuffer() {
     gridVertexCount = (uint32_t)vertices.size();
     needGridUpdate = false;
 }
+
 void Vulkan::renderGrid(const glm::mat4& viewMatrix, const glm::mat4& projMatrix) {
     if (!gridEnabled) return;
     if (pipelineGrid == VK_NULL_HANDLE) return;
@@ -2216,143 +2071,6 @@ void Vulkan::renderGrid(const glm::mat4& viewMatrix, const glm::mat4& projMatrix
     vkCmdDraw(cmdBuffer, gridVertexCount, 1, 0, 0);
 }
 
-// ==================== Vulkan.cpp - renderContour ====================
-void Vulkan::renderContour(ObjectID objectId, float thickness, float r, float g, float b,
-                           const glm::mat4& viewMatrix, const glm::mat4& projMatrix) {
-    if (objectId == 0) return;
-    if (pipelineContour == VK_NULL_HANDLE) return;
-    
-    auto& sm = SceneManager::Instance();
-    
-    ObjectScene* objScene = sm.GetObjectScene(objectId);
-    ModelParser* parser = nullptr;
-    std::string modelName;
-    
-    if (objScene && objScene->isLoaded) {
-        parser = sm.GetModelParser(objectId);
-        modelName = objScene->name;
-        if (!parser) return;
-    } else {
-        SceneObject* obj = sm.GetSceneObject(objectId);
-        if (!obj || !obj->parser) return;
-        parser = obj->parser;
-        modelName = obj->name;
-    }
-    
-    auto it = contourBuffers.find(objectId);
-    if (it == contourBuffers.end()) {
-        std::vector<glm::vec3> rawVertices;
-        
-        for (const auto& mesh : parser->getMeshes()) {
-            for (const auto& vert : mesh.vertices) {
-                glm::vec3 pos(vert.position[0], vert.position[1], vert.position[2]);
-                rawVertices.push_back(pos);
-            }
-        }
-        
-        if (rawVertices.empty()) return;
-        
-        glm::vec3 minBounds(FLT_MAX), maxBounds(-FLT_MAX);
-        for (const auto& v : rawVertices) {
-            minBounds = glm::min(minBounds, v);
-            maxBounds = glm::max(maxBounds, v);
-        }
-        
-        glm::vec3 center = (minBounds + maxBounds) * 0.5f;
-        float dx = maxBounds.x - minBounds.x;
-        float dy = maxBounds.y - minBounds.y;
-        float dz = maxBounds.z - minBounds.z;
-        float maxDim = glm::max(glm::max(dx, dy), dz);
-        float scale = (maxDim > 0.001f) ? (5.0f / maxDim) : 1.0f;
-        
-        std::vector<glm::vec3> originalVertices;
-        std::vector<uint32_t> indices;
-        
-        size_t currVertexOffset = 0;
-        for (const auto& mesh : parser->getMeshes()) {
-            for (const auto& vert : mesh.vertices) {
-                glm::vec3 pos(vert.position[0], vert.position[1], vert.position[2]);
-                glm::vec3 transformedPos = (pos - center) * scale;
-                originalVertices.push_back(transformedPos);
-            }
-            for (unsigned int idx : mesh.indices) {
-                indices.push_back((uint32_t)(currVertexOffset + idx));
-            }
-            currVertexOffset += mesh.vertices.size();
-        }
-        
-        if (originalVertices.empty()) return;
-        
-        std::vector<ContourVertex3D> contourVertices;
-        contourVertices.reserve(originalVertices.size());
-        for (size_t i = 0; i < originalVertices.size(); i++) {
-            ContourVertex3D cv;
-            cv.pos = originalVertices[i];
-            cv.normal = glm::vec3(0.0f);
-            contourVertices.push_back(cv);
-        }
-        
-        std::cout << "[Vulkan] Created outline for: " << modelName << std::endl;
-        
-        ContourBuffers cb;
-        createContourBuffers(cb, contourVertices, indices);
-        contourBuffers[objectId] = cb;
-        it = contourBuffers.find(objectId);
-    }
-    
-    if (it == contourBuffers.end()) return;
-    
-    ContourBuffers& cb = it->second;
-    
-    // ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ МАТРИЦУ ПРЯМО ПЕРЕД РЕНДЕРОМ
-    glm::mat4 transform;
-    auto transIt = modelTransforms.find(modelName);
-    if (transIt != modelTransforms.end()) {
-        transform = transIt->second;
-    } else {
-        transform = glm::mat4(1.0f);
-    }
-    
-    // ОТЛАДКА - ВЫВОДИМ МАТРИЦУ В КОНСОЛЬ КАЖДЫЙ КАДР
-    static int debugCounter = 0;
-    if (debugCounter++ % 60 == 0) {
-        std::cout << "[Contour] Matrix for " << modelName << ": "
-                  << transform[0][0] << " " << transform[1][1] << " " << transform[2][2] << std::endl;
-    }
-    
-    // Увеличиваем масштаб для обводки
-    float scaleFactor = 1.03f;
-    transform[0] = transform[0] * scaleFactor;
-    transform[1] = transform[1] * scaleFactor;
-    transform[2] = transform[2] * scaleFactor;
-    
-    VkCommandBuffer cmdBuffer = commandBuffers[currentFrame];
-    
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = (float)swapchainExtent.width;
-    viewport.height = (float)swapchainExtent.height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
-    
-    VkRect2D scissor{};
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent = swapchainExtent;
-    vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
-    
-    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineContour);
-    
-    glm::mat4 mvp = projMatrix * viewMatrix * transform;
-    vkCmdPushConstants(cmdBuffer, pipelineLayoutContour, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &mvp);
-    
-    VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &cb.vertexBuffer, &offset);
-    vkCmdBindIndexBuffer(cmdBuffer, cb.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-    vkCmdDrawIndexed(cmdBuffer, cb.indexCount, 1, 0, 0, 0);
-}
 void Vulkan::setViewMatrix(const glm::mat4& view) {
     viewMat = view;
     needGridUpdate = true;
@@ -2595,23 +2313,119 @@ void Vulkan::beginFrame() {
         return;
     }
     
+    // ========== ID PASS - ОЧИСТКА И РЕНДЕР ID ==========
+    // Переводим ID изображение в TRANSFER_DST_OPTIMAL для очистки
+    VkImageMemoryBarrier idBarrier{};
+    idBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    idBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    idBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    idBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    idBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    idBarrier.image = m_idImage;
+    idBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    idBarrier.subresourceRange.levelCount = 1;
+    idBarrier.subresourceRange.layerCount = 1;
+    idBarrier.srcAccessMask = 0;
+    idBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    
+    vkCmdPipelineBarrier(commandBuffers[currentFrame],
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &idBarrier);
+    
+    // Очистка ID буфера значением 99 для теста
+    VkClearColorValue clearValue;
+    clearValue.uint32[0] = 99;
+    clearValue.uint32[1] = 0;
+    clearValue.uint32[2] = 0;
+    clearValue.uint32[3] = 0;
+    
+    VkImageSubresourceRange range;
+    range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    range.baseMipLevel = 0;
+    range.levelCount = 1;
+    range.baseArrayLayer = 0;
+    range.layerCount = 1;
+    
+    vkCmdClearColorImage(commandBuffers[currentFrame], m_idImage,
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                         &clearValue, 1, &range);
+    
+    // Переводим ID изображение в COLOR_ATTACHMENT_OPTIMAL для рендера
+    idBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    idBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    idBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    idBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    
+    vkCmdPipelineBarrier(commandBuffers[currentFrame],
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &idBarrier);
+    
+    // Начинаем ID PASS
+    VkClearValue clearValues[2];
+    clearValues[0].color.uint32[0] = 0;
+    clearValues[0].color.uint32[1] = 0;
+    clearValues[0].color.uint32[2] = 0;
+    clearValues[0].color.uint32[3] = 0;
+    clearValues[1].depthStencil = {1.0f, 0};
+    
+    VkRenderPassBeginInfo rpID{};
+    rpID.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    rpID.renderPass = renderPass;
+    rpID.framebuffer = framebuffers[currentImageIndex];
+    rpID.renderArea.offset = {0, 0};
+    rpID.renderArea.extent = swapchainExtent;
+    rpID.clearValueCount = 2;
+    rpID.pClearValues = clearValues;
+    
+    vkCmdBeginRenderPass(commandBuffers[currentFrame], &rpID, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, m_idPipeline);
+    
+    VkViewport viewport{0, 0, (float)swapchainExtent.width, (float)swapchainExtent.height, 0, 1};
+    vkCmdSetViewport(commandBuffers[currentFrame], 0, 1, &viewport);
+    
+    VkRect2D scissor{{0, 0}, swapchainExtent};
+    vkCmdSetScissor(commandBuffers[currentFrame], 0, 1, &scissor);
+    
+    // Рендер объектов в ID буфер (пока закомментирован)
+    // RenderObjectsToIDBuffer();
+    
+    vkCmdEndRenderPass(commandBuffers[currentFrame]);
+    
+    // Переводим ID изображение в шейдерный layout
+    idBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    idBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    idBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    idBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    
+    vkCmdPipelineBarrier(commandBuffers[currentFrame],
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &idBarrier);
+    
+    // ========== ОСНОВНОЙ PASS ==========
+    VkClearValue clearValuesMain[2];
+    clearValuesMain[0].color = {{0.1f, 0.1f, 0.2f, 1.0f}};
+    clearValuesMain[1].depthStencil = {1.0f, 0};
+    
     VkRenderPassBeginInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp.renderPass = renderPass;
     rp.framebuffer = framebuffers[currentImageIndex];
     rp.renderArea.offset = {0, 0};
     rp.renderArea.extent = swapchainExtent;
-    
-    VkClearValue clearValues[2];
-    clearValues[0].color = {{0.1f, 0.1f, 0.2f, 1.0f}};
-    clearValues[1].depthStencil = {1.0f, 0};
-    
     rp.clearValueCount = 2;
-    rp.pClearValues = clearValues;
+    rp.pClearValues = clearValuesMain;
     
     vkCmdBeginRenderPass(commandBuffers[currentFrame], &rp, VK_SUBPASS_CONTENTS_INLINE);
 }
 
 void Vulkan::endFrame() {
+    // Рендерим контур через PostRender
+    if (m_postRender && m_selectedObjectID != 0) {
+        m_postRender->Render(this, commandBuffers[currentFrame], swapchainExtent.width, swapchainExtent.height);
+    }
+    
     vkCmdEndRenderPass(commandBuffers[currentFrame]);
     vkEndCommandBuffer(commandBuffers[currentFrame]);
     
@@ -2642,6 +2456,7 @@ void Vulkan::present() {
     
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
+
 void Vulkan::recreateSwapchain() {
     if (!hwnd || !IsWindow(hwnd)) return;
     
@@ -2670,8 +2485,14 @@ void Vulkan::recreateSwapchain() {
     createSwapchain();
     createFramebuffers();
     
-    // НЕ пересоздаём буфер сетки, просто отмечаем что нужно обновить данные
     needGridUpdate = true;
+    
+    if (m_postRender) {
+        m_postRender->Resize(width, height);
+    }
+    
+    DestroyIDBuffer();
+    InitializeIDBuffer(width, height);
     
     std::cout << "[Vulkan] Swapchain recreated: " << width << "x" << height << std::endl;
 }
@@ -2774,185 +2595,393 @@ void Vulkan::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
     
     vkFreeCommandBuffers(device, commandPools[0], 1, &commandBuffer);
 }
-void Vulkan::drawContourInternal3D(const std::vector<ContourVertex3D>& vertices, 
-                                    const std::vector<uint32_t>& indices,
-                                    float thickness,
-                                    const glm::mat4& viewMatrix, 
-                                    const glm::mat4& projMatrix,
-                                    const glm::mat4& worldMatrix) {
-    if (vertices.empty() || indices.empty()) return;
-    if (pipelineContour == VK_NULL_HANDLE) return;
+
+// ==================== ID BUFFER METHODS ====================
+
+void Vulkan::InitializeIDBuffer(int width, int height) {
+    m_idBufferWidth = width;
+    m_idBufferHeight = height;
+    CreateIDBufferResources();
+    CreateIDPipeline();
+    CreateFullscreenQuad();
+    // Пайплайн для пост-рендера создаётся в PostRender
+    std::cout << "[Vulkan] ID Buffer initialized: " << width << "x" << height << std::endl;
+}
+
+void Vulkan::DestroyIDBuffer() {
+    if (m_idImage) vkDestroyImage(device, m_idImage, nullptr);
+    if (m_idImageView) vkDestroyImageView(device, m_idImageView, nullptr);
+    if (m_idImageMemory) vkFreeMemory(device, m_idImageMemory, nullptr);
+    if (m_idPipeline) vkDestroyPipeline(device, m_idPipeline, nullptr);
+    if (m_idPipelineLayout) vkDestroyPipelineLayout(device, m_idPipelineLayout, nullptr);
+    if (m_idDescLayout) vkDestroyDescriptorSetLayout(device, m_idDescLayout, nullptr);
+    if (m_idDescriptorSet) vkFreeDescriptorSets(device, descPool, 1, &m_idDescriptorSet);
+    if (m_idSampler) vkDestroySampler(device, m_idSampler, nullptr);
+    if (m_fullscreenVertexBuffer) vkDestroyBuffer(device, m_fullscreenVertexBuffer, nullptr);
+    if (m_fullscreenVertexBufferMemory) vkFreeMemory(device, m_fullscreenVertexBufferMemory, nullptr);
+}
+
+void Vulkan::CreateIDBufferResources() {
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.format = VK_FORMAT_R32_UINT;
+    imageInfo.extent.width = (uint32_t)m_idBufferWidth;
+    imageInfo.extent.height = (uint32_t)m_idBufferHeight;
+    imageInfo.extent.depth = 1;
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = 1;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     
-    VkCommandBuffer cmdBuffer = commandBuffers[currentFrame];
-    
-    // Создаём временный вершинный буфер
-    VkDeviceSize vertexBufferSize = vertices.size() * sizeof(ContourVertex3D);
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-    
-    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    bufferInfo.size = vertexBufferSize;
-    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    
-    if (vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) {
-        std::cerr << "[Vulkan] Failed to create contour vertex buffer" << std::endl;
-        return;
-    }
+    vkCreateImage(device, &imageInfo, nullptr, &m_idImage);
     
     VkMemoryRequirements memReq;
-    vkGetBufferMemoryRequirements(device, vertexBuffer, &memReq);
+    vkGetImageMemoryRequirements(device, m_idImage, &memReq);
     
-    VkMemoryAllocateInfo allocInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memReq.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, 
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    allocInfo.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS) {
-        std::cerr << "[Vulkan] Failed to allocate contour vertex buffer memory" << std::endl;
-        vkDestroyBuffer(device, vertexBuffer, nullptr);
+    vkAllocateMemory(device, &allocInfo, nullptr, &m_idImageMemory);
+    vkBindImageMemory(device, m_idImage, m_idImageMemory, 0);
+    
+    VkImageViewCreateInfo viewInfo{};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = m_idImage;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = VK_FORMAT_R32_UINT;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.layerCount = 1;
+    
+    vkCreateImageView(device, &viewInfo, nullptr, &m_idImageView);
+    
+    VkDescriptorSetLayoutBinding binding{};
+    binding.binding = 0;
+    binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    binding.descriptorCount = 1;
+    binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &binding;
+    
+    vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &m_idDescLayout);
+    
+    VkSamplerCreateInfo samplerInfo{};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerInfo.magFilter = VK_FILTER_NEAREST;
+    samplerInfo.minFilter = VK_FILTER_NEAREST;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.unnormalizedCoordinates = VK_FALSE;
+    
+    vkCreateSampler(device, &samplerInfo, nullptr, &m_idSampler);
+    
+    VkDescriptorSetAllocateInfo descAlloc{};
+    descAlloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descAlloc.descriptorPool = descPool;
+    descAlloc.descriptorSetCount = 1;
+    descAlloc.pSetLayouts = &m_idDescLayout;
+    
+    vkAllocateDescriptorSets(device, &descAlloc, &m_idDescriptorSet);
+    
+    VkDescriptorImageInfo imageInfoDesc{};
+    imageInfoDesc.sampler = m_idSampler;
+    imageInfoDesc.imageView = m_idImageView;
+    imageInfoDesc.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    
+    VkWriteDescriptorSet write{};
+    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.dstSet = m_idDescriptorSet;
+    write.dstBinding = 0;
+    write.descriptorCount = 1;
+    write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    write.pImageInfo = &imageInfoDesc;
+    
+    vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+    
+    std::cout << "[Vulkan] ID buffer resources created" << std::endl;
+}
+
+void Vulkan::CreateIDPipeline() {
+    const char* idVertCode = R"(#version 450
+layout(location = 0) in vec3 inPosition;
+layout(location = 1) in vec3 inNormal;
+layout(location = 2) in vec3 inColor;
+layout(location = 3) in vec2 inTexCoord;
+layout(push_constant) uniform PushConstants {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+    uint objectID;
+} pc;
+layout(location = 0) out uint outObjectID;
+void main() {
+    gl_Position = pc.proj * pc.view * pc.model * vec4(inPosition, 1.0);
+    outObjectID = pc.objectID;
+}
+)";
+    
+    const char* idFragCode = R"(#version 450
+layout(location = 0) in flat uint inObjectID;
+layout(location = 0) out uint outColor;
+void main() {
+    outColor = inObjectID;
+}
+)";
+    
+    std::ofstream vertFile("autoshadertest/id_vert.vert");
+    vertFile << idVertCode;
+    vertFile.close();
+    
+    std::ofstream fragFile("autoshadertest/id_frag.frag");
+    fragFile << idFragCode;
+    fragFile.close();
+    
+    system("glslc autoshadertest/id_vert.vert -o autoshadertest/id_vert.spv");
+    system("glslc autoshadertest/id_frag.frag -o autoshadertest/id_frag.spv");
+    
+    VkShaderModule vertModule = createShaderModule("autoshadertest/id_vert.spv");
+    VkShaderModule fragModule = createShaderModule("autoshadertest/id_frag.spv");
+    
+    if (vertModule == VK_NULL_HANDLE || fragModule == VK_NULL_HANDLE) {
+        std::cerr << "Failed to load ID shaders" << std::endl;
         return;
     }
     
-    vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
-    
-    void* data;
-    vkMapMemory(device, vertexBufferMemory, 0, vertexBufferSize, 0, &data);
-    memcpy(data, vertices.data(), vertexBufferSize);
-    vkUnmapMemory(device, vertexBufferMemory);
-    
-    // Создаём индексный буфер
-    VkDeviceSize indexBufferSize = indices.size() * sizeof(uint32_t);
-    VkBuffer indexBuffer;
-    VkDeviceMemory indexBufferMemory;
-    
-    bufferInfo.size = indexBufferSize;
-    bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    
-    if (vkCreateBuffer(device, &bufferInfo, nullptr, &indexBuffer) != VK_SUCCESS) {
-        std::cerr << "[Vulkan] Failed to create contour index buffer" << std::endl;
-        vkDestroyBuffer(device, vertexBuffer, nullptr);
-        vkFreeMemory(device, vertexBufferMemory, nullptr);
-        return;
-    }
-    
-    vkGetBufferMemoryRequirements(device, indexBuffer, &memReq);
-    allocInfo.allocationSize = memReq.size;
-    
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &indexBufferMemory) != VK_SUCCESS) {
-        std::cerr << "[Vulkan] Failed to allocate contour index buffer memory" << std::endl;
-        vkDestroyBuffer(device, vertexBuffer, nullptr);
-        vkFreeMemory(device, vertexBufferMemory, nullptr);
-        vkDestroyBuffer(device, indexBuffer, nullptr);
-        return;
-    }
-    
-    vkBindBufferMemory(device, indexBuffer, indexBufferMemory, 0);
-    
-    vkMapMemory(device, indexBufferMemory, 0, indexBufferSize, 0, &data);
-    memcpy(data, indices.data(), indexBufferSize);
-    vkUnmapMemory(device, indexBufferMemory);
-    
-    // Настройка viewport и scissor
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = (float)swapchainExtent.width;
-    viewport.height = (float)swapchainExtent.height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
-    
-    VkRect2D scissor{};
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent = swapchainExtent;
-    vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
-    
-    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineContour);
-    
-    glm::mat4 mvp = projMatrix * viewMatrix * worldMatrix;
-    vkCmdPushConstants(cmdBuffer, pipelineLayoutContour, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &mvp);
-    
-    // НАСТРОЙКА ВЕРШИННЫХ АТТРИБУТОВ (должна быть до bind!)
-    auto bindingDesc = VkVertexInputBindingDescription{0, sizeof(ContourVertex3D), VK_VERTEX_INPUT_RATE_VERTEX};
-    auto attrDesc = std::array<VkVertexInputAttributeDescription, 2>{
-        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ContourVertex3D, pos)},
-        VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ContourVertex3D, normal)}
+    auto bindingDesc = VkVertexInputBindingDescription{0, sizeof(VertexGPU), VK_VERTEX_INPUT_RATE_VERTEX};
+    auto attrDesc = std::array<VkVertexInputAttributeDescription, 4>{
+        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, pos)},
+        VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, normal)},
+        VkVertexInputAttributeDescription{2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, color)},
+        VkVertexInputAttributeDescription{3, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(VertexGPU, texCoord)}
     };
     
-    // Эти настройки должны быть установлены в pipeline, поэтому их нужно устанавливать ДО создания pipeline
-    // Но для временного рендера - просто bind буферы
+    VkPipelineVertexInputStateCreateInfo vi{};
+    vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vi.vertexBindingDescriptionCount = 1;
+    vi.pVertexBindingDescriptions = &bindingDesc;
+    vi.vertexAttributeDescriptionCount = (uint32_t)attrDesc.size();
+    vi.pVertexAttributeDescriptions = attrDesc.data();
     
-    VkDeviceSize offsets = 0;  // <- ИСПРАВЛЕНО: объявлена переменная offsets
-    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexBuffer, &offsets);
-    vkCmdBindIndexBuffer(cmdBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-    vkCmdDrawIndexed(cmdBuffer, (uint32_t)indices.size(), 1, 0, 0, 0);
+    VkPipelineInputAssemblyStateCreateInfo ia{};
+    ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     
-    // Очистка
-    vkDestroyBuffer(device, vertexBuffer, nullptr);
-    vkFreeMemory(device, vertexBufferMemory, nullptr);
-    vkDestroyBuffer(device, indexBuffer, nullptr);
-    vkFreeMemory(device, indexBufferMemory, nullptr);
+    VkViewport viewport{};
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = (float)swapchainExtent.width;
+    viewport.height = (float)swapchainExtent.height;
+    viewport.minDepth = 0;
+    viewport.maxDepth = 1;
+    
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = swapchainExtent;
+    
+    VkPipelineViewportStateCreateInfo vpState{};
+    vpState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    vpState.viewportCount = 1;
+    vpState.pViewports = &viewport;
+    vpState.scissorCount = 1;
+    vpState.pScissors = &scissor;
+    
+    VkPipelineRasterizationStateCreateInfo raster{};
+    raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    raster.polygonMode = VK_POLYGON_MODE_FILL;
+    raster.cullMode = VK_CULL_MODE_BACK_BIT;
+    raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    raster.lineWidth = 1.0f;
+    
+    VkPipelineMultisampleStateCreateInfo ms{};
+    ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    
+    VkPipelineColorBlendAttachmentState blendAtt{};
+    blendAtt.colorWriteMask = 0xF;
+    blendAtt.blendEnable = VK_FALSE;
+    
+    VkPipelineColorBlendStateCreateInfo cb{};
+    cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    cb.attachmentCount = 1;
+    cb.pAttachments = &blendAtt;
+    
+    VkPushConstantRange pushRange{};
+    pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushRange.offset = 0;
+    pushRange.size = sizeof(glm::mat4) * 3 + sizeof(uint32_t);
+    
+    VkPipelineLayoutCreateInfo plInfo{};
+    plInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    plInfo.setLayoutCount = 0;
+    plInfo.pushConstantRangeCount = 1;
+    plInfo.pPushConstantRanges = &pushRange;
+    
+    vkCreatePipelineLayout(device, &plInfo, nullptr, &m_idPipelineLayout);
+    
+    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dynamic{};
+    dynamic.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamic.dynamicStateCount = 2;
+    dynamic.pDynamicStates = dynamicStates;
+    
+    VkPipelineShaderStageCreateInfo stages[2] = {
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}
+    };
+    stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    stages[0].module = vertModule;
+    stages[0].pName = "main";
+    stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    stages[1].module = fragModule;
+    stages[1].pName = "main";
+    
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = stages;
+    pipelineInfo.pVertexInputState = &vi;
+    pipelineInfo.pInputAssemblyState = &ia;
+    pipelineInfo.pViewportState = &vpState;
+    pipelineInfo.pRasterizationState = &raster;
+    pipelineInfo.pMultisampleState = &ms;
+    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.pColorBlendState = &cb;
+    pipelineInfo.pDynamicState = &dynamic;
+    pipelineInfo.layout = m_idPipelineLayout;
+    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.subpass = 0;
+    
+    vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_idPipeline);
+    
+    vkDestroyShaderModule(device, vertModule, nullptr);
+    vkDestroyShaderModule(device, fragModule, nullptr);
+    
+    std::cout << "[Vulkan] ID pipeline created" << std::endl;
 }
-void Vulkan::createContourBuffers(ContourBuffers& buffers, 
-                                   const std::vector<ContourVertex3D>& vertices,
-                                   const std::vector<uint32_t>& indices) {
-    if (vertices.empty() || indices.empty()) return;
+
+void Vulkan::CreateFullscreenQuad() {
+    struct FullscreenVertex {
+        float pos[2];
+        float uv[2];
+    };
     
-    VkDeviceSize vertexBufferSize = vertices.size() * sizeof(ContourVertex3D);
+    std::vector<FullscreenVertex> vertices = {
+        {{-1.0f, -1.0f}, {0.0f, 1.0f}},
+        {{ 1.0f, -1.0f}, {1.0f, 1.0f}},
+        {{-1.0f,  1.0f}, {0.0f, 0.0f}},
+        {{ 1.0f, -1.0f}, {1.0f, 1.0f}},
+        {{ 1.0f,  1.0f}, {1.0f, 0.0f}},
+        {{-1.0f,  1.0f}, {0.0f, 0.0f}}
+    };
     
-    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    bufferInfo.size = vertexBufferSize;
+    VkDeviceSize bufferSize = vertices.size() * sizeof(FullscreenVertex);
+    
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = bufferSize;
     bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    vkCreateBuffer(device, &bufferInfo, nullptr, &buffers.vertexBuffer);
+    
+    vkCreateBuffer(device, &bufferInfo, nullptr, &m_fullscreenVertexBuffer);
     
     VkMemoryRequirements memReq;
-    vkGetBufferMemoryRequirements(device, buffers.vertexBuffer, &memReq);
+    vkGetBufferMemoryRequirements(device, m_fullscreenVertexBuffer, &memReq);
     
-    VkMemoryAllocateInfo allocInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memReq.size;
     allocInfo.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, 
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    vkAllocateMemory(device, &allocInfo, nullptr, &buffers.vertexBufferMemory);
-    vkBindBufferMemory(device, buffers.vertexBuffer, buffers.vertexBufferMemory, 0);
+    
+    vkAllocateMemory(device, &allocInfo, nullptr, &m_fullscreenVertexBufferMemory);
+    vkBindBufferMemory(device, m_fullscreenVertexBuffer, m_fullscreenVertexBufferMemory, 0);
     
     void* data;
-    vkMapMemory(device, buffers.vertexBufferMemory, 0, vertexBufferSize, 0, &data);
-    memcpy(data, vertices.data(), vertexBufferSize);
-    vkUnmapMemory(device, buffers.vertexBufferMemory);
-    
-    VkDeviceSize indexBufferSize = indices.size() * sizeof(uint32_t);
-    bufferInfo.size = indexBufferSize;
-    bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    vkCreateBuffer(device, &bufferInfo, nullptr, &buffers.indexBuffer);
-    
-    vkGetBufferMemoryRequirements(device, buffers.indexBuffer, &memReq);
-    allocInfo.allocationSize = memReq.size;
-    vkAllocateMemory(device, &allocInfo, nullptr, &buffers.indexBufferMemory);
-    vkBindBufferMemory(device, buffers.indexBuffer, buffers.indexBufferMemory, 0);
-    
-    vkMapMemory(device, buffers.indexBufferMemory, 0, indexBufferSize, 0, &data);
-    memcpy(data, indices.data(), indexBufferSize);
-    vkUnmapMemory(device, buffers.indexBufferMemory);
-    
-    buffers.indexCount = (uint32_t)indices.size();
+    vkMapMemory(device, m_fullscreenVertexBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, vertices.data(), bufferSize);
+    vkUnmapMemory(device, m_fullscreenVertexBufferMemory);
 }
-void Vulkan::destroyContourBuffers(ContourBuffers& buffers) {
-    if (buffers.vertexBuffer) {
-        vkDestroyBuffer(device, buffers.vertexBuffer, nullptr);
-        buffers.vertexBuffer = VK_NULL_HANDLE;
+
+void Vulkan::RenderObjectsToIDBuffer() {
+    // Рендер объектов в ID буфер (будет реализован позже)
+    for (auto& pair : modelBuffers) {
+        const std::string& name = pair.first;
+        ModelBuffers& buffers = pair.second;
+        
+        auto& sm = SceneManager::Instance();
+        uint32_t objectID = 0;
+        for (const auto& obj : sm.GetAllObjectsScene()) {
+            if (obj.name == name) {
+                objectID = obj.id;
+                break;
+            }
+        }
+        
+        if (objectID == 0) continue;
+        
+        auto transIt = modelTransforms.find(name);
+        if (transIt == modelTransforms.end()) continue;
+        
+        glm::mat4 transform = transIt->second;
+        
+        struct IDPushConstants {
+            glm::mat4 model;
+            glm::mat4 view;
+            glm::mat4 proj;
+            uint32_t objectID;
+        } pushConstants;
+        
+        pushConstants.model = transform;
+        pushConstants.view = viewMat;
+        pushConstants.proj = projMat;
+        pushConstants.objectID = objectID;
+        
+        vkCmdPushConstants(commandBuffers[currentFrame], m_idPipelineLayout, 
+                          VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(IDPushConstants), &pushConstants);
+        
+        VkDeviceSize offsets = 0;
+        vkCmdBindVertexBuffers(commandBuffers[currentFrame], 0, 1, &buffers.vertexBuffer, &offsets);
+        vkCmdBindIndexBuffer(commandBuffers[currentFrame], buffers.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(commandBuffers[currentFrame], buffers.indexCount, 1, 0, 0, 0);
     }
-    if (buffers.vertexBufferMemory) {
-        vkFreeMemory(device, buffers.vertexBufferMemory, nullptr);
-        buffers.vertexBufferMemory = VK_NULL_HANDLE;
+}
+
+
+void Vulkan::SetSelectedObjectID(uint32_t id) { 
+    m_selectedObjectID = id; 
+    if (m_postRender) {
+        m_postRender->Process(this, id);
     }
-    if (buffers.indexBuffer) {
-        vkDestroyBuffer(device, buffers.indexBuffer, nullptr);
-        buffers.indexBuffer = VK_NULL_HANDLE;
+}
+void Vulkan::SetOutlineColor(float r, float g, float b) { 
+    m_outlineColor[0] = r; m_outlineColor[1] = g; m_outlineColor[2] = b; 
+    if (m_postRender) {
+        m_postRender->SetOutlineColor(r, g, b);
     }
-    if (buffers.indexBufferMemory) {
-        vkFreeMemory(device, buffers.indexBufferMemory, nullptr);
-        buffers.indexBufferMemory = VK_NULL_HANDLE;
+}
+void Vulkan::SetOutlineThickness(int thickness) { 
+    m_outlineThickness = thickness; 
+    if (m_postRender) {
+        m_postRender->SetOutlineThickness(thickness);
     }
-    buffers.indexCount = 0;
+}
+void Vulkan::SetOutlineEnabled(bool enabled) { 
+    m_outlineEnabled = enabled; 
+    if (m_postRender) {
+        m_postRender->SetEnabled(enabled);
+    }
 }

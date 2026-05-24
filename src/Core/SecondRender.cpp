@@ -256,9 +256,8 @@ void SecondRender::SetZoomLevel(float zoom) {
 }
 
 void SecondRender::RenderContour(ObjectID objectId, float thickness, float r, float g, float b) {
-    if (vulkan && objectId != 0) {
-        vulkan->renderContour(objectId, thickness, r, g, b, currentViewMat, currentProjMat);
-    }
+    // Устаревший метод - контуры теперь через PostRender
+    // Оставлен для обратной совместимости, но ничего не делает
 }
 
 void SecondRender::RenderBackground() {
@@ -355,4 +354,10 @@ void SecondRender::RebuildTestQuadsIfNeeded() {
     testOverlayQuads.push_back(quad);
     
     testQuadsDirty = false;
+}
+
+void SecondRender::SetContourEnabled(bool enabled) {
+    // Устаревший метод - контуры теперь через PostRender
+    // Оставлен для обратной совместимости
+    std::cout << "[SecondRender] SetContourEnabled(" << enabled << ") - Deprecated, use PostRender instead" << std::endl;
 }

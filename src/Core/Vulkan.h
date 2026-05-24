@@ -1,4 +1,4 @@
-// Vulkan.h - ПОЛНЫЙ ИСПРАВЛЕННЫЙ ФАЙЛ
+// Vulkan.h - ПОЛНЫЙ ФАЙЛ БЕЗ ДУБЛИКАТОВ
 #ifndef VULKAN_H
 #define VULKAN_H
 
@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <memory>
 #include <glm/glm.hpp>
 #include "Render/Parser/parser.h"
 #include "stb_truetype.h"
@@ -15,6 +16,8 @@ typedef unsigned int ObjectID;
 
 // Константа должна быть доступна везде
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT_VK = 2;
+
+class PostRender; // forward declaration
 
 struct VulkanTexture {
     VkImage image = VK_NULL_HANDLE;
@@ -39,11 +42,6 @@ struct UIImageQuad {
 };
 
 struct GridVertex {
-    glm::vec2 pos;
-    glm::vec3 color;
-};
-
-struct ContourVertex {
     glm::vec2 pos;
     glm::vec3 color;
 };
@@ -125,56 +123,34 @@ public:
     bool isGridEnabled() const { return gridEnabled; }
     float getGridSpacing() const { return gridSpacing; }
     
-    void renderContour(ObjectID objectId, float thickness, float r, float g, float b, 
-                       const glm::mat4& viewMatrix, const glm::mat4& projMatrix);
-// В private секцию, рядом с ContourVertex:
-// Vulkan.h - добавьте в private секцию (рядом с VertexGPU)
-// В private секцию Vulkan.h:
-struct ContourVertex3D {
-    glm::vec3 pos;
-    glm::vec3 normal;
-};
-// И объявление метода:
-void drawContourInternal3D(const std::vector<ContourVertex3D>& vertices, 
-                           const std::vector<uint32_t>& indices,
-                           float thickness,
-                           const glm::mat4& viewMatrix, 
-                           const glm::mat4& projMatrix,
-                           const glm::mat4& worldMatrix);
-                           // В private секцию Vulkan.h:
-struct ContourBuffers {
-    VkBuffer vertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
-    VkBuffer indexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
-    uint32_t indexCount = 0;
-};
+    // Геттеры для ID буфера (для Otlad и PostRender) - ТОЛЬКО ОДИН РАЗ!
+    int GetIDBufferWidth() const { return m_idBufferWidth; }
+    int GetIDBufferHeight() const { return m_idBufferHeight; }
+    VkImage GetIDImage() const { return m_idImage; }
+    VkImageView GetIDImageView() const { return m_idImageView; }
+    VkSampler GetIDBufferSampler() const { return m_idSampler; }
+    VkPhysicalDevice GetPhysicalDevice() const { return physDevice; }
+    
+    // Доступ к пост-рендеру
+    PostRender* GetPostRender() { return m_postRender.get(); }
+    
+    // Методы для ID буфера
+    void InitializeIDBuffer(int width, int height);
+    void DestroyIDBuffer();
+    
+    // Управление контуром
+    void SetSelectedObjectID(uint32_t id);
+    void SetOutlineColor(float r, float g, float b);
+    void SetOutlineThickness(int thickness);
+    void SetOutlineEnabled(bool enabled);
 
-// И map для хранения:
-std::map<ObjectID, ContourBuffers> contourBuffers;
-// В private секцию Vulkan.h, рядом с другими методами:
-void createContourBuffers(ContourBuffers& buffers, 
-                          const std::vector<ContourVertex3D>& vertices,
-                          const std::vector<uint32_t>& indices);
-void destroyContourBuffers(ContourBuffers& buffers);
-// В private секцию Vulkan.h, после struct ModelBuffers:
-
-// Добавьте этот метод в Vulkan.h
-bool hasContourBuffers(ObjectID objectId) const {
-    return contourBuffers.find(objectId) != contourBuffers.end();
-}
 private:
-glm::mat4 getModelTransform(const std::string& name) {
-    auto it = modelTransforms.find(name);
-    return (it != modelTransforms.end()) ? it->second : glm::mat4(1.0f);
-}
-// В Vulkan.h, в private секции:
-struct VertexGPU {
-    glm::vec3 pos;
-    glm::vec3 normal;
-    glm::vec3 color;
-    glm::vec2 texCoord;
-};
+    struct VertexGPU {
+        glm::vec3 pos;
+        glm::vec3 normal;
+        glm::vec3 color;
+        glm::vec2 texCoord;
+    };
 
     struct UIVertex {
         glm::vec2 pos;
@@ -270,21 +246,18 @@ struct VertexGPU {
     VkPipelineLayout pipelineLayoutUIText = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayoutUIImage = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayoutGrid = VK_NULL_HANDLE;
-    VkPipelineLayout pipelineLayoutContour = VK_NULL_HANDLE;
 
     VkPipeline pipeline3D = VK_NULL_HANDLE;
     VkPipeline pipelineUI = VK_NULL_HANDLE;
     VkPipeline pipelineUIText = VK_NULL_HANDLE;
     VkPipeline pipelineUIImage = VK_NULL_HANDLE;
     VkPipeline pipelineGrid = VK_NULL_HANDLE;
-    VkPipeline pipelineContour = VK_NULL_HANDLE;
 
     VkDescriptorSetLayout descLayout = VK_NULL_HANDLE;
     VkDescriptorSetLayout descLayoutUIEmpty = VK_NULL_HANDLE;
     VkDescriptorSetLayout descLayoutUIText = VK_NULL_HANDLE;
     VkDescriptorSetLayout descLayoutUIImage = VK_NULL_HANDLE;
     VkDescriptorSetLayout descLayoutGrid = VK_NULL_HANDLE;
-    VkDescriptorSetLayout descLayoutContour = VK_NULL_HANDLE;
     VkDescriptorPool descPool = VK_NULL_HANDLE;
     VkDescriptorSet descSetUIText = VK_NULL_HANDLE;
 
@@ -318,6 +291,32 @@ struct VertexGPU {
     bool needGridUpdate = true;
     float gridLineColor[3] = {0.4f, 0.4f, 0.45f};
     float gridCenterLineColor[3] = {0.8f, 0.8f, 1.0f};
+    
+    // Пост-рендер для контуров
+    std::unique_ptr<PostRender> m_postRender;
+    
+    // ID буфер
+    int m_idBufferWidth = 0;
+    int m_idBufferHeight = 0;
+    
+    VkImage m_idImage = VK_NULL_HANDLE;
+    VkImageView m_idImageView = VK_NULL_HANDLE;
+    VkDeviceMemory m_idImageMemory = VK_NULL_HANDLE;
+    VkDescriptorSetLayout m_idDescLayout = VK_NULL_HANDLE;
+    VkDescriptorSet m_idDescriptorSet = VK_NULL_HANDLE;
+    VkPipelineLayout m_idPipelineLayout = VK_NULL_HANDLE;
+    VkPipeline m_idPipeline = VK_NULL_HANDLE;
+    VkSampler m_idSampler = VK_NULL_HANDLE;
+    
+    // Полноэкранный quad
+    VkBuffer m_fullscreenVertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory m_fullscreenVertexBufferMemory = VK_NULL_HANDLE;
+    
+    // Данные для контура
+    uint32_t m_selectedObjectID = 0;
+    int m_outlineThickness = 3;
+    float m_outlineColor[3] = {1.0f, 0.5f, 0.0f};
+    bool m_outlineEnabled = true;
 
     void ApplyClipping(float& x1, float& y1, float& x2, float& y2);
     void renderBackgroundImmediate();
@@ -342,10 +341,8 @@ struct VertexGPU {
     void createDescriptorSetLayoutUIText();
     void createDescriptorSetLayoutUIImage();
     void createDescriptorSetLayoutGrid();
-    void createDescriptorSetLayoutContour();
     void createPipelines();
     void createGridPipeline();
-    void createContourPipeline();
     void createUIImagePipeline();
     void createUIBuffers();
     void createUITextBuffers();
@@ -358,7 +355,6 @@ struct VertexGPU {
 
     void cleanupTextures();
     void cleanupModelBuffers();
-    void cleanupGrid();
 
     void createModelBuffers(ModelBuffers& buffers, const std::vector<VertexGPU>& vertices,
                             const std::vector<uint32_t>& indices,
@@ -368,8 +364,12 @@ struct VertexGPU {
     void destroyPerModelUniformBuffers(ModelBuffers& buffers);
     
     void updateGridBuffer();
-    void drawContourInternal(const std::vector<ContourVertex>& vertices, float thickness,
-                             const glm::mat4& viewMatrix, const glm::mat4& projMatrix);
+    
+    // ID buffer methods
+    void CreateIDBufferResources();
+    void CreateIDPipeline();
+    void CreateFullscreenQuad();
+    void RenderObjectsToIDBuffer();
 };
 
 #endif
