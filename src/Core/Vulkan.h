@@ -12,12 +12,9 @@
 #include "Render/Parser/parser.h"
 #include "stb_truetype.h"
 
-typedef unsigned int ObjectID;
-
-// Константа должна быть доступна везде
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT_VK = 2;
 
-class PostRender; // forward declaration
+class PostRender;
 
 struct VulkanTexture {
     VkImage image = VK_NULL_HANDLE;
@@ -123,26 +120,19 @@ public:
     bool isGridEnabled() const { return gridEnabled; }
     float getGridSpacing() const { return gridSpacing; }
     
-    // Геттеры для ID буфера
-    int GetIDBufferWidth() const { return m_idBufferWidth; }
-    int GetIDBufferHeight() const { return m_idBufferHeight; }
+    // Геттеры для PostRender
     VkImage GetIDImage() const { return m_idImage; }
     VkImageView GetIDImageView() const { return m_idImageView; }
-    VkSampler GetIDBufferSampler() const { return m_idSampler; }
+    int GetIDBufferWidth() const { return m_idBufferWidth; }
+    int GetIDBufferHeight() const { return m_idBufferHeight; }
     VkPhysicalDevice GetPhysicalDevice() const { return physDevice; }
     
-    // Доступ к пост-рендеру
     PostRender* GetPostRender() { return m_postRender.get(); }
     
-    // Методы для ID буфера
-    void InitializeIDBuffer(int width, int height);
-    void DestroyIDBuffer();
-    
-    // Управление контуром
-    void SetSelectedObjectID(uint32_t id);
-    void SetOutlineColor(float r, float g, float b);
-    void SetOutlineThickness(int thickness);
-    void SetOutlineEnabled(bool enabled);
+    void InitPostRender(int width, int height);
+    void BeginIDPass();
+    void RenderModelsToID();
+    void EndIDPass();
 
 private:
     struct VertexGPU {
@@ -292,33 +282,18 @@ private:
     float gridLineColor[3] = {0.4f, 0.4f, 0.45f};
     float gridCenterLineColor[3] = {0.8f, 0.8f, 1.0f};
     
-    // Пост-рендер для контуров
-    std::unique_ptr<PostRender> m_postRender;
-    
     // ID буфер
     int m_idBufferWidth = 0;
     int m_idBufferHeight = 0;
-    
     VkImage m_idImage = VK_NULL_HANDLE;
     VkImageView m_idImageView = VK_NULL_HANDLE;
     VkDeviceMemory m_idImageMemory = VK_NULL_HANDLE;
-    VkDescriptorSetLayout m_idDescLayout = VK_NULL_HANDLE;
-    VkDescriptorSet m_idDescriptorSet = VK_NULL_HANDLE;
     VkPipelineLayout m_idPipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_idPipeline = VK_NULL_HANDLE;
-    VkSampler m_idSampler = VK_NULL_HANDLE;
     VkRenderPass m_idRenderPass = VK_NULL_HANDLE;
     VkFramebuffer m_idFramebuffer = VK_NULL_HANDLE;
     
-    // Полноэкранный quad
-    VkBuffer m_fullscreenVertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory m_fullscreenVertexBufferMemory = VK_NULL_HANDLE;
-    
-    // Данные для контура
-    uint32_t m_selectedObjectID = 0;
-    int m_outlineThickness = 3;
-    float m_outlineColor[3] = {1.0f, 0.5f, 0.0f};
-    bool m_outlineEnabled = true;
+    std::unique_ptr<PostRender> m_postRender;
 
     void ApplyClipping(float& x1, float& y1, float& x2, float& y2);
     void renderBackgroundImmediate();
@@ -366,12 +341,6 @@ private:
     void destroyPerModelUniformBuffers(ModelBuffers& buffers);
     
     void updateGridBuffer();
-    
-    // ID buffer methods
-    void CreateIDBufferResources();
-    void CreateIDPipeline();
-    void CreateFullscreenQuad();
-    void RenderObjectsToIDBuffer();
 };
 
 #endif

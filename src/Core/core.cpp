@@ -1,4 +1,4 @@
-// core.cpp - ПОЛНЫЙ ФАЙЛ С ПОСТ-РЕНДЕРОМ
+// core.cpp - ПОЛНЫЙ ФАЙЛ
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -261,7 +261,6 @@ bool Core::loadModelFromPath(const std::string& path) {
     static int modelCounter = 0;
     modelCounter++;
     
-    // Извлекаем имя файла без расширения
     std::string filename = path.substr(path.find_last_of("/\\") + 1);
     size_t dotPos = filename.find_last_of(".");
     if (dotPos != std::string::npos) {
@@ -349,8 +348,8 @@ void Core::GameLoop() {
             std::string input;
             std::getline(std::cin, input);
             
-            if (input == "1") {
-                Otlad1();
+           if (input == "1") {
+            Otlad1();
             }
             else if (input == "2") {
                 Otlad2();
@@ -369,15 +368,15 @@ void Core::GameLoop() {
                 std::cout << "\n=== Scene Objects ===" << std::endl;
                 for (const auto& obj : sm.GetAllObjectsScene()) {
                     std::cout << "ID: " << obj.id << " | " << obj.name 
-                              << " | Pos: " << obj.posX << ", " << obj.posY << ", " << obj.posZ
-                              << " | Scale: " << obj.scaleX << ", " << obj.scaleY << ", " << obj.scaleZ
-                              << " | Visible: " << (obj.isVisible ? "Y" : "N") 
-                              << " | Loaded: " << (obj.isLoaded ? "Y" : "N") << std::endl;
+                            << " | Pos: " << obj.posX << ", " << obj.posY << ", " << obj.posZ
+                            << " | Scale: " << obj.scaleX << ", " << obj.scaleY << ", " << obj.scaleZ
+                            << " | Visible: " << (obj.isVisible ? "Y" : "N") 
+                            << " | Loaded: " << (obj.isLoaded ? "Y" : "N") << std::endl;
                 }
                 std::cout << "=====================" << std::endl;
             }
-            else if (input == "analyze") {
-                OtladAnalyze();
+            else if (input == "stats") {
+                OtladStats();
             }
         }
     });
@@ -483,11 +482,9 @@ void Core::GameLoop() {
     sm.SetCameraTarget(glm::vec3(0.0f, 0.0f, 0.0f));
     sm.UpdateCameraAspect((float)w / (float)h);
     
-    // ========== НАСТРОЙКА ПОСТ-РЕНДЕРА (ОДИН РАЗ) ==========
+    // Инициализация PostRender
     if (vulkan && vulkan->GetPostRender()) {
-        vulkan->GetPostRender()->SetOutlineThickness(3);  // 3 пикселя толщина контура
-        vulkan->GetPostRender()->SetOutlineColor(1.0f, 0.5f, 0.0f);  // Оранжевый
-        vulkan->GetPostRender()->SetEnabled(true);
+        vulkan->GetPostRender()->Initialize(vulkan, w, h);
     }
     
     std::cout << "[Core] GameLoop started" << std::endl;
@@ -549,18 +546,23 @@ void Core::GameLoop() {
                                     currentView3D->getW(), currentView3D->getH());
                     vulkan->SetViewportClip(currentView3D->getX(), currentView3D->getY(),
                                             currentView3D->getW(), currentView3D->getH());
+                    
+                    // Вызов PostRender для отображения разрешения панели
+                    if (vulkan && vulkan->GetPostRender()) {
+                        vulkan->GetPostRender()->UpdateAndPrintResolution(
+                            vulkan,
+                            currentView3D->getX(),
+                            currentView3D->getY(),
+                            currentView3D->getW(),
+                            currentView3D->getH()
+                        );
+                    }
                 } else {
                     DisableViewportClip();
                     vulkan->DisableViewportClip();
                 }
                 
                 sm.UpdateAllMatrices();
-                
-                // ========== УСТАНОВКА ID ВЫБРАННОГО ОБЪЕКТА ДЛЯ ПОСТ-РЕНДЕРА ==========
-                int selectedId = sm.GetSelectedObjectScene();
-                if (vulkan) {
-                    vulkan->SetSelectedObjectID(selectedId);
-                }
                 
                 // ========== ОБНОВЛЕНИЕ ТРАНСФОРМАЦИЙ МОДЕЛЕЙ ==========
                 for (const auto& obj : sm.GetAllObjectsScene()) {

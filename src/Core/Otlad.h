@@ -18,7 +18,7 @@ static std::atomic<bool> g_otlad2Requested{false};
 static std::atomic<bool> g_otladClearRequested{false};
 static std::atomic<bool> g_otlad3Requested{false};
 static std::atomic<bool> g_otlad4Requested{false};
-static std::atomic<bool> g_otladAnalyzeRequested{false};  // Новая команда для анализа ID буфера
+static std::atomic<bool> g_otladStatsRequested{false};
 static VulkanTexture* g_atlasTexture = nullptr;
 static bool g_atlasReady = false;
 
@@ -47,42 +47,32 @@ inline void Otlad4() {
     g_otlad4Requested = true;
 }
 
-inline void OtladAnalyze() {
-    std::cout << "[OTLAD] Analyze ID Buffer requested" << std::endl;
-    g_otladAnalyzeRequested = true;
+inline void OtladStats() {
+    std::cout << "[OTLAD] ID Statistics requested" << std::endl;
+    g_otladStatsRequested = true;
 }
 
-// Функция для анализа ID буфера и вывода статистики по пикселям
-inline void OtladAnalyzeIDBuffer(Vulkan* vk) {
+inline void OtladPrintIDStatistics(Vulkan* vk) {
     if (!vk) {
         std::cout << "[OTLAD] Vulkan is null!" << std::endl;
         return;
     }
     
-    std::cout << "\n========== ID BUFFER ANALYSIS ==========" << std::endl;
-    
-    // Получаем размеры ID буфера
     int width = vk->GetIDBufferWidth();
     int height = vk->GetIDBufferHeight();
     
     if (width <= 0 || height <= 0) {
-        std::cout << "ID Buffer not initialized or invalid size: " << width << "x" << height << std::endl;
+        std::cout << "[OTLAD] ID Buffer not initialized!" << std::endl;
         return;
     }
     
-    std::cout << "ID Buffer size: " << width << "x" << height << " = " << (width * height) << " pixels" << std::endl;
-    
     VkDevice device = vk->getDevice();
+    VkImage idImage = vk->GetIDImage();
     VkPhysicalDevice physDevice = vk->GetPhysicalDevice();
     
-    // Создаём staging buffer для чтения данных из GPU
-    uint32_t memoryTypeIndex = 0;
-    VkPhysicalDeviceMemoryProperties memProps;
-    vkGetPhysicalDeviceMemoryProperties(physDevice, &memProps);
-    
+    // Создаём staging buffer
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingMemory;
-    
     VkDeviceSize bufferSize = width * height * sizeof(uint32_t);
     
     VkBufferCreateInfo bufferInfo{};
@@ -91,12 +81,16 @@ inline void OtladAnalyzeIDBuffer(Vulkan* vk) {
     bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     
     if (vkCreateBuffer(device, &bufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS) {
-        std::cout << "Failed to create staging buffer" << std::endl;
+        std::cout << "[OTLAD] Failed to create staging buffer" << std::endl;
         return;
     }
     
     VkMemoryRequirements memReq;
     vkGetBufferMemoryRequirements(device, stagingBuffer, &memReq);
+    
+    uint32_t memoryTypeIndex = 0;
+    VkPhysicalDeviceMemoryProperties memProps;
+    vkGetPhysicalDeviceMemoryProperties(physDevice, &memProps);
     
     for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
         if ((memReq.memoryTypeBits & (1 << i)) &&
@@ -113,14 +107,14 @@ inline void OtladAnalyzeIDBuffer(Vulkan* vk) {
     allocInfo.memoryTypeIndex = memoryTypeIndex;
     
     if (vkAllocateMemory(device, &allocInfo, nullptr, &stagingMemory) != VK_SUCCESS) {
-        std::cout << "Failed to allocate staging memory" << std::endl;
+        std::cout << "[OTLAD] Failed to allocate staging memory" << std::endl;
         vkDestroyBuffer(device, stagingBuffer, nullptr);
         return;
     }
     
     vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0);
     
-    // Копируем ID изображение в staging buffer
+    // Копируем ID изображение
     VkCommandBuffer cmdBuffer = vk->beginSingleTimeCommands();
     
     VkImageMemoryBarrier barrier{};
@@ -129,7 +123,7 @@ inline void OtladAnalyzeIDBuffer(Vulkan* vk) {
     barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = vk->GetIDImage();
+    barrier.image = idImage;
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.layerCount = 1;
@@ -148,7 +142,7 @@ inline void OtladAnalyzeIDBuffer(Vulkan* vk) {
     region.imageExtent.height = height;
     region.imageExtent.depth = 1;
     
-    vkCmdCopyImageToBuffer(cmdBuffer, vk->GetIDImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    vkCmdCopyImageToBuffer(cmdBuffer, idImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                            stagingBuffer, 1, &region);
     
     barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -163,69 +157,35 @@ inline void OtladAnalyzeIDBuffer(Vulkan* vk) {
     
     vk->endSingleTimeCommands(cmdBuffer);
     
-    // Читаем данные из staging buffer
+    // Читаем данные
     uint32_t* pixelData = new uint32_t[width * height];
     void* mappedData;
     vkMapMemory(device, stagingMemory, 0, bufferSize, 0, &mappedData);
     memcpy(pixelData, mappedData, bufferSize);
     vkUnmapMemory(device, stagingMemory);
     
-    // Анализируем пиксели
-    std::map<uint32_t, uint64_t> idCount;
+    // Подсчитываем ID
+    std::map<uint32_t, uint64_t> countMap;
     uint64_t totalPixels = 0;
-    uint64_t zeroPixels = 0;
     
     for (int i = 0; i < width * height; i++) {
         uint32_t id = pixelData[i];
+        countMap[id]++;
         totalPixels++;
-        if (id == 0) {
-            zeroPixels++;
-        } else {
-            idCount[id]++;
-        }
     }
     
     // Выводим статистику
-    std::cout << "\n--- PIXEL STATISTICS ---" << std::endl;
+    std::cout << "\n========== ID PIXEL STATISTICS ==========" << std::endl;
     std::cout << "Total pixels: " << totalPixels << std::endl;
-    std::cout << "Pixels with ID=0 (background): " << zeroPixels << " (" 
-              << (zeroPixels * 100.0 / totalPixels) << "%)" << std::endl;
+    std::cout << "Resolution: " << width << " x " << height << std::endl;
+    std::cout << "-------------------------------------------" << std::endl;
     
-    std::cout << "\n--- OBJECTS IN ID BUFFER ---" << std::endl;
-    if (idCount.empty()) {
-        std::cout << "No objects found in ID buffer!" << std::endl;
-    } else {
-        for (auto& pair : idCount) {
-            std::cout << "Object ID: " << pair.first << " -> Pixels: " << pair.second 
-                      << " (" << (pair.second * 100.0 / totalPixels) << "%)" << std::endl;
-        }
+    for (auto& pair : countMap) {
+        float percent = (float)pair.second / totalPixels * 100.0f;
+        std::cout << "ID " << pair.first << ": " << pair.second << " pixels (" << percent << "%)" << std::endl;
     }
     
-    // Выводим примеры пикселей из разных частей экрана (центр и углы)
-    std::cout << "\n--- SAMPLE PIXELS ---" << std::endl;
-    
-    // Центр экрана
-    int centerX = width / 2;
-    int centerY = height / 2;
-    int centerIdx = centerY * width + centerX;
-    std::cout << "Center pixel (" << centerX << "," << centerY << ") ID: " << pixelData[centerIdx] << std::endl;
-    
-    // Углы
-    std::cout << "Top-left (0,0) ID: " << pixelData[0] << std::endl;
-    std::cout << "Top-right (" << width-1 << ",0) ID: " << pixelData[width-1] << std::endl;
-    std::cout << "Bottom-left (0," << height-1 << ") ID: " << pixelData[(height-1) * width] << std::endl;
-    std::cout << "Bottom-right (" << width-1 << "," << height-1 << ") ID: " << pixelData[(height-1) * width + (width-1)] << std::endl;
-    
-    // Несколько случайных пикселей
-    std::cout << "\nRandom sample pixels:" << std::endl;
-    for (int i = 0; i < 10; i++) {
-        int x = (i * 137) % width;
-        int y = (i * 271) % height;
-        int idx = y * width + x;
-        std::cout << "  Pixel (" << x << "," << y << ") ID: " << pixelData[idx] << std::endl;
-    }
-    
-    std::cout << "=========================================\n" << std::endl;
+    std::cout << "===========================================\n" << std::endl;
     
     delete[] pixelData;
     vkDestroyBuffer(device, stagingBuffer, nullptr);
@@ -377,10 +337,9 @@ inline void ProcessOtladCommands(Vulkan* vk, InterfaceManager* uiManager) {
         std::cout << "=========================================\n" << std::endl;
     }
     
-    // Новая команда для анализа ID буфера
-    if (g_otladAnalyzeRequested) {
-        g_otladAnalyzeRequested = false;
-        OtladAnalyzeIDBuffer(vk);
+    if (g_otladStatsRequested) {
+        g_otladStatsRequested = false;
+        OtladPrintIDStatistics(vk);
     }
     
     if (g_atlasReady && g_atlasTexture && g_atlasTexture->valid) {
