@@ -578,26 +578,34 @@ void Core::GameLoop() {
                 }
                 
                 // ========== РЕНДЕР ВСЕХ МОДЕЛЕЙ ==========
-                if (vulkan) {
-                    vulkan->renderAllModels();
-                }
-                
-                DisableViewportClip();
-                if (vulkan) {
-                    vulkan->DisableViewportClip();
-                }
-                
-                g_uiManager->renderStatic();
-                SecondRender::Instance().RenderOverlay();
-                
-                // ========== ЕБАНЫЙ КВАДРАТ В ЦЕНТРЕ ЭКРАНА ==========
-                if (vulkan && vulkan->GetPostRender()) {
-                    vulkan->GetPostRender()->DrawTestSquare(vulkan, cw, ch);
-                }
-                
-                if (vulkan) {
-                    vulkan->renderOverlay();
-                }
+// ========== РЕНДЕР ВСЕХ МОДЕЛЕЙ ==========
+if (vulkan) {
+    vulkan->renderAllModels();
+}
+
+DisableViewportClip();
+if (vulkan) {
+    vulkan->DisableViewportClip();
+}
+
+g_uiManager->renderStatic();
+SecondRender::Instance().RenderOverlay();
+
+// ========== ПОДСВЕТКА ПИКСЕЛЕЙ ПО ID ==========
+if (vulkan && vulkan->GetPostRender()) {
+    // Подсвечиваем объект с ID = 3 (можешь поменять на любой)
+    uint32_t targetID = 3;
+    vulkan->GetPostRender()->HighlightIDPixels(vulkan, targetID, cw, ch);
+}
+
+// Ебаный квадрат в центре (если нужен)
+if (vulkan && vulkan->GetPostRender()) {
+    vulkan->GetPostRender()->DrawTestSquare(vulkan, cw, ch);
+}
+
+if (vulkan) {
+    vulkan->renderOverlay();
+}
                 
                 vulkan->endFrame();
                 vulkan->present();

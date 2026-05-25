@@ -133,7 +133,6 @@ public:
     void BeginIDPass();
     void RenderModelsToID();
     void EndIDPass();
-
 private:
     struct VertexGPU {
         glm::vec3 pos;
