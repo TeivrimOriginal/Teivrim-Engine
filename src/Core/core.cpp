@@ -1,4 +1,4 @@
-// core.cpp - ПОЛНЫЙ ФАЙЛ
+// core.cpp - ПОЛНЫЙ ФАЙЛ С КВАДРАТОМ В ЦЕНТРЕ
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -589,6 +589,12 @@ void Core::GameLoop() {
                 
                 g_uiManager->renderStatic();
                 SecondRender::Instance().RenderOverlay();
+                
+                // ========== ЕБАНЫЙ КВАДРАТ В ЦЕНТРЕ ЭКРАНА ==========
+                if (vulkan && vulkan->GetPostRender()) {
+                    vulkan->GetPostRender()->DrawTestSquare(vulkan, cw, ch);
+                }
+                
                 if (vulkan) {
                     vulkan->renderOverlay();
                 }

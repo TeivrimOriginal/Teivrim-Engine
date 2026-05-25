@@ -131,3 +131,17 @@ void PostRender::ScanIDMatrix(Vulkan* vulkan, int panelX, int panelY, int panelW
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingMemory, nullptr);
 }
+void PostRender::DrawTestSquare(Vulkan* vulkan, int screenWidth, int screenHeight) {
+    if (!vulkan) return;
+    
+    int centerX = screenWidth / 2;
+    int centerY = screenHeight / 2;
+    int size = 100;
+    
+    int x1 = centerX - size / 2;
+    int y1 = centerY - size / 2;
+    int x2 = centerX + size / 2;
+    int y2 = centerY + size / 2;
+    
+    vulkan->drawQuad(x1, y1, x2, y2, 1.0f, 0.0f, 0.0f);
+}

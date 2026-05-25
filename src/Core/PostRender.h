@@ -10,7 +10,7 @@ class PostRender {
 public:
     void Initialize(Vulkan* vulkan, int screenWidth, int screenHeight);
     void UpdateAndPrintResolution(Vulkan* vulkan, int panelX, int panelY, int panelW, int panelH);
-    
+    void DrawTestSquare(Vulkan* vulkan, int screenWidth, int screenHeight);
     // Новый метод - сканирует ID пикселей в матрицу
     void ScanIDMatrix(Vulkan* vulkan, int panelX, int panelY, int panelW, int panelH);
     
