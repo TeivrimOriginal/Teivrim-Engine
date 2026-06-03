@@ -2310,32 +2310,13 @@ void Vulkan::beginFrame() {
     }
     
     // ========== ID PASS ==========
-    if (m_idRenderPass != VK_NULL_HANDLE && m_idPipeline != VK_NULL_HANDLE) {
-        VkClearValue clearValue;
-        clearValue.color.uint32[0] = 0;
-        clearValue.color.uint32[1] = 0;
-        clearValue.color.uint32[2] = 0;
-        clearValue.color.uint32[3] = 0;
+    if (m_postRender && m_postRender->GetIDRenderPass() != VK_NULL_HANDLE) {
+        m_postRender->BeginIDPass(commandBuffers[currentFrame], 
+                                   m_postRender->GetIDRenderPass(),
+                                   m_postRender->GetIDFramebuffer(),
+                                   m_idBufferWidth, m_idBufferHeight);
         
-        VkRenderPassBeginInfo rpID{};
-        rpID.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        rpID.renderPass = m_idRenderPass;
-        rpID.framebuffer = m_idFramebuffer;
-        rpID.renderArea.offset = {0, 0};
-        rpID.renderArea.extent = { (uint32_t)m_idBufferWidth, (uint32_t)m_idBufferHeight };
-        rpID.clearValueCount = 1;
-        rpID.pClearValues = &clearValue;
-        
-        vkCmdBeginRenderPass(commandBuffers[currentFrame], &rpID, VK_SUBPASS_CONTENTS_INLINE);
-        vkCmdBindPipeline(commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, m_idPipeline);
-        
-        VkViewport viewport{0, 0, (float)m_idBufferWidth, (float)m_idBufferHeight, 0, 1};
-        vkCmdSetViewport(commandBuffers[currentFrame], 0, 1, &viewport);
-        
-        VkRect2D scissor{{0, 0}, { (uint32_t)m_idBufferWidth, (uint32_t)m_idBufferHeight }};
-        vkCmdSetScissor(commandBuffers[currentFrame], 0, 1, &scissor);
-        
-        // Рендер всех моделей в ID буфер
+        // Рендерим модели в ID буфер напрямую, без вызова PostRender
         for (auto& pair : modelBuffers) {
             const std::string& name = pair.first;
             ModelBuffers& buffers = pair.second;
@@ -2360,7 +2341,7 @@ void Vulkan::beginFrame() {
             pc.mvp = projMat * viewMat * transIt->second;
             pc.id = objectID;
             
-            vkCmdPushConstants(commandBuffers[currentFrame], m_idPipelineLayout, 
+            vkCmdPushConstants(commandBuffers[currentFrame], m_postRender->GetIDPipelineLayout(), 
                               VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 
                               0, sizeof(pc), &pc);
             
@@ -2370,7 +2351,7 @@ void Vulkan::beginFrame() {
             vkCmdDrawIndexed(commandBuffers[currentFrame], buffers.indexCount, 1, 0, 0, 0);
         }
         
-        vkCmdEndRenderPass(commandBuffers[currentFrame]);
+        m_postRender->EndIDPass(commandBuffers[currentFrame]);
     }
     
     // ========== ОСНОВНОЙ PASS ==========
@@ -2388,7 +2369,6 @@ void Vulkan::beginFrame() {
     
     vkCmdBeginRenderPass(commandBuffers[currentFrame], &rp, VK_SUBPASS_CONTENTS_INLINE);
 }
-
 void Vulkan::endFrame() {
     vkCmdEndRenderPass(commandBuffers[currentFrame]);
     vkEndCommandBuffer(commandBuffers[currentFrame]);
@@ -2557,219 +2537,8 @@ void Vulkan::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
     vkFreeCommandBuffers(device, commandPools[0], 1, &commandBuffer);
 }
 void Vulkan::InitPostRender(int width, int height) {
-    m_idBufferWidth = width;
-    m_idBufferHeight = height;
-    
-    // Создаём ID буфер (R32_UINT)
-    VkImageCreateInfo imageInfo{};
-    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.format = VK_FORMAT_R32_UINT;
-    imageInfo.extent.width = (uint32_t)width;
-    imageInfo.extent.height = (uint32_t)height;
-    imageInfo.extent.depth = 1;
-    imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
-    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    
-    vkCreateImage(device, &imageInfo, nullptr, &m_idImage);
-    
-    VkMemoryRequirements memReq;
-    vkGetImageMemoryRequirements(device, m_idImage, &memReq);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memReq.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    
-    vkAllocateMemory(device, &allocInfo, nullptr, &m_idImageMemory);
-    vkBindImageMemory(device, m_idImage, m_idImageMemory, 0);
-    
-    VkImageViewCreateInfo viewInfo{};
-    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    viewInfo.image = m_idImage;
-    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.format = VK_FORMAT_R32_UINT;
-    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    viewInfo.subresourceRange.levelCount = 1;
-    viewInfo.subresourceRange.layerCount = 1;
-    
-    vkCreateImageView(device, &viewInfo, nullptr, &m_idImageView);
-    
-    // Создаём рендерпасс для ID буфера
-    VkAttachmentDescription att{};
-    att.format = VK_FORMAT_R32_UINT;
-    att.samples = VK_SAMPLE_COUNT_1_BIT;
-    att.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    att.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    att.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    att.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    att.finalLayout = VK_IMAGE_LAYOUT_GENERAL;
-    
-    VkAttachmentReference colorRef{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
-    
-    VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorRef;
-    
-    VkRenderPassCreateInfo rpInfo{};
-    rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    rpInfo.attachmentCount = 1;
-    rpInfo.pAttachments = &att;
-    rpInfo.subpassCount = 1;
-    rpInfo.pSubpasses = &subpass;
-    
-    vkCreateRenderPass(device, &rpInfo, nullptr, &m_idRenderPass);
-    
-    // Создаём фреймбуфер
-    VkFramebufferCreateInfo fbInfo{};
-    fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    fbInfo.renderPass = m_idRenderPass;
-    fbInfo.attachmentCount = 1;
-    fbInfo.pAttachments = &m_idImageView;
-    fbInfo.width = width;
-    fbInfo.height = height;
-    fbInfo.layers = 1;
-    
-    vkCreateFramebuffer(device, &fbInfo, nullptr, &m_idFramebuffer);
-    
-    // Шейдеры для ID рендера
-    const char* idVertCode = R"(#version 450
-layout(location = 0) in vec3 inPosition;
-layout(push_constant) uniform PushConstants {
-    mat4 mvp;
-    uint objectID;
-} pc;
-layout(location = 0) out uint outObjectID;
-void main() {
-    gl_Position = pc.mvp * vec4(inPosition, 1.0);
-    outObjectID = pc.objectID;
-})";
-    
-    const char* idFragCode = R"(#version 450
-layout(location = 0) in flat uint inObjectID;
-layout(location = 0) out uvec4 outColor;
-void main() {
-    outColor = uvec4(inObjectID, 0, 0, 1);
-})";
-    
-    std::ofstream vertFile("autoshadertest/id_vert.vert");
-    vertFile << idVertCode;
-    vertFile.close();
-    
-    std::ofstream fragFile("autoshadertest/id_frag.frag");
-    fragFile << idFragCode;
-    fragFile.close();
-    
-    system("glslc autoshadertest/id_vert.vert -o autoshadertest/id_vert.spv");
-    system("glslc autoshadertest/id_frag.frag -o autoshadertest/id_frag.spv");
-    
-    VkShaderModule vertModule = createShaderModule("autoshadertest/id_vert.spv");
-    VkShaderModule fragModule = createShaderModule("autoshadertest/id_frag.spv");
-    
-    // Вершинный формат (упрощённый - только позиция)
-    auto bindingDesc = VkVertexInputBindingDescription{0, sizeof(VertexGPU), VK_VERTEX_INPUT_RATE_VERTEX};
-    auto attrDesc = std::array<VkVertexInputAttributeDescription, 1>{
-        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexGPU, pos)}
-    };
-    
-    VkPipelineVertexInputStateCreateInfo vi{};
-    vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vi.vertexBindingDescriptionCount = 1;
-    vi.pVertexBindingDescriptions = &bindingDesc;
-    vi.vertexAttributeDescriptionCount = (uint32_t)attrDesc.size();
-    vi.pVertexAttributeDescriptions = attrDesc.data();
-    
-    VkPipelineInputAssemblyStateCreateInfo ia{};
-    ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    
-    VkPipelineRasterizationStateCreateInfo raster{};
-    raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    raster.polygonMode = VK_POLYGON_MODE_FILL;
-    raster.cullMode = VK_CULL_MODE_BACK_BIT;
-    raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    raster.lineWidth = 1.0f;
-    
-    VkPipelineMultisampleStateCreateInfo ms{};
-    ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-    
-    VkPipelineDepthStencilStateCreateInfo depthStencil{};
-    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencil.depthTestEnable = VK_TRUE;
-    depthStencil.depthWriteEnable = VK_TRUE;
-    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
-    
-    VkPipelineColorBlendAttachmentState blendAtt{};
-    blendAtt.colorWriteMask = 0xF;
-    blendAtt.blendEnable = VK_FALSE;
-    
-    VkPipelineColorBlendStateCreateInfo cb{};
-    cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    cb.attachmentCount = 1;
-    cb.pAttachments = &blendAtt;
-    
-    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dynamic{};
-    dynamic.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamic.dynamicStateCount = 2;
-    dynamic.pDynamicStates = dynamicStates;
-    
-    VkPushConstantRange pushRange{};
-    pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    pushRange.offset = 0;
-    pushRange.size = sizeof(glm::mat4) + sizeof(uint32_t);
-    
-    VkPipelineLayoutCreateInfo plInfo{};
-    plInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    plInfo.setLayoutCount = 0;
-    plInfo.pushConstantRangeCount = 1;
-    plInfo.pPushConstantRanges = &pushRange;
-    
-    vkCreatePipelineLayout(device, &plInfo, nullptr, &m_idPipelineLayout);
-    
-    VkPipelineShaderStageCreateInfo stages[2] = {
-        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
-        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}
-    };
-    stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    stages[0].module = vertModule;
-    stages[0].pName = "main";
-    stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    stages[1].module = fragModule;
-    stages[1].pName = "main";
-    
-    VkGraphicsPipelineCreateInfo pipelineInfo{};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = stages;
-    pipelineInfo.pVertexInputState = &vi;
-    pipelineInfo.pInputAssemblyState = &ia;
-    pipelineInfo.pViewportState = nullptr;
-    pipelineInfo.pRasterizationState = &raster;
-    pipelineInfo.pMultisampleState = &ms;
-    pipelineInfo.pDepthStencilState = &depthStencil;
-    pipelineInfo.pColorBlendState = &cb;
-    pipelineInfo.pDynamicState = &dynamic;
-    pipelineInfo.layout = m_idPipelineLayout;
-    pipelineInfo.renderPass = m_idRenderPass;
-    pipelineInfo.subpass = 0;
-    
-    vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_idPipeline);
-    
-    vkDestroyShaderModule(device, vertModule, nullptr);
-    vkDestroyShaderModule(device, fragModule, nullptr);
-    
-    // Создаём PostRender
     m_postRender = std::make_unique<PostRender>();
     m_postRender->Initialize(this, width, height);
-    
     std::cout << "[Vulkan] PostRender initialized with ID buffer: " << width << "x" << height << std::endl;
 }
 void Vulkan::BeginIDPass() {

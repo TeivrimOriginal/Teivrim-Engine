@@ -133,13 +133,30 @@ public:
     void BeginIDPass();
     void RenderModelsToID();
     void EndIDPass();
+    
+struct VertexGPU {
+    glm::vec3 pos;
+    glm::vec3 normal;
+    glm::vec3 color;
+    glm::vec2 texCoord;
+};
+
+struct ModelBuffers {
+    VkBuffer vertexBuffer = VK_NULL_HANDLE;
+    VkBuffer indexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+    uint32_t indexCount = 0;
+    std::vector<VkDescriptorSet> descSets;
+    std::vector<VulkanTexture> textures;
+    
+    VkBuffer uniformBuffers[MAX_FRAMES_IN_FLIGHT_VK] = {};
+    VkDeviceMemory uniformBufferMemories[MAX_FRAMES_IN_FLIGHT_VK] = {};
+};
+
+// Также добавить в public:
+VkShaderModule createShaderModule(const std::string& filename);
 private:
-    struct VertexGPU {
-        glm::vec3 pos;
-        glm::vec3 normal;
-        glm::vec3 color;
-        glm::vec2 texCoord;
-    };
 
     struct UIVertex {
         glm::vec2 pos;
@@ -172,19 +189,6 @@ private:
         float x1, y1, x2, y2;
         float u1, v1, u2, v2;
         glm::vec3 color;
-    };
-
-    struct ModelBuffers {
-        VkBuffer vertexBuffer = VK_NULL_HANDLE;
-        VkBuffer indexBuffer = VK_NULL_HANDLE;
-        VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
-        VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
-        uint32_t indexCount = 0;
-        std::vector<VkDescriptorSet> descSets;
-        std::vector<VulkanTexture> textures;
-        
-        VkBuffer uniformBuffers[MAX_FRAMES_IN_FLIGHT_VK] = {};
-        VkDeviceMemory uniformBufferMemories[MAX_FRAMES_IN_FLIGHT_VK] = {};
     };
 
     static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -296,8 +300,6 @@ private:
 
     void ApplyClipping(float& x1, float& y1, float& x2, float& y2);
     void renderBackgroundImmediate();
-
-    VkShaderModule createShaderModule(const std::string& filename);
     bool initializeFont();
 
     VulkanTexture createTextureFromData(unsigned char* data, int width, int height, int channels);

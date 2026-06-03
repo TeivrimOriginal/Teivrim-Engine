@@ -1,4 +1,4 @@
-// core.cpp - ПОЛНЫЙ ФАЙЛ С КВАДРАТОМ В ЦЕНТРЕ
+// core.cpp - ПОЛНЫЙ ФАЙЛ БЕЗ POSTRENDER (внутренняя фигня Vulkan)
 #include "core.h"
 #include "../Application/application.h"
 #include "Render/Win32/RenderUI.h"
@@ -21,7 +21,6 @@
 #include <commdlg.h>
 #include "../Application/WindowAPIsupport/Win32/InitialWin32.h"
 #include "Vulkan.h"
-#include "PostRender.h"
 
 using namespace std;
 
@@ -482,11 +481,6 @@ void Core::GameLoop() {
     sm.SetCameraTarget(glm::vec3(0.0f, 0.0f, 0.0f));
     sm.UpdateCameraAspect((float)w / (float)h);
     
-    // Инициализация PostRender
-    if (vulkan && vulkan->GetPostRender()) {
-        vulkan->GetPostRender()->Initialize(vulkan, w, h);
-    }
-    
     std::cout << "[Core] GameLoop started" << std::endl;
     
     while (!win32Window->shouldClose()) {
@@ -546,17 +540,6 @@ void Core::GameLoop() {
                                     currentView3D->getW(), currentView3D->getH());
                     vulkan->SetViewportClip(currentView3D->getX(), currentView3D->getY(),
                                             currentView3D->getW(), currentView3D->getH());
-                    
-                    // Вызов PostRender для отображения разрешения панели
-                    if (vulkan && vulkan->GetPostRender()) {
-                        vulkan->GetPostRender()->UpdateAndPrintResolution(
-                            vulkan,
-                            currentView3D->getX(),
-                            currentView3D->getY(),
-                            currentView3D->getW(),
-                            currentView3D->getH()
-                        );
-                    }
                 } else {
                     DisableViewportClip();
                     vulkan->DisableViewportClip();
@@ -578,34 +561,31 @@ void Core::GameLoop() {
                 }
                 
                 // ========== РЕНДЕР ВСЕХ МОДЕЛЕЙ ==========
-// ========== РЕНДЕР ВСЕХ МОДЕЛЕЙ ==========
-if (vulkan) {
-    vulkan->renderAllModels();
-}
-
-DisableViewportClip();
-if (vulkan) {
-    vulkan->DisableViewportClip();
-}
-
-g_uiManager->renderStatic();
-SecondRender::Instance().RenderOverlay();
-
-// ========== ПОДСВЕТКА ПИКСЕЛЕЙ ПО ID ==========
-if (vulkan && vulkan->GetPostRender()) {
-    // Подсвечиваем объект с ID = 3 (можешь поменять на любой)
-    uint32_t targetID = 3;
-    vulkan->GetPostRender()->HighlightIDPixels(vulkan, targetID, cw, ch);
-}
-
-// Ебаный квадрат в центре (если нужен)
-if (vulkan && vulkan->GetPostRender()) {
-    vulkan->GetPostRender()->DrawTestSquare(vulkan, cw, ch);
-}
-
-if (vulkan) {
-    vulkan->renderOverlay();
-}
+                if (vulkan) {
+                    vulkan->renderAllModels();
+                }
+                
+                DisableViewportClip();
+                if (vulkan) {
+                    vulkan->DisableViewportClip();
+                }
+                
+                g_uiManager->renderStatic();
+                SecondRender::Instance().RenderOverlay();
+                
+                // Ебаный квадрат в центре
+                if (vulkan) {
+                    int centerX = cw / 2;
+                    int centerY = ch / 2;
+                    int size = 100;
+                    vulkan->drawQuad(centerX - size/2, centerY - size/2, 
+                                     centerX + size/2, centerY + size/2, 
+                                     1.0f, 0.0f, 0.0f);
+                }
+                
+                if (vulkan) {
+                    vulkan->renderOverlay();
+                }
                 
                 vulkan->endFrame();
                 vulkan->present();
@@ -647,6 +627,36 @@ if (vulkan) {
                 
                 g_uiManager->renderStatic();
                 SecondRender::Instance().RenderOverlay();
+                
+                // Ебаный квадрат в центре для OpenGL
+                {
+                    int centerX = cw / 2;
+                    int centerY = ch / 2;
+                    int size = 100;
+                    glMatrixMode(GL_PROJECTION);
+                    glPushMatrix();
+                    glLoadIdentity();
+                    glOrtho(0, cw, ch, 0, -1, 1);
+                    glMatrixMode(GL_MODELVIEW);
+                    glPushMatrix();
+                    glLoadIdentity();
+                    
+                    glDisable(GL_DEPTH_TEST);
+                    glDisable(GL_LIGHTING);
+                    glColor3f(1.0f, 0.0f, 0.0f);
+                    glBegin(GL_QUADS);
+                    glVertex2f(centerX - size/2, centerY - size/2);
+                    glVertex2f(centerX + size/2, centerY - size/2);
+                    glVertex2f(centerX + size/2, centerY + size/2);
+                    glVertex2f(centerX - size/2, centerY + size/2);
+                    glEnd();
+                    glEnable(GL_DEPTH_TEST);
+                    
+                    glMatrixMode(GL_PROJECTION);
+                    glPopMatrix();
+                    glMatrixMode(GL_MODELVIEW);
+                    glPopMatrix();
+                }
                 
                 win32Window->swapBuffers();
             }

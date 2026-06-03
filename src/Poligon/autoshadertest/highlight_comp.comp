@@ -1,0 +1,30 @@
+#version 450
+#extension GL_EXT_samplerless_texture_integer : require
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, r32ui) uniform uimage2D idImage;
+layout(binding = 1, std430) buffer OutputBuffer {
+    uint foundPixels[];
+} outputBuffer;
+
+layout(push_constant) uniform PushConstants {
+    uint targetID;
+    uint screenWidth;
+    uint screenHeight;
+} pc;
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imageSize = imageSize(idImage);
+    
+    if (pos.x >= imageSize.x || pos.y >= imageSize.y) return;
+    
+    uint pixelID = imageLoad(idImage, pos).r;
+    
+    if (pixelID == pc.targetID) {
+        uint index = atomicAdd(outputBuffer.foundPixels[0], 1);
+        outputBuffer.foundPixels[index * 2 + 1] = pos.x;
+        outputBuffer.foundPixels[index * 2 + 2] = pos.y;
+    }
+}
