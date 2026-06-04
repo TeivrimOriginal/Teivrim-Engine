@@ -11,7 +11,7 @@
 #include "../Interface/BufferLayer.h"
 #include "SecondComplexity/Icon/IconManager.h"
 #include "Otlad.h"
-#include "SecondRender.h"
+#include "Render/SecondRender.h"
 #include "PublicAPI.h"
 #include <iostream>
 #include <string>
@@ -20,7 +20,7 @@
 #include <conio.h>
 #include <commdlg.h>
 #include "../Application/WindowAPIsupport/Win32/InitialWin32.h"
-#include "Vulkan.h"
+#include "Render/Vulkan.h"
 
 using namespace std;
 

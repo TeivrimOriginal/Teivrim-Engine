@@ -9,7 +9,7 @@
 #include <map>
 #include <memory>
 #include <glm/glm.hpp>
-#include "Render/Parser/parser.h"
+#include "Parser/parser.h"
 #include "stb_truetype.h"
 
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT_VK = 2;

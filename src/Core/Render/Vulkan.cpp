@@ -14,7 +14,7 @@
 #include <glm/gtx/quaternion.hpp>
 #include <assimp/scene.h>
 #include "stb_image.h"
-#include "SecondComplexity/Scene/SceneManager.h"
+#include "../SecondComplexity/Scene/SceneManager.h"
 
 #pragma comment(lib, "vulkan-1.lib")
 
