@@ -9,9 +9,9 @@
 #include <fstream>
 #include <filesystem>
 #include <GL/glew.h>
-#include "../../Render/Win32/RenderUI.h"
-#include "../../../Core/Render/Win32/stb_image_write.h"
-#include "../../Render/Vulkan.h"
+#include "../../Render/RenderUI.h"
+#include "../../../Core/Render/stb_image_write.h"
+#include "../../Render/Vulkan/Vulkan.h"
 namespace fs = std::filesystem;
 
 struct IconUV {

@@ -3,7 +3,7 @@
 #define INTERFACE_MANAGER_H
 
 #include <windows.h>
-#include "../Core/Render/Win32/RenderUI.h"
+#include "../Core/Render/RenderUI.h"
 #include "Panels.h"
 #include "ObjectUI.h"
 

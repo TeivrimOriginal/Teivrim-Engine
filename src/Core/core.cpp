@@ -1,7 +1,6 @@
-// core.cpp - ПОЛНЫЙ ФАЙЛ БЕЗ POSTRENDER (внутренняя фигня Vulkan)
 #include "core.h"
 #include "../Application/application.h"
-#include "Render/Win32/RenderUI.h"
+#include "Render/RenderUI.h"
 #include "../Interface/InterfaceManager.h"
 #include "Render/Parser/parser.h"
 #include "../Control/Input.h"
@@ -11,8 +10,9 @@
 #include "../Interface/BufferLayer.h"
 #include "SecondComplexity/Icon/IconManager.h"
 #include "Otlad.h"
-#include "Render/SecondRender.h"
+#include "Render/Vulkan/SecondRender.h"
 #include "PublicAPI.h"
+#include "Render/AbstractRender.h"
 #include <iostream>
 #include <string>
 #include <thread>
@@ -20,7 +20,6 @@
 #include <conio.h>
 #include <commdlg.h>
 #include "../Application/WindowAPIsupport/Win32/InitialWin32.h"
-#include "Render/Vulkan.h"
 
 using namespace std;
 
@@ -129,9 +128,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             if (wParam == 'G') {
                 gridEnabled = !gridEnabled;
-                if (g_uiManager && g_uiManager->getCore() && g_uiManager->getCore()->getVulkan()) {
-                    g_uiManager->getCore()->getVulkan()->setGridEnabled(gridEnabled);
-                }
+                AbstractRender::Instance().SetGridEnabled(gridEnabled);
                 cout << "[GRID] " << (gridEnabled ? "Enabled" : "Disabled") << endl;
                 return 0;
             }
@@ -210,48 +207,27 @@ void Core::initializeRender(InitialWin32* window) {
         }
     };
     
-    if (currentAPI == RenderAPI::OPENGL) {
-        if (!rendererw.initialize(window)) return;
-        shaderProgram = rendererw.initShaders();
-        if (shaderProgram == 0) return;
-    } else {
-        RECT rect; 
-        GetClientRect(window->getHWND(), &rect);
-        int w = rect.right - rect.left, h = rect.bottom - rect.top;
-        if (w <= 0) w = 1280; 
-        if (h <= 0) h = 720;
-        vulkan = new Vulkan(window->getHWND(), w, h);
-        if (!vulkan || !vulkan->isInitialized()) { 
-            delete vulkan; 
-            vulkan = nullptr; 
-            return; 
-        }
-        vulkan->setup2D(w, h);
+    RECT rect; 
+    GetClientRect(window->getHWND(), &rect);
+    int w = rect.right - rect.left, h = rect.bottom - rect.top;
+    if (w <= 0) w = 1280; 
+    if (h <= 0) h = 720;
+    
+    RenderAPIType apiType = (currentAPI == RenderAPI::VULKAN) ? RenderAPIType::VULKAN : RenderAPIType::OPENGL;
+    if (!AbstractRender::Instance().Initialize(apiType, window, w, h)) {
+        rendererInitialized = false;
+        return;
     }
+    
     rendererInitialized = true;
 }
 
 void Core::renderModel(Camera& camera) {
     if (!rendererInitialized) return;
-    if (currentAPI == RenderAPI::OPENGL) {
-        // OpenGL rendering would go here
-    }
 }
 
 void Core::cleanupRender() {
-    if (currentAPI == RenderAPI::OPENGL) {
-        rendererw.cleanup();
-        if (shaderProgram) { 
-            glDeleteProgram(shaderProgram); 
-            shaderProgram = 0; 
-        }
-    } else {
-        if (vulkan) { 
-            vkDeviceWaitIdle(vulkan->getDevice()); 
-            delete vulkan; 
-            vulkan = nullptr; 
-        }
-    }
+    AbstractRender::Instance().Shutdown();
 }
 
 bool Core::loadModelFromPath(const std::string& path) {
@@ -278,9 +254,9 @@ bool Core::loadModelFromPath(const std::string& path) {
     
     modelPath = path;
     
-    if (currentAPI == RenderAPI::VULKAN && vulkan) {
-        vulkan->addModel(uniqueName, newParser->getMeshes());
-        vulkan->setModelTransform(uniqueName, glm::mat4(1.0f));
+    if (currentAPI == RenderAPI::VULKAN) {
+        AbstractRender::Instance().AddModel(uniqueName, newParser->getMeshes());
+        AbstractRender::Instance().SetModelTransform(uniqueName, glm::mat4(1.0f));
     }
     
     auto& sm = SceneManager::Instance();
@@ -316,18 +292,12 @@ void Core::SetViewportClip(int x, int y, int w, int h) {
     clipY = y;
     clipW = w;
     clipH = h;
-    
-    if (currentAPI == RenderAPI::VULKAN && vulkan) {
-        vulkan->SetViewportClip(x, y, w, h);
-    }
+    AbstractRender::Instance().SetViewportClip(x, y, w, h);
 }
 
 void Core::DisableViewportClip() {
     viewportClipEnabled = false;
-    
-    if (currentAPI == RenderAPI::VULKAN && vulkan) {
-        vulkan->DisableViewportClip();
-    }
+    AbstractRender::Instance().DisableViewportClip();
 }
 
 void Core::GetViewportClip(int& x, int& y, int& w, int& h) const {
@@ -341,14 +311,21 @@ void Core::settingUpRender() {}
 
 void Core::ParserToRender() {}
 
+Vulkan* Core::getVulkan() {
+    if (currentAPI == RenderAPI::VULKAN && AbstractRender::Instance().GetCurrentAPI() == RenderAPIType::VULKAN) {
+        return (Vulkan*)AbstractRender::Instance().GetDevice();
+    }
+    return nullptr;
+}
+
 void Core::GameLoop() {
     std::thread inputThread([]() {
         while (true) {
             std::string input;
             std::getline(std::cin, input);
             
-           if (input == "1") {
-            Otlad1();
+            if (input == "1") {
+                Otlad1();
             }
             else if (input == "2") {
                 Otlad2();
@@ -389,6 +366,11 @@ void Core::GameLoop() {
     
     initializeRender(win32Window);
     
+    if (!rendererInitialized) {
+        std::cerr << "[Core] Render initialization failed!" << std::endl;
+        return;
+    }
+    
     g_uiManager = new InterfaceManager(this, currentAPI);
     g_uiManager->setWindow(win32Window);
     g_uiManager->setCore(this);
@@ -404,16 +386,15 @@ void Core::GameLoop() {
     
     g_uiManager->initializeRender(win32Window->getHWND(), w, h);
     
-    if (currentAPI == RenderAPI::VULKAN && vulkan) {
-        g_uiManager->setVulkan(vulkan);
+    if (currentAPI == RenderAPI::VULKAN) {
+        g_uiManager->setVulkan(getVulkan());
         IconManager::Instance().SetRenderer(&g_uiManager->getRenderer());
-        
-        vulkan->setGridSpacing(20.0f);
-        vulkan->setGridEnabled(gridEnabled);
+        AbstractRender::Instance().SetGridSpacing(20.0f);
+        AbstractRender::Instance().SetGridEnabled(gridEnabled);
     }
     
-    if (currentAPI == RenderAPI::VULKAN && vulkan) {
-        SecondRender::Instance().Initialize(vulkan, &g_uiManager->getRenderer(), g_uiManager, w, h);
+    if (currentAPI == RenderAPI::VULKAN) {
+        SecondRender::Instance().Initialize(getVulkan(), &g_uiManager->getRenderer(), g_uiManager, w, h);
     } else if (currentAPI == RenderAPI::OPENGL) {
         SecondRender::Instance().Initialize(nullptr, &g_uiManager->getRenderer(), g_uiManager, w, h);
     }
@@ -423,18 +404,18 @@ void Core::GameLoop() {
     win32Window->onResize = [this](int width, int height) {
         if (width <= 0 || height <= 0) return;
         
-        if (currentAPI == RenderAPI::VULKAN && vulkan && vulkan->isInitialized()) {
-            vulkan->recreateSwapchain();
-            vulkan->setup2D(width, height);
+        if (currentAPI == RenderAPI::VULKAN) {
+            AbstractRender::Instance().RecreateSwapchain();
+            AbstractRender::Instance().Setup2D(width, height);
             if (g_uiManager) {
                 g_uiManager->updateWindowSize(width, height);
                 Panel* view3D = g_uiManager->getPanelManager()->get3D();
                 if (view3D && view3D->visible && !view3D->collapsed) {
                     SetViewportClip(view3D->getX(), view3D->getY(), view3D->getW(), view3D->getH());
-                    vulkan->SetViewportClip(view3D->getX(), view3D->getY(), view3D->getW(), view3D->getH());
+                    AbstractRender::Instance().SetViewportClip(view3D->getX(), view3D->getY(), view3D->getW(), view3D->getH());
                 } else {
                     DisableViewportClip();
-                    vulkan->DisableViewportClip();
+                    AbstractRender::Instance().DisableViewportClip();
                 }
             }
             SecondRender::Instance().UpdateScreenSize(width, height);
@@ -522,73 +503,59 @@ void Core::GameLoop() {
             
             sm.UpdateCameraAspect((float)cw / (float)ch);
             
-            if (currentAPI == RenderAPI::VULKAN && vulkan && vulkan->isInitialized()) {
-                ProcessOtladCommands(vulkan, g_uiManager);
+            if (currentAPI == RenderAPI::VULKAN && AbstractRender::Instance().IsInitialized()) {
+                Vulkan* vk = getVulkan();
+                if (vk) ProcessOtladCommands(vk, g_uiManager);
                 
                 glm::mat4 viewMat = sm.GetViewMatrix();
                 glm::mat4 projMat = sm.GetProjectionMatrix();
-                glm::vec3 camPos = sm.GetCameraPosition();
                 
-                vulkan->setViewMatrix(viewMat);
-                vulkan->setProjectionMatrix(projMat);
+                AbstractRender::Instance().SetViewMatrix(viewMat);
+                AbstractRender::Instance().SetProjectionMatrix(projMat);
                 
-                vulkan->beginFrame();
+                AbstractRender::Instance().BeginFrame();
                 
                 Panel* currentView3D = g_uiManager->getPanelManager()->get3D();
                 if (currentView3D && currentView3D->visible && !currentView3D->collapsed) {
                     SetViewportClip(currentView3D->getX(), currentView3D->getY(), 
                                     currentView3D->getW(), currentView3D->getH());
-                    vulkan->SetViewportClip(currentView3D->getX(), currentView3D->getY(),
+                    AbstractRender::Instance().SetViewportClip(currentView3D->getX(), currentView3D->getY(),
                                             currentView3D->getW(), currentView3D->getH());
                 } else {
                     DisableViewportClip();
-                    vulkan->DisableViewportClip();
+                    AbstractRender::Instance().DisableViewportClip();
                 }
                 
                 sm.UpdateAllMatrices();
                 
-                // ========== ОБНОВЛЕНИЕ ТРАНСФОРМАЦИЙ МОДЕЛЕЙ ==========
                 for (const auto& obj : sm.GetAllObjectsScene()) {
                     if (obj.isLoaded && !obj.name.empty()) {
                         glm::mat4 transform = glm::mat4(1.0f);
                         transform = glm::translate(transform, glm::vec3(obj.posX, obj.posY, obj.posZ));
                         transform = glm::scale(transform, glm::vec3(obj.scaleX, obj.scaleY, obj.scaleZ));
-                        
-                        if (vulkan) {
-                            vulkan->setModelTransform(obj.name, transform);
-                        }
+                        AbstractRender::Instance().SetModelTransform(obj.name, transform);
                     }
                 }
                 
-                // ========== РЕНДЕР ВСЕХ МОДЕЛЕЙ ==========
-                if (vulkan) {
-                    vulkan->renderAllModels();
-                }
+                AbstractRender::Instance().RenderAllModels();
                 
                 DisableViewportClip();
-                if (vulkan) {
-                    vulkan->DisableViewportClip();
-                }
+                AbstractRender::Instance().DisableViewportClip();
                 
                 g_uiManager->renderStatic();
                 SecondRender::Instance().RenderOverlay();
                 
-                // Ебаный квадрат в центре
-                if (vulkan) {
-                    int centerX = cw / 2;
-                    int centerY = ch / 2;
-                    int size = 100;
-                    vulkan->drawQuad(centerX - size/2, centerY - size/2, 
-                                     centerX + size/2, centerY + size/2, 
-                                     1.0f, 0.0f, 0.0f);
-                }
+                int centerX = cw / 2;
+                int centerY = ch / 2;
+                int size = 100;
+                AbstractRender::Instance().DrawQuad(centerX - size/2, centerY - size/2, 
+                                         centerX + size/2, centerY + size/2, 
+                                         1.0f, 0.0f, 0.0f);
                 
-                if (vulkan) {
-                    vulkan->renderOverlay();
-                }
+                AbstractRender::Instance().RenderOverlay();
                 
-                vulkan->endFrame();
-                vulkan->present();
+                AbstractRender::Instance().EndFrame();
+                AbstractRender::Instance().Present();
             } 
             else if (currentAPI == RenderAPI::OPENGL) {
                 glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -628,7 +595,6 @@ void Core::GameLoop() {
                 g_uiManager->renderStatic();
                 SecondRender::Instance().RenderOverlay();
                 
-                // Ебаный квадрат в центре для OpenGL
                 {
                     int centerX = cw / 2;
                     int centerY = ch / 2;

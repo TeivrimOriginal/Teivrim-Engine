@@ -1,10 +1,10 @@
 // SecondRender.cpp
 #include "SecondRender.h"
 #include "Vulkan.h"
-#include "../../Core/Render/Win32/RenderUI.h"
-#include "../../Interface/InterfaceManager.h"
-#include "../../Interface/Panels.h"
-#include "../../Core/SecondComplexity/Scene/SceneManager.h"
+#include "../RenderUI.h"
+#include "../../../Interface/InterfaceManager.h"
+#include "../../../Interface/Panels.h"
+#include "../../SecondComplexity/Scene/SceneManager.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cmath>

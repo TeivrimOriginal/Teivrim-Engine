@@ -9,7 +9,7 @@
 #include <fstream>
 #include <sstream>
 #include <map>
-#include "../Core/Render/Win32/RenderUI.h"
+#include "../Core/Render/RenderUI.h"
 
 struct Rect {
     int x, y, w, h, right, bottom;

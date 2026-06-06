@@ -1,4 +1,3 @@
-// core.h - ПОЛНЫЙ ФАЙЛ
 #ifndef CORE_H
 #define CORE_H
 
@@ -6,9 +5,8 @@
 #include <map>
 #include <GL/glew.h>
 #include <windows.h>
-#include "Render/Win32/rendererw.h"
+#include "Render/OpenGL/rendererw.h"
 #include "Render/Parser/parser.h"
-#include "Render/Vulkan.h"
 #include "SecondComplexity/Scene/ObjectScene.h"
 #include "SecondComplexity/Scene/SceneManager.h"
 
@@ -24,7 +22,7 @@ public:
     GLuint shaderProgram = 0;
     
     void setRenderAPI(RenderAPI api);
-    void initializeRender(InitialWin32* window);
+    void initializeRender(class InitialWin32* window);
     void renderModel(Camera& camera);
     void cleanupRender();
     void settingUpRender();
@@ -33,7 +31,7 @@ public:
     bool loadModelFromPath(const std::string& path);
     bool openFileDialogAndLoadModel(HWND hwnd);
     
-    Vulkan* getVulkan() { return vulkan; }
+    class Vulkan* getVulkan();
     
     void SetViewportClip(int x, int y, int w, int h);
     void DisableViewportClip();
@@ -59,18 +57,19 @@ public:
     void SelectSceneObject(int id) {
         SceneManager::Instance().SelectObjectScene(id);
     }
-        std::map<int, std::string> m_modelNameMap;  // ObjectScene ID -> Vulkan Model Name
+    
+    std::map<int, std::string> m_modelNameMap;
+
 private:
     RendererW rendererw;
     RenderAPI currentAPI = RenderAPI::OPENGL;
-    InitialWin32* currentWindow = nullptr;
+    class InitialWin32* currentWindow = nullptr;
     bool rendererInitialized = false;
-    Vulkan* vulkan = nullptr;
     
     bool viewportClipEnabled = false;
     int clipX = 0, clipY = 0, clipW = 0, clipH = 0;
     
-    std::map<int, int> m_modelVulkanIdMap;  // ObjectScene ID -> Vulkan Model ID
+    std::map<int, int> m_modelVulkanIdMap;
 };
 
 #endif

@@ -4,7 +4,7 @@
 
 #include <string>
 #include <vector>
-#include "../Core/Render/Win32/RenderUI.h"
+#include "../Core/Render/RenderUI.h"
 #include "Panels.h"
 
 class ObjectUI {
