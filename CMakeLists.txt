@@ -19,10 +19,10 @@ set(SOURCES
     src/Application/application.cpp
     src/Application/WindowAPIsupport/Win32/InitialWin32.cpp
     src/Core/core.cpp
-    src/Core/Render/Win32/RenderUI.cpp
-    src/Core/Render/Win32/rendererw.cpp
+    src/Core/Render/RenderUI.cpp
+    src/Core/Render/OpenGL/rendererw.cpp
     src/Core/Render/Parser/parser.cpp
-    src/Core/Render/Win32/stb_truetype_impl.cpp
+    src/Core/Render/stb_truetype_impl.cpp
     src/Core/Render/Win32/GraphicsApiSupport/RenderUI_OpenGL.cpp
 )
 

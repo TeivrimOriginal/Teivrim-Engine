@@ -1,0 +1,80 @@
+name: CI
+
+# The import libraries this project links against — assimp, glfw3, glew32 —
+# are not tracked in git, so a clean checkout cannot be linked. That is a
+# deliberate choice (see .gitignore), but it also meant nothing at all ran here.
+#
+# So this checks two things that need no binaries:
+#
+# 1. Every path in CMakeLists.txt points at a file that exists. This is not
+#    hypothetical — the list referenced three files under src/Core/Render/Win32/
+#    that were never in the repository, so `cmake ..` failed before compiling
+#    anything.
+# 2. All 14 translation units pass a syntax-only compile. This catches the kind
+#    of error that hides for months: `RenderAPIType` was defined in both
+#    AbstractRender.h and RenderUI.h, so any file that included both failed with
+#    "multiple definition".
+#
+# Caveat worth stating: the host project is MSVC, this check runs MinGW-w64 g++.
+# It is not the same compiler, so it is a real check but not the last word.
+# Linking still has to be done locally with the DLLs dropped into lib/.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sources-and-syntax:
+    name: CMake sources · syntax check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW-w64
+        shell: pwsh
+        run: |
+          choco install mingw --no-progress -y --limit-output
+          # Refresh the PATH inside this step; the machine PATH is picked up from here on.
+          $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+                      [System.Environment]::GetEnvironmentVariable('Path', 'User')
+          g++ --version
+
+      # Vulkan headers are not vendored either. Pinned to the release tag that
+      # this check was last verified against, so the job does not change meaning
+      # when upstream moves.
+      - name: Fetch Vulkan headers
+        run: git clone --depth 1 --branch v1.4.365 https://github.com/KhronosGroup/Vulkan-Headers.git vulkan
+
+      - name: Every CMake source exists
+        shell: pwsh
+        run: |
+          $cmake = Get-Content CMakeLists.txt -Raw
+          $srcs = [regex]::Matches($cmake, '(?m)^\s+(src/\S+\.cpp)\s*$') | ForEach-Object { $_.Groups[1].Value }
+          if (-not $srcs) { throw 'no sources parsed out of CMakeLists.txt' }
+          $missing = @($srcs | Where-Object { -not (Test-Path $_) })
+          if ($missing) {
+            throw "CMakeLists.txt lists $($missing.Count) file(s) that are not in the repository:`n  $($missing -join "`n  ")"
+          }
+          $srcs | Set-Content -Path sources.txt -Encoding utf8
+          Write-Host "all $($srcs.Count) sources present"
+
+      - name: Syntax-only compile
+        shell: pwsh
+        run: |
+          $srcs = Get-Content sources.txt
+          $failed = @()
+          foreach ($s in $srcs) {
+            g++ -std=c++17 -fsyntax-only -DVK_USE_PLATFORM_WIN32_KHR -Iinclude -Ivulkan/include $s
+            if ($LASTEXITCODE -ne 0) { $failed += $s }
+          }
+          Write-Host "$($srcs.Count - $failed.Count) of $($srcs.Count) translation units OK"
+          if ($failed) { throw "failed: $($failed -join ', ')" }

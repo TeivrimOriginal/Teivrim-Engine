@@ -7,6 +7,7 @@ A cross-platform game engine written from scratch in C++17 with a dual OpenGL / 
 [![Language: C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)](https://isocpp.org/)
 [![Build: CMake](https://img.shields.io/badge/build-CMake-064F8C?logo=cmake&logoColor=white)](https://cmake.org/)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D7?logo=windows&logoColor=white)](https://learn.microsoft.com/en-us/windows/)
+[![CI](https://github.com/TeivrimOriginal/Teivrim-Engine/actions/workflows/ci.yml/badge.svg)](https://github.com/TeivrimOriginal/Teivrim-Engine/actions/workflows/ci.yml)
 
 ---
 
@@ -106,6 +107,24 @@ cmake --build . --config Release
 Venders headers for GLFW, GLEW, GLM and Assimp are kept in `include/` so the project builds without a package manager.
 
 Compiled binaries (`.dll`, `.lib`, `.exe`, `lib/`, `build/`) are **not** tracked in git — see `.gitignore`. Drop the DLLs into `lib/` after cloning.
+
+### What CI can and cannot do here
+
+Because the import libraries are not tracked, a clean checkout cannot be linked,
+so CI does not run `cmake --build`. It does run the two checks that need no
+binaries:
+
+1. **Every path in `CMakeLists.txt` exists.** This one already earned its keep:
+   the list referenced `src/Core/Render/Win32/RenderUI.cpp`,
+   `src/Core/Render/Win32/rendererw.cpp` and
+   `src/Core/Render/Win32/stb_truetype_impl.cpp`, none of which were ever in the
+   repository, so `cmake ..` stopped with "Cannot find source file" before
+   compiling anything.
+2. **All 14 translation units pass a syntax-only compile.** Vulkan headers are
+   fetched at a pinned tag because they are not vendored either.
+
+The project targets MSVC and the check runs MinGW-w64 g++, so it is a real check
+rather than the last word. Linking stays a local step.
 
 ## Repository layout
 

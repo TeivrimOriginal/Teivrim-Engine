@@ -7,7 +7,10 @@
 #include <vector>
 #include <glm/glm.hpp>
 
-enum class RenderAPIType { OPENGL, VULKAN };
+// RenderAPIType живёт в AbstractRender.h. Здесь он тоже был определён, и любой
+// файл, включающий и этот заголовок, и AbstractRender.h, получал "multiple
+// definition of enum class RenderAPIType".
+#include "AbstractRender.h"
 
 class Vulkan;
 struct VulkanTexture;
